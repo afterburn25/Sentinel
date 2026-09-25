@@ -1,0 +1,1 @@
+-- schema_migrations is bootstrapped by MigrationService.
