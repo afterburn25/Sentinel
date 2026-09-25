@@ -24,6 +24,7 @@ add_library(sentinel_core
     src/Audit/AuditService.cpp
     src/Evidence/SevContainer.cpp
     src/Evidence/EvidenceService.cpp
+    src/Simulation/RuleBasedTestModel.cpp
 )
 
 target_include_directories(sentinel_core PUBLIC include)
