@@ -28,6 +28,9 @@ add_library(sentinel_core
     src/Simulation/OpenAICompatibleModel.cpp
     src/Simulation/PersonaPolicy.cpp
     src/Simulation/SettingsStore.cpp
+    src/Simulation/ResponseEvaluator.cpp
+    src/Simulation/SessionStore.cpp
+    src/Simulation/ModelRegistry.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Agency/AgencyServer.cpp
