@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(SENTINEL_BUILD_TESTS "Build Sentinel tests" ON)
 option(SENTINEL_BUILD_TOOLS "Build Sentinel command-line tools" ON)
 
-find_package(SQLite3 REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 add_library(sentinel_core
     src/Core/Uuid.cpp
@@ -26,7 +26,7 @@ add_library(sentinel_core
 )
 
 target_include_directories(sentinel_core PUBLIC include)
-target_link_libraries(sentinel_core PUBLIC SQLite::SQLite3)
+target_link_libraries(sentinel_core PUBLIC unofficial::sqlite3::sqlite3)
 
 if(WIN32)
     target_link_libraries(sentinel_core PUBLIC bcrypt crypt32)
