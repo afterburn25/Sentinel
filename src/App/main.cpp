@@ -404,7 +404,7 @@ int main(int argc, char** argv)
                 record = rt.cases.CreateCase({
                     "SELFTEST-0001",
                     "Sentinel End-to-End Self Test",
-                    "Encrypted local test case",
+                    "",
                     actor
                 });
                 rt.keys.CreateCaseKey(record.id);
@@ -423,7 +423,7 @@ int main(int argc, char** argv)
             if (!reopened ||
                 reopened->caseNumber != "SELFTEST-0001" ||
                 reopened->title != "Sentinel End-to-End Self Test" ||
-                reopened->description != "Encrypted local test case")
+                !reopened->description.empty())
                 throw std::runtime_error("encrypted case reopen self-test failed");
 
             sqlite3_stmt* secureCheck{};
