@@ -1,0 +1,79 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: MSVC x64 / Release
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      VCPKG_ROOT: C:\vcpkg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg_installed
+            ${{ env.LOCALAPPDATA }}/vcpkg/archives
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset windows-msvc-release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build --preset windows-msvc-release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --preset windows-msvc-release
+
+      - name: Install package
+        shell: pwsh
+        run: >-
+          cmake --install out/build/windows-msvc-release
+          --config Release
+          --prefix package/Sentinel-0.2.0-windows-x64
+
+      - name: Create SHA-256 manifest
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/Sentinel-0.2.0-windows-x64
+          $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\\','/')
+            "$hash  $relative"
+          }
+          $lines | Set-Content -Encoding ascii "$root/SHA256SUMS.txt"
+
+      - name: Archive build
+        shell: pwsh
+        run: Compress-Archive -Path package/Sentinel-0.2.0-windows-x64/* -DestinationPath Sentinel-0.2.0-windows-x64.zip
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sentinel-0.2.0-windows-x64
+          path: |
+            Sentinel-0.2.0-windows-x64.zip
+            package/Sentinel-0.2.0-windows-x64/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
