@@ -269,7 +269,7 @@ public:
 
         const wchar_t* ageItems[]={L"UNKNOWN",L"SELF_REPORTED_MINOR",L"SELF_REPORTED_ADULT",L"DOCUMENTED_MINOR",L"DOCUMENTED_ADULT",L"CONFLICTING"};
         for(auto* item:ageItems) SendMessageW(ageStateCombo_,CB_ADDSTRING,0,(LPARAM)item);
-        SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)simSettings_.ageState,0);
+        SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
@@ -1059,6 +1059,75 @@ private:
         if(simScroll_) ShowWindow(simScroll_,show?SW_SHOW:SW_HIDE);
     }
 
+    void ShowPersonaEditors(bool show) {
+        HWND controls[]={personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_};
+        for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
+    }
+
+    void ShowAgencyEditors(bool show) {
+        if(agencyEndpointEdit_) ShowWindow(agencyEndpointEdit_,show?SW_SHOW:SW_HIDE);
+        if(agencyIdEdit_) ShowWindow(agencyIdEdit_,show?SW_SHOW:SW_HIDE);
+    }
+
+    void ApplyPageControls() {
+        ShowCaseEditors(page_==Page::Cases);
+        ShowChatEditor(page_==Page::Simulation);
+        ShowPersonaEditors(page_==Page::Persona);
+        ShowAgencyEditors(page_==Page::Agency);
+    }
+
+    std::wstring EditText(HWND h) const {
+        int len=GetWindowTextLengthW(h);
+        std::wstring value((size_t)len+1,L'\0');
+        GetWindowTextW(h,value.data(),len+1);
+        value.resize((size_t)len);
+        return value;
+    }
+
+    void LoadProfileEditors() {
+        SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
+        SetWindowTextW(personaAgeEdit_,std::to_wstring(simSettings_.persona.age).c_str());
+        SetWindowTextW(personaLocationEdit_,Widen(simSettings_.persona.location).c_str());
+        SetWindowTextW(personaInterestsEdit_,Widen(simSettings_.persona.interests).c_str());
+        SetWindowTextW(personaStyleEdit_,Widen(simSettings_.persona.writingStyle).c_str());
+        SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
+        SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
+        SetWindowTextW(scenarioSeedEdit_,std::to_wstring(simSettings_.scenario.seed).c_str());
+        SetWindowTextW(minDelayEdit_,std::to_wstring(simSettings_.minDelayMs).c_str());
+        SetWindowTextW(maxDelayEdit_,std::to_wstring(simSettings_.maxDelayMs).c_str());
+    }
+
+    void SaveProfileEditors() {
+        try {
+            simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
+            simSettings_.persona.age=std::max(1,std::stoi(EditText(personaAgeEdit_)));
+            simSettings_.persona.location=Narrow(EditText(personaLocationEdit_));
+            simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
+            simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
+            simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
+            simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
+            simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
+            simSettings_.minDelayMs=std::clamp(std::stoi(EditText(minDelayEdit_)),500,30000);
+            simSettings_.maxDelayMs=std::clamp(std::stoi(EditText(maxDelayEdit_)),simSettings_.minDelayMs,60000);
+            int ageSel=(int)SendMessageW(ageStateCombo_,CB_GETCURSEL,0,0);
+            if(ageSel>=0 && ageSel<=5) simSettings_.ageState=(sentinel::simulation::AgeKnowledgeState)ageSel;
+            simSettings_.endpoint=Narrow(EditText(modelEndpointEdit_));
+            simSettings_.model=Narrow(EditText(modelNameEdit_));
+            sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+
+            simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
+            simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
+                ", location "+simSettings_.persona.location+", interests "+simSettings_.persona.interests+
+                ", writing style "+simSettings_.persona.writingStyle+".";
+            policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
+            statusText_=L"Persona, policy, scenario, and delay settings saved";
+        } catch(const std::exception& e) {
+            statusText_=L"Profile save failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Save Profile Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
     void UpdateSimulationScrollbar() {
         if(!simScroll_) return;
         int maxStart=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
@@ -1229,6 +1298,226 @@ private:
         }
     }
 
+    void PreserveSimulationTranscript() {
+        if(cases_.empty()) {
+            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        try {
+            auto exportDir=runtime_->root/"exports";
+            std::filesystem::create_directories(exportDir);
+            auto path=exportDir/"simulation-transcript.txt";
+            std::ofstream out(path,std::ios::trunc);
+            out<<"Sentinel Simulation Transcript\n";
+            out<<"Scenario: "<<simSettings_.scenario.name<<"\n";
+            out<<"Persona: "<<simSettings_.persona.name<<"\n";
+            out<<"Age state: "<<sentinel::simulation::ToString(simSettings_.ageState)<<"\n\n";
+            for(const auto& turn:simContext_.history) {
+                const char* who=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator?"Investigator":
+                    turn.speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject?"Synthetic Subject":"Model Suggestion";
+                out<<who<<": "<<turn.text<<"\n";
+            }
+            out.close();
+
+            auto key=runtime_->keys.GetCaseKey(cases_[selectedCase_].id);
+            sentinel::EvidenceService svc(runtime_->root/"evidence",runtime_->db,runtime_->random,runtime_->hash,runtime_->cipher,runtime_->audit);
+            svc.Import({cases_[selectedCase_].id,path,0,sentinel::UserId::Random()},key.Span());
+            evidence_=runtime_->Evidence(cases_[selectedCase_].id);
+            statusText_=L"Simulation transcript preserved as encrypted evidence";
+        } catch(const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Preserve Transcript Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void QueueOperatorTestMessage() {
+        RequestLatestSuggestionApproval();
+        page_=Page::Supervisor;
+        statusText_=L"Message queued for supervisor approval";
+    }
+
+    void RequestLatestSuggestionApproval() {
+        std::wstring candidate=simSuggestion_;
+        if(candidate.empty() || candidate==L"No suggestion generated yet") {
+            statusText_=L"Generate a model suggestion first";
+            return;
+        }
+        auto text=Narrow(candidate);
+        auto decision=sentinel::simulation::EvaluateSimulationPolicy(simSettings_.ageState,text);
+        if(!decision.allowed) {
+            policyStatus_=Widen(decision.reason);
+            statusText_=L"Policy blocked approval request";
+            return;
+        }
+        approvals_.push_back(sentinel::operations::CreateApprovalRequest("message:local-sim:"+text,"local-investigator"));
+        statusText_=L"Supervisor approval requested";
+    }
+
+    void ApproveFirstPending() {
+        for(auto& a:approvals_) {
+            if(a.status==sentinel::operations::ApprovalStatus::Pending) {
+                sentinel::operations::Approve(a,"local-supervisor","Approved in Sentinel supervisor console");
+                const std::string prefix="message:local-sim:";
+                if(a.action.rfind(prefix,0)==0 && messagingAdapter_) {
+                    messagingAdapter_->QueueOperatorApproved("local-sim",a.action.substr(prefix.size()));
+                }
+                statusText_=L"Supervisor approval recorded and message queued";
+                return;
+            }
+        }
+        statusText_=L"No pending approvals";
+    }
+
+    void ToggleAgency() {
+        agencyConfig_.endpoint=Narrow(EditText(agencyEndpointEdit_));
+        agencyConfig_.agencyId=Narrow(EditText(agencyIdEdit_));
+        if(agencyConfig_.endpoint.empty() || agencyConfig_.agencyId.empty()) {
+            statusText_=L"Enter agency endpoint and agency ID first";
+            return;
+        }
+        agencyConfig_.enabled=!agencyConfig_.enabled;
+        statusText_=agencyConfig_.enabled?L"Agency sync configuration enabled":L"Agency sync configuration disabled";
+    }
+
+    void EnqueueAgencySnapshot() {
+        agencyQueue_.Enqueue({
+            "sync-"+std::to_string(agencyQueue_.Items().size()+1),
+            sentinel::agency::SyncItemType::AuditRecord,
+            "audit-count:"+std::to_string(runtime_->AuditCount()),0,false});
+        statusText_=L"Encrypted-sync work item queued locally";
+    }
+
+    void DrawPersona(float w,float h) {
+        PageTitle(L"Persona & Policy",L"Persistent synthetic persona, scenario, age state, and response pacing");
+        float x=kSidebar+28,y=kHeader+104;
+        float left=(w-x-42)*0.58f,right=(w-x-42)-left;
+
+        Rounded(x,y,left,520,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Persona Profile",x+18,y+15,260,28,h1Fmt_.Get(),brush_.text.Get());
+
+        Text(L"Name",x+22,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(personaNameEdit_,(int)(x+135),(int)(y+54),(int)(left-160),32,TRUE);
+        Text(L"Age",x+22,y+106,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(personaAgeEdit_,(int)(x+135),(int)(y+98),110,32,TRUE);
+        Text(L"Age state",x+270,y+106,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(ageStateCombo_,(int)(x+360),(int)(y+98),(int)(left-385),160,TRUE);
+
+        Text(L"Location",x+22,y+150,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(personaLocationEdit_,(int)(x+135),(int)(y+142),(int)(left-160),32,TRUE);
+        Text(L"Interests",x+22,y+194,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(personaInterestsEdit_,(int)(x+135),(int)(y+186),(int)(left-160),32,TRUE);
+        Text(L"Writing style",x+22,y+238,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(personaStyleEdit_,(int)(x+135),(int)(y+230),(int)(left-160),32,TRUE);
+
+        Text(L"Scenario",x+22,y+290,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(scenarioNameEdit_,(int)(x+135),(int)(y+282),(int)(left-160),32,TRUE);
+        Text(L"Objective",x+22,y+334,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(scenarioObjectiveEdit_,(int)(x+135),(int)(y+326),(int)(left-160),32,TRUE);
+        Text(L"Seed",x+22,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(scenarioSeedEdit_,(int)(x+135),(int)(y+370),110,32,TRUE);
+
+        Text(L"Typing delay (ms)",x+270,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(minDelayEdit_,(int)(x+385),(int)(y+370),90,32,TRUE);
+        Text(L"to",x+482,y+378,24,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(maxDelayEdit_,(int)(x+507),(int)(y+370),90,32,TRUE);
+
+        AddButton(L"persona_save",L"Save Profile & Policy",x+22,y+438,210,42,true);
+        Text(L"Settings persist in the local Sentinel secure workspace.",x+250,y+449,left-280,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rx=x+left+14;
+        Rounded(rx,y,right,248,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Policy State",rx+18,y+15,right-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Age knowledge",rx+18,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+132,y+60,right-150,22,smallFmt_.Get(),brush_.cyan.Get());
+        Text(L"Current decision",rx+18,y+100,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(policyStatus_,rx+18,y+124,right-36,88,smallFmt_.Get(),brush_.text.Get());
+
+        Rounded(rx,y+264,right,256,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Persona Memory",rx+18,y+279,right-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Locked facts and learned-session memory are isolated from source evidence.",rx+18,y+320,right-36,44,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Configured identity",rx+18,y+382,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(Widen(simSettings_.persona.name),rx+146,y+380,right-164,22,smallFmt_.Get(),brush_.text.Get());
+        Text(L"Writing style",rx+18,y+416,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(Widen(simSettings_.persona.writingStyle),rx+146,y+414,right-164,40,smallFmt_.Get(),brush_.text.Get());
+    }
+
+    void DrawMessaging(float w,float h) {
+        PageTitle(L"Messaging",L"Provider-independent operator-approved messaging core");
+        float x=kSidebar+28,y=kHeader+110;
+        Rounded(x,y,w-x-28,170,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Messaging Adapter",x+18,y+16,260,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Provider",x+22,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(Widen(messagingAdapter_?messagingAdapter_->ProviderName():"Not configured"),x+140,y+60,380,22,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Connection",x+22,y+96,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        StatusDot(x+146,y+105,4,messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
+        Text(messagingAdapter_&&messagingAdapter_->Connected()?L"Local test adapter online":L"Offline",x+158,y+94,280,22,smallFmt_.Get(),brush_.green.Get());
+        Text(L"Operator control",x+540,y+62,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"Human approval required before queueing outbound messages",x+670,y+60,w-x-720,42,smallFmt_.Get(),brush_.cyan.Get());
+
+        auto msgs=messagingAdapter_?messagingAdapter_->Poll("local-sim"):std::vector<sentinel::operations::NormalizedMessage>{};
+        Rounded(x,y+188,w-x-28,330,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Conversation: local-sim",x+18,y+204,300,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Queued / approved messages",x+22,y+248,180,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(std::to_wstring(msgs.size()),x+210,y+244,80,26,bodyFmt_.Get(),brush_.cyan.Get());
+        float yy=y+286;
+        if(msgs.empty()) Text(L"No operator-approved messages queued yet.",x+22,yy,w-x-70,24,bodyFmt_.Get(),brush_.muted.Get());
+        for(size_t i=0;i<msgs.size() && i<5;i++) {
+            Rounded(x+22,yy,w-x-74,44,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Text(Widen(msgs[i].text),x+36,yy+11,w-x-110,22,smallFmt_.Get(),brush_.text.Get());
+            yy+=54;
+        }
+        AddButton(L"msg_queue",L"Request Approval for Latest Suggestion",x+22,y+468,300,38,true);
+        AddButton(L"sim_preserve",L"Preserve Simulation Transcript",x+338,y+468,250,38,false);
+        Text(L"No external provider is connected in this development build.",x+610,y+478,w-x-660,18,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void DrawSupervisor(float w,float h) {
+        PageTitle(L"Supervisor",L"Action-hash approvals and operator oversight");
+        float x=kSidebar+28,y=kHeader+110;
+        size_t pending=0; for(const auto& a:approvals_) if(a.status==sentinel::operations::ApprovalStatus::Pending) ++pending;
+        Rounded(x,y,w-x-28,112,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Pending approvals",x+20,y+18,220,22,bodyFmt_.Get(),brush_.muted.Get());
+        Text(std::to_wstring(pending),x+20,y+46,120,42,bigFmt_.Get(),pending?brush_.yellow.Get():brush_.green.Get());
+        AddButton(L"approval_request",L"Request Latest Suggestion",x+260,y+40,240,40,false);
+        AddButton(L"approval_approve",L"Approve First Pending",x+514,y+40,220,40,true);
+
+        Rounded(x,y+130,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Approval Ledger",x+18,y+146,260,28,h1Fmt_.Get(),brush_.text.Get());
+        float yy=y+190;
+        if(approvals_.empty()) Text(L"No approval requests yet.",x+22,yy,300,24,bodyFmt_.Get(),brush_.muted.Get());
+        for(size_t i=0;i<approvals_.size() && i<6;i++) {
+            const auto& a=approvals_[i];
+            Rounded(x+22,yy,w-x-74,48,brush_.sidebar.Get(),brush_.border.Get(),7);
+            std::wstring state=a.status==sentinel::operations::ApprovalStatus::Pending?L"PENDING":
+                a.status==sentinel::operations::ApprovalStatus::Approved?L"APPROVED":L"REJECTED";
+            Text(state,x+34,yy+8,90,18,tinyFmt_.Get(),a.status==sentinel::operations::ApprovalStatus::Pending?brush_.yellow.Get():brush_.green.Get());
+            Text(Widen(a.action).substr(0,100),x+132,yy+7,w-x-310,20,smallFmt_.Get(),brush_.text.Get());
+            Text(L"Hash "+Widen(a.actionHash),x+132,yy+27,w-x-310,16,tinyFmt_.Get(),brush_.muted.Get());
+            yy+=58;
+        }
+    }
+
+    void DrawAgency(float w,float h) {
+        PageTitle(L"Agency Server",L"Encrypted synchronization configuration and offline queue");
+        float x=kSidebar+28,y=kHeader+110;
+        Rounded(x,y,w-x-28,220,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Agency Connection",x+18,y+16,280,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Server endpoint",x+22,y+66,130,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(agencyEndpointEdit_,(int)(x+160),(int)(y+58),(int)(w-x-220),32,TRUE);
+        Text(L"Agency ID",x+22,y+110,130,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(agencyIdEdit_,(int)(x+160),(int)(y+102),300,32,TRUE);
+        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+160,y+154,150,38,true);
+        StatusDot(x+334,y+173,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
+        Text(agencyConfig_.enabled?L"Configuration enabled":L"Offline/local-only",x+346,y+162,220,22,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+
+        Rounded(x,y+238,w-x-28,280,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Encrypted Sync Queue",x+18,y+254,300,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Pending items",x+22,y+306,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(std::to_wstring(agencyQueue_.PendingCount()),x+150,y+300,90,32,bigFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"agency_enqueue",L"Queue Current Audit Snapshot",x+22,y+356,250,40,false);
+        Text(L"Server transport is intentionally not active until an agency endpoint/authentication contract is configured.",x+22,y+420,w-x-80,44,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Offline case and evidence access remains fully functional.",x+22,y+472,w-x-80,22,smallFmt_.Get(),brush_.green.Get());
+    }
+
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
@@ -1251,7 +1540,7 @@ private:
         Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
         Text(L"Sentinel 1.0.0 Development Release",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Offline-first. No agency server configured.",x+22,y+264,430,24,bodyFmt_.Get(),brush_.muted.Get());
+        Text(agencyConfig_.enabled?L"Offline-first. Agency sync configuration enabled.":L"Offline-first. No active agency transport.",x+22,y+264,520,24,bodyFmt_.Get(),brush_.muted.Get());
     }
 
     void ShowCaseEditors(bool show) {
