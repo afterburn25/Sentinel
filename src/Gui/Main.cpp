@@ -16,6 +16,7 @@
 #include <commdlg.h>
 #include <d2d1.h>
 #include <dwrite.h>
+#include <dwmapi.h>
 #include <shlobj.h>
 #include <wrl/client.h>
 
@@ -36,6 +37,7 @@ constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Settings };
+enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
 
@@ -133,6 +135,8 @@ public:
 
     HRESULT Init(HWND hwnd) {
         hwnd_=hwnd;
+        BOOL dark = TRUE;
+        DwmSetWindowAttribute(hwnd_, 20, &dark, sizeof(dark));
         D2D1CreateFactory(
             D2D1_FACTORY_TYPE_SINGLE_THREADED,
             __uuidof(ID2D1Factory),
@@ -290,11 +294,116 @@ private:
         buttons_.push_back({{x,y,x+w,y+h},id});
     }
 
+    void StatusDot(float x,float y,float r,ID2D1Brush* color) {
+        target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x,y),r,r),color);
+    }
+
+    void DrawShield(float x,float y,float s,ID2D1Brush* stroke,ID2D1Brush* fill=nullptr,bool check=false) {
+        ComPtr<ID2D1PathGeometry> geo;
+        factory_->CreatePathGeometry(&geo);
+        ComPtr<ID2D1GeometrySink> sink;
+        geo->Open(&sink);
+        sink->BeginFigure(D2D1::Point2F(x+s*0.50f,y),fill?D2D1_FIGURE_BEGIN_FILLED:D2D1_FIGURE_BEGIN_HOLLOW);
+        sink->AddLine(D2D1::Point2F(x+s*0.87f,y+s*0.14f));
+        sink->AddLine(D2D1::Point2F(x+s*0.81f,y+s*0.58f));
+        sink->AddBezier(D2D1::BezierSegment(
+            D2D1::Point2F(x+s*0.75f,y+s*0.75f),
+            D2D1::Point2F(x+s*0.61f,y+s*0.89f),
+            D2D1::Point2F(x+s*0.50f,y+s*0.96f)));
+        sink->AddBezier(D2D1::BezierSegment(
+            D2D1::Point2F(x+s*0.39f,y+s*0.89f),
+            D2D1::Point2F(x+s*0.25f,y+s*0.75f),
+            D2D1::Point2F(x+s*0.19f,y+s*0.58f)));
+        sink->AddLine(D2D1::Point2F(x+s*0.13f,y+s*0.14f));
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+        sink->Close();
+        if (fill) target_->FillGeometry(geo.Get(),fill);
+        target_->DrawGeometry(geo.Get(),stroke,std::max(2.0f,s*0.07f));
+        if (check) {
+            target_->DrawLine(D2D1::Point2F(x+s*0.30f,y+s*0.48f),D2D1::Point2F(x+s*0.44f,y+s*0.62f),stroke,std::max(2.0f,s*0.07f));
+            target_->DrawLine(D2D1::Point2F(x+s*0.44f,y+s*0.62f),D2D1::Point2F(x+s*0.70f,y+s*0.34f),stroke,std::max(2.0f,s*0.07f));
+        }
+    }
+
+    void DrawIcon(IconKind kind,float x,float y,float s,ID2D1Brush* color) {
+        const float t=std::max(1.6f,s*0.075f);
+        switch(kind) {
+            case IconKind::Shield:
+                DrawShield(x,y,s,color,nullptr,false);
+                break;
+            case IconKind::Home:
+                target_->DrawLine(D2D1::Point2F(x+s*0.10f,y+s*0.48f),D2D1::Point2F(x+s*0.50f,y+s*0.12f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.50f,y+s*0.12f),D2D1::Point2F(x+s*0.90f,y+s*0.48f),color,t);
+                target_->DrawRectangle(D2D1::RectF(x+s*0.22f,y+s*0.44f,x+s*0.78f,y+s*0.88f),color,t);
+                target_->DrawRectangle(D2D1::RectF(x+s*0.46f,y+s*0.62f,x+s*0.58f,y+s*0.88f),color,t);
+                break;
+            case IconKind::Folder: {
+                ComPtr<ID2D1PathGeometry> geo; factory_->CreatePathGeometry(&geo);
+                ComPtr<ID2D1GeometrySink> sink; geo->Open(&sink);
+                sink->BeginFigure(D2D1::Point2F(x+s*0.08f,y+s*0.30f),D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddLine(D2D1::Point2F(x+s*0.36f,y+s*0.30f));
+                sink->AddLine(D2D1::Point2F(x+s*0.45f,y+s*0.42f));
+                sink->AddLine(D2D1::Point2F(x+s*0.90f,y+s*0.42f));
+                sink->AddLine(D2D1::Point2F(x+s*0.84f,y+s*0.84f));
+                sink->AddLine(D2D1::Point2F(x+s*0.10f,y+s*0.84f));
+                sink->EndFigure(D2D1_FIGURE_END_CLOSED); sink->Close();
+                target_->DrawGeometry(geo.Get(),color,t);
+                break;
+            }
+            case IconKind::Database:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.26f),s*0.34f,s*0.14f),color,t);
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.52f),s*0.34f,s*0.14f),color,t);
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.76f),s*0.34f,s*0.14f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.16f,y+s*0.26f),D2D1::Point2F(x+s*0.16f,y+s*0.76f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.84f,y+s*0.26f),D2D1::Point2F(x+s*0.84f,y+s*0.76f),color,t);
+                break;
+            case IconKind::Document:
+                target_->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x+s*0.22f,y+s*0.10f,x+s*0.78f,y+s*0.90f),2,2),color,t);
+                for(int i=0;i<3;i++) target_->DrawLine(D2D1::Point2F(x+s*0.34f,y+s*(0.40f+i*0.14f)),D2D1::Point2F(x+s*0.68f,y+s*(0.40f+i*0.14f)),color,t*0.75f);
+                break;
+            case IconKind::Check:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.38f,s*0.38f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.30f,y+s*0.50f),D2D1::Point2F(x+s*0.44f,y+s*0.64f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.44f,y+s*0.64f),D2D1::Point2F(x+s*0.72f,y+s*0.34f),color,t);
+                break;
+            case IconKind::Gear:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.24f,s*0.24f),color,t);
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.08f,s*0.08f),color,t);
+                for(int i=0;i<8;i++){ float a=3.1415926f*2*i/8.0f; float dx=cosf(a),dy=sinf(a);
+                    target_->DrawLine(D2D1::Point2F(x+s*(0.50f+dx*0.29f),y+s*(0.50f+dy*0.29f)),D2D1::Point2F(x+s*(0.50f+dx*0.40f),y+s*(0.50f+dy*0.40f)),color,t);
+                }
+                break;
+            case IconKind::Search:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.42f,y+s*0.42f),s*0.26f,s*0.26f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.60f,y+s*0.60f),D2D1::Point2F(x+s*0.88f,y+s*0.88f),color,t);
+                break;
+            case IconKind::Plus:
+                target_->DrawLine(D2D1::Point2F(x+s*0.50f,y+s*0.18f),D2D1::Point2F(x+s*0.50f,y+s*0.82f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.18f,y+s*0.50f),D2D1::Point2F(x+s*0.82f,y+s*0.50f),color,t);
+                break;
+            case IconKind::Chain:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.30f,y+s*0.50f),s*0.16f,s*0.16f),color,t);
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.70f,y+s*0.50f),s*0.16f,s*0.16f),color,t);
+                target_->DrawLine(D2D1::Point2F(x+s*0.44f,y+s*0.50f),D2D1::Point2F(x+s*0.56f,y+s*0.50f),color,t);
+                break;
+            case IconKind::Lock:
+                target_->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x+s*0.22f,y+s*0.42f,x+s*0.78f,y+s*0.86f),4,4),color,t);
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.42f),s*0.20f,s*0.24f),color,t);
+                target_->FillRectangle(D2D1::RectF(x+s*0.26f,y+s*0.42f,x+s*0.74f,y+s*0.55f),brush_.panel.Get());
+                break;
+        }
+    }
+
+    IconKind NavIcon(int i) const {
+        static const IconKind icons[]={IconKind::Home,IconKind::Folder,IconKind::Database,IconKind::Document,IconKind::Shield,IconKind::Gear};
+        return icons[std::clamp(i,0,5)];
+    }
+
     void DrawBrand() {
-        Rounded(22,18,42,42,brush_.blue.Get(),brush_.cyan.Get(),10);
-        Text(L"S",35,24,22,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel",76,17,130,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"EVIDENCE  |  INTEGRITY",77,51,140,20,smallFmt_.Get(),brush_.muted.Get());
+        DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
+        DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
+        Text(L"Sentinel",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
+        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,50,132,20,smallFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -305,7 +414,7 @@ private:
                 target_->FillRectangle(D2D1::RectF(0,y-6,(float)kSidebar,y+44),brush_.panel2.Get());
                 target_->FillRectangle(D2D1::RectF(0,y-6,4,y+44),brush_.cyan.Get());
             }
-            Rounded(26,y+4,25,25,((int)page_==i)?brush_.blue.Get():brush_.panel2.Get(),nullptr,6);
+            DrawIcon(NavIcon(i),26,y+2,28,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],66,y+5,135,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
         Text(L"Sentinel v0.3.0 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
@@ -319,7 +428,8 @@ private:
         Rounded(w-126,19,35,35,brush_.panel2.Get(),nullptr,18);
         Text(L"JD",w-116,26,24,22,smallFmt_.Get(),brush_.text.Get());
         Text(L"Local Investigator",w-82,23,76,22,smallFmt_.Get(),brush_.text.Get());
-        Text(L"● "+statusText_,w-180,56,170,18,smallFmt_.Get(),brush_.green.Get());
+        StatusDot(w-173,65,4,brush_.green.Get());
+        Text(statusText_,w-162,56,152,18,smallFmt_.Get(),brush_.green.Get());
     }
 
     void PageTitle(const std::wstring& title,const std::wstring& sub) {
@@ -327,22 +437,26 @@ private:
         Text(sub,kSidebar+30,kHeader+57,650,22,bodyFmt_.Get(),brush_.muted.Get());
     }
 
-    void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,ID2D1Brush* accent) {
-        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),8);
-        Rounded(x+16,y+18,42,42,brush_.panel2.Get(),nullptr,10);
-        Text(L"●",x+29,y+25,22,24,h1Fmt_.Get(),accent);
-        Text(label,x+72,y+18,w-88,22,bodyFmt_.Get(),brush_.muted.Get());
-        Text(value,x+72,y+43,w-88,44,bigFmt_.Get(),brush_.text.Get());
+    void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,ID2D1Brush* accent,IconKind icon) {
+        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),9);
+        Rounded(x+16,y+18,44,44,brush_.panel2.Get(),nullptr,12);
+        DrawIcon(icon,x+25,y+27,26,accent);
+        Text(label,x+74,y+16,w-92,22,bodyFmt_.Get(),brush_.muted.Get());
+        Text(value,x+74,y+41,w-92,44,bigFmt_.Get(),brush_.text.Get());
+        for(int i=0;i<5;i++) {
+            float bh=8.0f+i*4.0f;
+            target_->FillRectangle(D2D1::RectF(x+w-54+i*8,y+82-bh,x+w-49+i*8,y+82),accent);
+        }
     }
 
     void DrawDashboard(float w,float h) {
         PageTitle(L"Dashboard",L"Overview of cases, evidence, and system integrity");
         float x=kSidebar+28,y=kHeader+96,g=14;
         float card=(w-x-28-g*3)/4;
-        Metric(x,y,card,L"Open Cases",std::to_wstring(cases_.size()),brush_.cyan.Get());
-        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(evidence_.size()),brush_.blue.Get());
-        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get());
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get());
+        Metric(x,y,card,L"Open Cases",std::to_wstring(cases_.size()),brush_.cyan.Get(),IconKind::Folder);
+        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(evidence_.size()),brush_.blue.Get(),IconKind::Database);
+        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get(),IconKind::Chain);
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get(),IconKind::Lock);
 
         float panelY=y+126;
         float left=(w-x-42)*0.58f;
@@ -365,7 +479,7 @@ private:
         rows.push_back(L"Secure local store initialized");
         for (size_t i=0;i<rows.size();++i) {
             float yy=panelY+58+(float)i*52;
-            Text(L"●",rx+18,yy,20,20,bodyFmt_.Get(),i<2?brush_.cyan.Get():brush_.green.Get());
+            Text(L"*",rx+18,yy,20,20,bodyFmt_.Get(),i<2?brush_.cyan.Get():brush_.green.Get());
             Text(rows[i],rx+44,yy,rw-60,22,bodyFmt_.Get(),brush_.text.Get());
             target_->DrawLine(D2D1::Point2F(rx+18,yy+34),D2D1::Point2F(rx+rw-18,yy+34),brush_.border.Get(),1);
         }
@@ -482,10 +596,10 @@ private:
         PageTitle(L"Audit Log",L"Immutable activity records for system and evidence operations");
         float x=kSidebar+28,y=kHeader+100,g=14;
         float card=(w-x-28-g*3)/4;
-        Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
-        Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get());
-        Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",brush_.green.Get());
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get());
+        Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get(),IconKind::Chain);
+        Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get(),IconKind::Document);
+        Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",brush_.green.Get(),IconKind::Shield);
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get(),IconKind::Lock);
 
         float ty=y+126;
         Rounded(x,ty,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
@@ -515,7 +629,7 @@ private:
         float by=ty+408;
         Rounded(x,by,w-x-28,120,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Audit Chain Integrity",x+18,by+14,260,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(runtime_->audit.VerifyChain()?L"✓ Chain verified — no tampering detected":L"⚠ Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        Text(runtime_->audit.VerifyChain()?L"✓ Chain verified — no tampering detected":L"WARNING  Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
         AddButton(L"integrity",L"Verify Audit Chain",w-220,by+38,165,42,true);
     }
 
@@ -525,7 +639,7 @@ private:
         Rounded(x,y,w-x-390,230,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Verification Result",x+18,y+14,260,28,h1Fmt_.Get(),brush_.text.Get());
         Rounded(x+24,y+62,120,120,brush_.sidebar.Get(),brush_.green.Get(),22);
-        Text(L"✓",x+54,y+82,70,70,bigFmt_.Get(),brush_.green.Get());
+        Text(L"VALID",x+54,y+82,70,70,bigFmt_.Get(),brush_.green.Get());
         Text(lastVerify_.find(L"VALID")!=std::wstring::npos?L"VALID":L"READY",x+170,y+70,220,46,bigFmt_.Get(),lastVerify_.find(L"VALID")!=std::wstring::npos?brush_.green.Get():brush_.cyan.Get());
         Text(lastVerify_,x+170,y+124,w-x-590,64,bodyFmt_.Get(),brush_.muted.Get());
 
@@ -541,7 +655,7 @@ private:
         const wchar_t* steps[]={L"1  Container structure analysis",L"2  AES-GCM authentication",L"3  SHA-256 calculation",L"4  Audit confirmation"};
         for(int i=0;i<4;i++) {
             float yy=sy+60+i*48;
-            Text(L"●",x+24,yy,20,20,bodyFmt_.Get(),brush_.green.Get());
+            Text(L"*",x+24,yy,20,20,bodyFmt_.Get(),brush_.green.Get());
             Text(steps[i],x+50,yy,w-x-250,24,bodyFmt_.Get(),brush_.text.Get());
             Text(lastVerify_.find(L"VALID")!=std::wstring::npos?L"Completed":L"Ready",w-180,yy,110,24,smallFmt_.Get(),lastVerify_.find(L"VALID")!=std::wstring::npos?brush_.green.Get():brush_.muted.Get());
         }
@@ -696,7 +810,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
-        0,kClassName,L"Sentinel — Secure Evidence & Integrity",
+        0,kClassName,L"Sentinel - Secure Evidence & Integrity",
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
