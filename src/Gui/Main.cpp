@@ -10,6 +10,9 @@
 #include "Sentinel/Simulation/IModelAdapter.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
+#include "Sentinel/Simulation/ResponseEvaluator.hpp"
+#include "Sentinel/Simulation/SessionStore.hpp"
+#include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -48,7 +51,7 @@ constexpr int kHeader = 78;
 constexpr UINT_PTR kSimReplyTimer = 4101;
 constexpr int kSimVisibleRows = 6;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, Messaging, Supervisor, Agency, Settings };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
@@ -274,6 +277,8 @@ public:
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
+        modelRegistry_.Load(runtime_->root/"model-registry.tsv");
+        sentinel::simulation::LoadSession(runtime_->root/"simulation-session.tsv",simContext_);
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
@@ -315,6 +320,7 @@ public:
             case Page::Verification: DrawVerification(w,h); break;
             case Page::Simulation: DrawSimulation(w,h); break;
             case Page::Persona: DrawPersona(w,h); break;
+            case Page::ModelLab: DrawModelLab(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -327,8 +333,8 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            int idx=(int)((y-kHeader-18)/52);
-            if (idx>=0&&idx<11) {
+            int idx=(int)((y-kHeader-18)/48);
+            if (idx>=0&&idx<12) {
                 page_=(Page)idx;
                 ApplyPageControls();
                 InvalidateRect(hwnd_,nullptr,FALSE);
@@ -349,6 +355,12 @@ public:
             else if (b.id==L"sim_browse_models") BrowseModels();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"persona_save") SaveProfileEditors();
+            else if (b.id==L"model_register") RegisterCurrentModel();
+            else if (b.id==L"model_eval") EvaluateSelectedRegistryModel();
+            else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
+            else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
+            else if (b.id==L"model_rollback") RollbackRegistryModel();
+            else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
             else if (b.id==L"approval_approve") ApproveFirstPending();
@@ -424,6 +436,7 @@ public:
         }
         simBotTyping_=false;
         simPendingMessage_.clear();
+        sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         ScrollSimulationToBottom();
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
@@ -453,6 +466,9 @@ private:
     sentinel::simulation::SimulationSettings simSettings_;
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
+    sentinel::simulation::ModelRegistry modelRegistry_;
+    int selectedRegistryModel_{-1};
+    sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
@@ -630,9 +646,9 @@ private:
     IconKind NavIcon(int i) const {
         static const IconKind icons[]={
             IconKind::Home,IconKind::Folder,IconKind::Database,IconKind::Document,IconKind::Shield,
-            IconKind::Chat,IconKind::Document,IconKind::Chat,IconKind::Shield,IconKind::Database,IconKind::Gear
+            IconKind::Chat,IconKind::Document,IconKind::Database,IconKind::Chat,IconKind::Shield,IconKind::Database,IconKind::Gear
         };
-        return icons[std::clamp(i,0,10)];
+        return icons[std::clamp(i,0,11)];
     }
 
     void DrawBrand() {
@@ -645,10 +661,10 @@ private:
     void DrawSidebar() {
         static const wchar_t* names[]={
             L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Simulation Lab",
-            L"Persona & Policy",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
+            L"Persona & Policy",L"Model Lab",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
         };
-        for (int i=0;i<11;i++) {
-            float y=(float)kHeader+18+i*52;
+        for (int i=0;i<12;i++) {
+            float y=(float)kHeader+18+i*48;
             if ((int)page_==i) {
                 target_->FillRectangle(D2D1::RectF(0,y-5,(float)kSidebar,y+39),brush_.panel2.Get());
                 target_->FillRectangle(D2D1::RectF(0,y-5,4,y+39),brush_.cyan.Get());
@@ -657,8 +673,8 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],66,y+6,145,24,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v1.0.0",24,720,170,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"Secure Local Mode",24,742,170,20,smallFmt_.Get(),brush_.green.Get());
+        Text(L"Sentinel v1.0.0",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
     void DrawHeader(float w) {
@@ -1172,6 +1188,7 @@ private:
         if(message.empty()) return;
         auto utf8=Narrow(message);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
+        sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         SetWindowTextW(chatEdit_,L"");
         simSuggestion_=L"No suggestion generated yet";
         simPendingMessage_=utf8;
@@ -1290,6 +1307,7 @@ private:
             auto decision=sentinel::simulation::EvaluateSimulationPolicy(simSettings_.ageState,suggestion);
             simSuggestion_=Widen(suggestion);
             policyStatus_=Widen(decision.reason);
+            lastEvaluation_=sentinel::simulation::EvaluateResponse(simSettings_.persona,simSettings_.ageState,suggestion);
             if(!decision.allowed) simSuggestion_=L"[BLOCKED BY POLICY] "+simSuggestion_;
             statusText_=decision.allowed?L"Test suggestion generated":L"Suggestion blocked by policy";
         } catch(const std::exception& e) {
@@ -1438,6 +1456,126 @@ private:
         Text(Widen(simSettings_.persona.name),rx+146,y+380,right-164,22,smallFmt_.Get(),brush_.text.Get());
         Text(L"Writing style",rx+18,y+416,120,18,tinyFmt_.Get(),brush_.muted.Get());
         Text(Widen(simSettings_.persona.writingStyle),rx+146,y+414,right-164,40,smallFmt_.Get(),brush_.text.Get());
+    }
+
+    void RegisterCurrentModel() {
+        auto endpoint=Narrow(EditText(modelEndpointEdit_));
+        auto name=Narrow(EditText(modelNameEdit_));
+        if(endpoint.empty() || name.empty()) {
+            statusText_=L"Configure a model endpoint and name first";
+            return;
+        }
+        auto& item=modelRegistry_.Register(endpoint,name);
+        selectedRegistryModel_=(int)(&item-modelRegistry_.Models().data());
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        statusText_=L"Model registered as candidate";
+    }
+
+    void EvaluateSelectedRegistryModel() {
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) {
+            statusText_=L"Select a registered model first";
+            return;
+        }
+        auto& item=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
+        auto started=std::chrono::steady_clock::now();
+        try {
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
+            sentinel::simulation::ModelContext ctx;
+            ctx.scenario="Sentinel Model Lab candidate evaluation";
+            ctx.personaSummary=simContext_.personaSummary;
+            ctx.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,"Hello, introduce yourself briefly."});
+            auto reply=candidate->GenerateSyntheticReply("Hello, introduce yourself briefly.",ctx);
+            auto eval=sentinel::simulation::EvaluateResponse(simSettings_.persona,simSettings_.ageState,reply);
+            item.evaluationScore=eval.score;
+            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
+            lastEvaluation_=eval;
+            modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+            statusText_=L"Candidate model evaluation complete";
+        } catch(const std::exception& e) {
+            item.evaluationScore=0;
+            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
+            statusText_=L"Model evaluation failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Model Evaluation Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ApproveSelectedRegistryModel() {
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) return;
+        modelRegistry_.Approve((size_t)selectedRegistryModel_);
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        statusText_=L"Candidate model approved";
+    }
+
+    void ActivateSelectedRegistryModel() {
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) return;
+        auto& item=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
+        modelRegistry_.Activate((size_t)selectedRegistryModel_);
+        if(modelRegistry_.ActiveIndex()==selectedRegistryModel_) {
+            model_=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
+            SetWindowTextW(modelEndpointEdit_,Widen(item.endpoint).c_str());
+            SetWindowTextW(modelNameEdit_,Widen(item.modelName).c_str());
+            simSettings_.endpoint=item.endpoint;
+            simSettings_.model=item.modelName;
+            sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+            modelStatus_=L"Active registry model: "+Widen(item.modelName);
+            modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+            statusText_=L"Approved model activated";
+        } else statusText_=L"Model must be approved before activation";
+    }
+
+    void RollbackRegistryModel() {
+        if(!modelRegistry_.Rollback()) {
+            statusText_=L"No prior active model is available for rollback";
+            return;
+        }
+        int idx=modelRegistry_.ActiveIndex();
+        if(idx>=0) {
+            auto& item=modelRegistry_.Models()[(size_t)idx];
+            model_=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
+            modelStatus_=L"Rolled back to: "+Widen(item.modelName);
+        }
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        statusText_=L"Model rollback completed";
+    }
+
+    void DrawModelLab(float w,float h) {
+        PageTitle(L"Model Lab",L"Candidate evaluation, approval, activation, and rollback");
+        float x=kSidebar+28,y=kHeader+104;
+        Rounded(x,y,w-x-28,116,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Model Registry",x+18,y+16,260,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"model_register",L"Register Current Model",x+22,y+58,190,38,true);
+        AddButton(L"model_eval",L"Evaluate",x+226,y+58,110,38,false);
+        AddButton(L"model_approve",L"Approve",x+350,y+58,110,38,false);
+        AddButton(L"model_activate",L"Activate",x+474,y+58,110,38,false);
+        AddButton(L"model_rollback",L"Rollback",x+598,y+58,110,38,false);
+
+        Rounded(x,y+132,w-x-28,322,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Registered Models",x+18,y+148,300,28,h1Fmt_.Get(),brush_.text.Get());
+        float yy=y+190;
+        if(modelRegistry_.Models().empty())
+            Text(L"No models registered. Configure one in Simulation Lab, then register it here.",x+22,yy,w-x-74,24,bodyFmt_.Get(),brush_.muted.Get());
+        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
+            const auto& m=modelRegistry_.Models()[i];
+            bool selected=(int)i==selectedRegistryModel_;
+            Rounded(x+22,yy,w-x-74,48,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),7);
+            Text(Widen(m.modelName),x+36,yy+6,300,20,smallFmt_.Get(),brush_.text.Get());
+            Text(Widen(sentinel::simulation::ToString(m.stage)),x+350,yy+6,120,18,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+            Text(L"Score "+std::to_wstring(m.evaluationScore)+L"   "+std::to_wstring(m.latencyMs)+L" ms",x+490,yy+6,220,18,tinyFmt_.Get(),brush_.muted.Get());
+            Text(Widen(m.endpoint),x+36,yy+27,w-x-130,16,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+22,yy,x+w-x-74,yy+48},L"regmodel:"+std::to_wstring(i)});
+            yy+=58;
+        }
+
+        Rounded(x,y+470,w-x-28,118,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Last Response Evaluation",x+18,y+486,300,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Score",x+22,y+530,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(std::to_wstring(lastEvaluation_.score),x+96,y+526,60,26,bodyFmt_.Get(),
+            lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
+        Text(lastEvaluation_.policyAllowed?L"Policy allowed":L"Policy blocked",x+180,y+530,140,18,tinyFmt_.Get(),
+            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
+        Text(lastEvaluation_.personaConsistent?L"Persona consistent":L"Persona contradiction",x+340,y+530,180,18,tinyFmt_.Get(),
+            lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
     }
 
     void DrawMessaging(float w,float h) {
