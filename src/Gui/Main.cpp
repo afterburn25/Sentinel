@@ -202,7 +202,7 @@ public:
             0,0,0,0,hwnd_,(HMENU)1001,GetModuleHandleW(nullptr),nullptr);
         caseTitleEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
             0,0,0,0,hwnd_,(HMENU)1002,GetModuleHandleW(nullptr),nullptr);
-        chatEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
+        chatEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|ES_AUTOHSCROLL,
             0,0,0,0,hwnd_,(HMENU)1003,GetModuleHandleW(nullptr),nullptr);
         modelEndpointEdit_ = CreateWindowExW(0,L"EDIT",L"http://127.0.0.1:1234/v1/chat/completions",
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1004,GetModuleHandleW(nullptr),nullptr);
@@ -299,6 +299,7 @@ public:
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset") ResetSimulation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
+            else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
             InvalidateRect(hwnd_,nullptr,FALSE);
@@ -327,6 +328,18 @@ public:
         simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
         UpdateSimulationScrollbar();
         InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void RightClick(float x,float y) {
+        if(page_!=Page::Simulation) return;
+        for(const auto& item:simMessageRects_) {
+            if(item.first.Contains(x,y)) {
+                CopySimulationMessage(item.second);
+                statusText_=L"Message copied to clipboard";
+                InvalidateRect(hwnd_,nullptr,FALSE);
+                return;
+            }
+        }
     }
 
     void HandleSimWheel(short delta) {
@@ -377,6 +390,7 @@ private:
     int simFirstVisible_{0};
     bool simBotTyping_{false};
     std::string simPendingMessage_;
+    std::vector<std::pair<RectF,size_t>> simMessageRects_;
 
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
@@ -572,7 +586,7 @@ private:
             DrawIcon(NavIcon(i),27,y+3,26,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],70,y+5,130,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.4.1 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.4.2 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -899,6 +913,7 @@ private:
         simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
         const int end=std::min(total,simFirstVisible_+kSimVisibleRows);
         const int visible=std::max(0,end-simFirstVisible_);
+        simMessageRects_.clear();
         float yy=transcriptBottom-visible*58.0f;
         for(int i=simFirstVisible_;i<end;++i) {
             const auto& turn=simContext_.history[(size_t)i];
@@ -909,9 +924,12 @@ private:
             ID2D1Brush* fill=investigator?brush_.panel2.Get():brush_.sidebar.Get();
             ID2D1Brush* border=suggestion?brush_.yellow.Get():(investigator?brush_.blue.Get():brush_.border.Get());
             Rounded(bx,yy,bubbleW,48,fill,border,9);
-            Text(investigator?L"Investigator":suggestion?L"Model / System":L"Synthetic Subject",bx+12,yy+5,bubbleW-24,15,tinyFmt_.Get(),
+            Text(investigator?L"Investigator":suggestion?L"Model / System":L"Synthetic Subject",bx+12,yy+5,bubbleW-72,15,tinyFmt_.Get(),
                 suggestion?brush_.yellow.Get():(investigator?brush_.cyan.Get():brush_.green.Get()));
+            Text(L"Copy",bx+bubbleW-46,yy+5,34,15,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{bx+bubbleW-52,yy+2,bx+bubbleW-8,yy+18},L"copy:"+std::to_wstring(i)});
             Text(Widen(turn.text),bx+12,yy+20,bubbleW-24,24,smallFmt_.Get(),brush_.text.Get());
+            simMessageRects_.push_back({{bx,yy,bx+bubbleW,yy+48},(size_t)i});
             yy+=58;
         }
         if(simBotTyping_) {
@@ -923,8 +941,9 @@ private:
         MoveWindow(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
-        MoveWindow(chatEdit_,(int)(x+18),(int)(y+454),(int)(chatW-240),40,TRUE);
-        AddButton(L"sim_send",L"Send",x+chatW-210,y+454,190,40,true);
+        Rounded(x+18,y+448,chatW-240,48,brush_.sidebar.Get(),brush_.border.Get(),10);
+        MoveWindow(chatEdit_,(int)(x+30),(int)(y+465),(int)(chatW-264),22,TRUE);
+        AddButton(L"sim_send",L"Send",x+chatW-210,y+452,190,40,true);
 
         float rx=x+chatW+14;
         Rounded(rx,y,right,318,brush_.panel.Get(),brush_.border.Get(),8);
@@ -1008,11 +1027,31 @@ private:
         simPendingMessage_=utf8;
         simBotTyping_=true;
         ScrollSimulationToBottom();
-        int delay=std::clamp(900+(int)utf8.size()*32,1200,3600);
+        int delay=std::clamp(2200+(int)utf8.size()*58,3000,8500);
         SetTimer(hwnd_,kSimReplyTimer,(UINT)delay,nullptr);
         statusText_=L"Synthetic subject typing";
         SetFocus(chatEdit_);
         InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void CopySimulationMessage(size_t index) {
+        if(index>=simContext_.history.size()) return;
+        std::wstring text=Widen(simContext_.history[index].text);
+        if(!OpenClipboard(hwnd_)) return;
+        EmptyClipboard();
+        SIZE_T bytes=(text.size()+1)*sizeof(wchar_t);
+        HGLOBAL mem=GlobalAlloc(GMEM_MOVEABLE,bytes);
+        if(mem) {
+            void* ptr=GlobalLock(mem);
+            if(ptr) {
+                memcpy(ptr,text.c_str(),bytes);
+                GlobalUnlock(mem);
+                SetClipboardData(CF_UNICODETEXT,mem);
+                mem=nullptr;
+            }
+            if(mem) GlobalFree(mem);
+        }
+        CloseClipboard();
     }
 
     void ConfigureLocalModel() {
@@ -1076,7 +1115,7 @@ private:
 
         Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel 0.4.1 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel 0.4.2 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
         Text(L"Offline-first. No agency server configured.",x+22,y+264,430,24,bodyFmt_.Get(),brush_.muted.Get());
     }
 
@@ -1201,6 +1240,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
+        case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
