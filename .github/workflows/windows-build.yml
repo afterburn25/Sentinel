@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: sentinel-${{ github.workflow }}-${{ github.ref }}
@@ -80,12 +81,67 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/Sentinel-0.2.0-windows-x64
+          --prefix package/Sentinel-0.4.1-windows-x64
+
+      - name: Azure login for Artifact Signing
+        if: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.ARTIFACT_SIGNING_ENDPOINT != '' && secrets.ARTIFACT_SIGNING_ACCOUNT != '' && secrets.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Sentinel executables with Microsoft Artifact Signing
+        if: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.ARTIFACT_SIGNING_ENDPOINT != '' && secrets.ARTIFACT_SIGNING_ACCOUNT != '' && secrets.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\package\Sentinel-0.4.1-windows-x64
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: Sentinel Secure Evidence & Integrity
+          description-url: https://github.com/afterburn25/Sentinel
+
+      - name: Verify Authenticode signatures
+        if: ${{ secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.ARTIFACT_SIGNING_ENDPOINT != '' && secrets.ARTIFACT_SIGNING_ACCOUNT != '' && secrets.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/Sentinel-0.4.1-windows-x64
+          $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
+          if (-not $executables) { throw "No executables found for signature verification" }
+
+          foreach ($exe in $executables) {
+            $signature = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($signature.Status) - $($signature.SignerCertificate.Subject)"
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid or missing Authenticode signature: $($exe.FullName)"
+            }
+          }
+
+      - name: Record unsigned development-build status
+        if: ${{ !(secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' && secrets.ARTIFACT_SIGNING_ENDPOINT != '' && secrets.ARTIFACT_SIGNING_ACCOUNT != '' && secrets.ARTIFACT_SIGNING_PROFILE != '') }}
+        shell: pwsh
+        run: |
+          @"
+          SENTINEL DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
+
+          This build was produced without a configured trusted code-signing identity.
+          Windows SmartScreen may show "Windows protected your PC" for unsigned or low-reputation builds.
+
+          Production releases should be signed using Microsoft Artifact Signing.
+          Repository: https://github.com/afterburn25/Sentinel
+          Commit: ${{ github.sha }}
+          "@ | Set-Content -Encoding utf8 package/Sentinel-0.4.1-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/Sentinel-0.2.0-windows-x64
+          $root = Resolve-Path package/Sentinel-0.4.1-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -97,7 +153,7 @@ jobs:
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/Sentinel-0.2.0-windows-x64"
+          $root = "package/Sentinel-0.4.1-windows-x64"
           if (-not (Test-Path "$root/Sentinel.exe")) { throw "Sentinel.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
@@ -105,7 +161,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: Sentinel-0.2.0-windows-x64
-          path: package/Sentinel-0.2.0-windows-x64/
+          name: Sentinel-0.4.1-windows-x64
+          path: package/Sentinel-0.4.1-windows-x64/
           if-no-files-found: error
           retention-days: 30
