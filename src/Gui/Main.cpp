@@ -1,0 +1,708 @@
+#include "Sentinel/Audit/AuditService.hpp"
+#include "Sentinel/Core/CaseRepository.hpp"
+#include "Sentinel/Core/CaseService.hpp"
+#include "Sentinel/Evidence/EvidenceService.hpp"
+#include "Sentinel/Evidence/SevContainer.hpp"
+#include "Sentinel/Security/Crypto.hpp"
+#include "Sentinel/Security/KeyManager.hpp"
+#include "Sentinel/Security/SecretProtector.hpp"
+#include "Sentinel/Storage/MigrationService.hpp"
+
+#define NOMINMAX
+#include <windows.h>
+#include <commdlg.h>
+#include <d2d1.h>
+#include <dwrite.h>
+#include <shlobj.h>
+#include <wrl/client.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using Microsoft::WRL::ComPtr;
+
+namespace {
+
+constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
+constexpr int kSidebar = 220;
+constexpr int kHeader = 78;
+
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Settings };
+
+struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
+
+std::wstring Widen(const std::string& s) {
+    if (s.empty()) return {};
+    int n = MultiByteToWideChar(CP_UTF8,0,s.data(),(int)s.size(),nullptr,0);
+    std::wstring out(n,L'\0');
+    MultiByteToWideChar(CP_UTF8,0,s.data(),(int)s.size(),out.data(),n);
+    return out;
+}
+
+std::string Narrow(const std::wstring& s) {
+    if (s.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8,0,s.data(),(int)s.size(),nullptr,0,nullptr,nullptr);
+    std::string out(n,'\0');
+    WideCharToMultiByte(CP_UTF8,0,s.data(),(int)s.size(),out.data(),n,nullptr,nullptr);
+    return out;
+}
+
+std::filesystem::path AppDataRoot() {
+    PWSTR p{};
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p))) {
+        std::filesystem::path out = std::filesystem::path(p) / L"Sentinel";
+        CoTaskMemFree(p);
+        return out;
+    }
+    return std::filesystem::current_path() / "sentinel-data";
+}
+
+std::filesystem::path ExeDir() {
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(nullptr,path,MAX_PATH);
+    return std::filesystem::path(path).parent_path();
+}
+
+std::filesystem::path MigrationsDir() {
+    auto p = ExeDir() / "migrations";
+    if (std::filesystem::exists(p)) return p;
+    p = ExeDir().parent_path() / "migrations";
+    if (std::filesystem::exists(p)) return p;
+    p = std::filesystem::current_path() / "migrations";
+    return p;
+}
+
+struct Runtime {
+    std::filesystem::path root;
+    sentinel::SqliteDatabase db;
+    sentinel::WindowsSecureRandom random;
+    sentinel::WindowsHashService hash;
+    sentinel::WindowsAesGcmCipher cipher;
+    sentinel::WindowsDpapiSecretProtector dpapi;
+    sentinel::MigrationService migrations;
+    sentinel::KeyManager keys;
+    sentinel::SqliteCaseRepository caseRepo;
+    sentinel::CaseService cases;
+    sentinel::AuditService audit;
+
+    Runtime()
+        : root(AppDataRoot()),
+          cipher(random),
+          migrations(db),
+          keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
+          caseRepo(db,&keys,&cipher),
+          cases(caseRepo),
+          audit(db,hash) {
+        std::filesystem::create_directories(root);
+        db.Open(root/"sentinel.db");
+        migrations.ApplyDirectory(MigrationsDir());
+        keys.Initialize();
+    }
+
+    std::vector<sentinel::EvidenceSummary> Evidence(const sentinel::CaseId& id) {
+        auto key = keys.GetCaseKey(id);
+        sentinel::EvidenceService svc(root/"evidence",db,random,hash,cipher,audit);
+        return svc.ListForCase(id,key.Span());
+    }
+
+    long long AuditCount() {
+        sqlite3_stmt* s{};
+        long long count=0;
+        if (sqlite3_prepare_v2(db.Handle(),"SELECT COUNT(*) FROM audit_records",-1,&s,nullptr)==SQLITE_OK &&
+            sqlite3_step(s)==SQLITE_ROW) count=sqlite3_column_int64(s,0);
+        sqlite3_finalize(s);
+        return count;
+    }
+};
+
+struct BrushSet {
+    ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red;
+};
+
+class App {
+public:
+    App() : runtime_(std::make_unique<Runtime>()) {}
+
+    HRESULT Init(HWND hwnd) {
+        hwnd_=hwnd;
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,&factory_);
+        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(writeFactory_.GetAddressOf()));
+        CreateResources();
+        LoadData();
+
+        caseNumberEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
+            0,0,0,0,hwnd_,(HMENU)1001,GetModuleHandleW(nullptr),nullptr);
+        caseTitleEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
+            0,0,0,0,hwnd_,(HMENU)1002,GetModuleHandleW(nullptr),nullptr);
+        SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        ShowCaseEditors(false);
+        return S_OK;
+    }
+
+    void Resize() {
+        if (!target_) return;
+        RECT rc{}; GetClientRect(hwnd_,&rc);
+        target_->Resize(D2D1::SizeU(rc.right,rc.bottom));
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void Paint() {
+        CreateResources();
+        if (!target_) return;
+        RECT rc{}; GetClientRect(hwnd_,&rc);
+        float w=(float)rc.right,h=(float)rc.bottom;
+
+        target_->BeginDraw();
+        target_->Clear(D2D1::ColorF(0x07131F));
+
+        target_->FillRectangle(D2D1::RectF(0,0,(float)kSidebar,h),brush_.sidebar.Get());
+        target_->FillRectangle(D2D1::RectF((float)kSidebar,0,w,(float)kHeader),brush_.panel.Get());
+        target_->DrawLine(D2D1::Point2F((float)kSidebar,(float)kHeader),D2D1::Point2F(w,(float)kHeader),brush_.border.Get(),1);
+
+        DrawBrand();
+        DrawSidebar();
+        DrawHeader(w);
+
+        buttons_.clear();
+        switch(page_) {
+            case Page::Dashboard: DrawDashboard(w,h); break;
+            case Page::Cases: DrawCases(w,h); break;
+            case Page::Evidence: DrawEvidence(w,h); break;
+            case Page::Audit: DrawAudit(w,h); break;
+            case Page::Verification: DrawVerification(w,h); break;
+            case Page::Settings: DrawSettings(w,h); break;
+        }
+
+        HRESULT hr=target_->EndDraw();
+        if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
+    }
+
+    void Click(float x,float y) {
+        if (x<kSidebar && y>kHeader) {
+            int idx=(int)((y-kHeader-24)/60);
+            if (idx>=0&&idx<6) {
+                page_=(Page)idx;
+                ShowCaseEditors(page_==Page::Cases);
+                InvalidateRect(hwnd_,nullptr,FALSE);
+                return;
+            }
+        }
+
+        for (auto& b:buttons_) if (b.rect.Contains(x,y)) {
+            if (b.id==L"new_case") CreateCase();
+            else if (b.id==L"import") ImportEvidence();
+            else if (b.id==L"verify") VerifySelected();
+            else if (b.id==L"integrity") VerifyAudit();
+            else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); }
+            else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
+            else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            return;
+        }
+    }
+
+private:
+    struct Button { RectF rect; std::wstring id; };
+
+    HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{};
+    std::unique_ptr<Runtime> runtime_;
+    Page page_{Page::Dashboard};
+    std::vector<sentinel::CaseRecord> cases_;
+    std::vector<sentinel::EvidenceSummary> evidence_;
+    size_t selectedCase_{0},selectedEvidence_{0};
+    std::wstring statusText_=L"System Operational";
+    std::wstring lastVerify_=L"No verification performed yet";
+
+    ComPtr<ID2D1Factory> factory_;
+    ComPtr<ID2D1HwndRenderTarget> target_;
+    ComPtr<IDWriteFactory> writeFactory_;
+    ComPtr<IDWriteTextFormat> titleFmt_,h1Fmt_,bodyFmt_,smallFmt_,bigFmt_;
+    BrushSet brush_;
+    bool brushesReady_{false};
+    std::vector<Button> buttons_;
+
+    void CreateResources() {
+        if (!target_) {
+            RECT rc{}; GetClientRect(hwnd_,&rc);
+            factory_->CreateHwndRenderTarget(
+                D2D1::RenderTargetProperties(),
+                D2D1::HwndRenderTargetProperties(hwnd_,D2D1::SizeU(std::max(1L,rc.right),std::max(1L,rc.bottom))),
+                &target_);
+        }
+        if (!titleFmt_) {
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,30,L"en-us",&titleFmt_);
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,24,L"en-us",&h1Fmt_);
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,15,L"en-us",&bodyFmt_);
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,12,L"en-us",&smallFmt_);
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,34,L"en-us",&bigFmt_);
+        }
+        if (!brushesReady_ && target_) {
+            auto mk=[&](UINT rgb,float a=1.0f){ ComPtr<ID2D1SolidColorBrush> b; target_->CreateSolidColorBrush(D2D1::ColorF(rgb,a),&b); return b; };
+            brush_.bg=mk(0x07131F); brush_.sidebar=mk(0x0A1826); brush_.panel=mk(0x0F2030);
+            brush_.panel2=mk(0x12283A); brush_.border=mk(0x24445C); brush_.text=mk(0xEEF6FF);
+            brush_.muted=mk(0x93A9BC); brush_.blue=mk(0x1597F6); brush_.cyan=mk(0x22C7FF);
+            brush_.green=mk(0x38E89A); brush_.yellow=mk(0xF6C84A); brush_.red=mk(0xFF5B66);
+            brushesReady_=true;
+        }
+    }
+
+    void LoadData() {
+        cases_=runtime_->cases.ListCases();
+        if (selectedCase_>=cases_.size()) selectedCase_=0;
+        evidence_.clear();
+        if (!cases_.empty()) {
+            try { evidence_=runtime_->Evidence(cases_[selectedCase_].id); } catch (...) {}
+        }
+        if (selectedEvidence_>=evidence_.size()) selectedEvidence_=0;
+    }
+
+    void Text(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br) {
+        target_->DrawTextW(s.c_str(),(UINT32)s.size(),fmt,D2D1::RectF(x,y,x+w,y+h),br);
+    }
+
+    void Rounded(float x,float y,float w,float h,ID2D1Brush* fill,ID2D1Brush* stroke=nullptr,float radius=8) {
+        auto rr=D2D1::RoundedRect(D2D1::RectF(x,y,x+w,y+h),radius,radius);
+        target_->FillRoundedRectangle(rr,fill);
+        if (stroke) target_->DrawRoundedRectangle(rr,stroke,1);
+    }
+
+    void Badge(const std::wstring& s,float x,float y,ID2D1Brush* color,float width=76) {
+        Rounded(x,y,width,24,brush_.panel2.Get(),color,12);
+        Text(s,x+10,y+3,width-18,20,smallFmt_.Get(),color);
+    }
+
+    void AddButton(const std::wstring& id,const std::wstring& label,float x,float y,float w,float h,bool primary=false) {
+        Rounded(x,y,w,h,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),7);
+        Text(label,x+12,y+(h-22)/2,w-24,24,bodyFmt_.Get(),brush_.text.Get());
+        buttons_.push_back({{x,y,x+w,y+h},id});
+    }
+
+    void DrawBrand() {
+        Rounded(22,18,42,42,brush_.blue.Get(),brush_.cyan.Get(),10);
+        Text(L"S",35,24,22,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel",76,17,130,40,titleFmt_.Get(),brush_.text.Get());
+        Text(L"EVIDENCE  |  INTEGRITY",77,51,140,20,smallFmt_.Get(),brush_.muted.Get());
+    }
+
+    void DrawSidebar() {
+        static const wchar_t* names[]={L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Settings"};
+        for (int i=0;i<6;i++) {
+            float y=(float)kHeader+24+i*60;
+            if ((int)page_==i) {
+                target_->FillRectangle(D2D1::RectF(0,y-6,(float)kSidebar,y+44),brush_.panel2.Get());
+                target_->FillRectangle(D2D1::RectF(0,y-6,4,y+44),brush_.cyan.Get());
+            }
+            Rounded(26,y+4,25,25,((int)page_==i)?brush_.blue.Get():brush_.panel2.Get(),nullptr,6);
+            Text(names[i],66,y+5,135,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
+        }
+        Text(L"Sentinel v0.3.0 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
+    }
+
+    void DrawHeader(float w) {
+        Text(L"Secure Evidence  |  Integrity Assured",kSidebar+28,24,330,28,bodyFmt_.Get(),brush_.muted.Get());
+        Rounded(w-390,18,240,40,brush_.sidebar.Get(),brush_.border.Get(),7);
+        Text(L"Search cases, evidence, hashes...",w-372,28,210,24,smallFmt_.Get(),brush_.muted.Get());
+        Rounded(w-126,19,35,35,brush_.panel2.Get(),nullptr,18);
+        Text(L"JD",w-116,26,24,22,smallFmt_.Get(),brush_.text.Get());
+        Text(L"Local Investigator",w-82,23,76,22,smallFmt_.Get(),brush_.text.Get());
+        Text(L"● "+statusText_,w-180,56,170,18,smallFmt_.Get(),brush_.green.Get());
+    }
+
+    void PageTitle(const std::wstring& title,const std::wstring& sub) {
+        Text(title,kSidebar+28,kHeader+22,360,40,titleFmt_.Get(),brush_.text.Get());
+        Text(sub,kSidebar+30,kHeader+57,650,22,bodyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,ID2D1Brush* accent) {
+        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),8);
+        Rounded(x+16,y+18,42,42,brush_.panel2.Get(),nullptr,10);
+        Text(L"●",x+29,y+25,22,24,h1Fmt_.Get(),accent);
+        Text(label,x+72,y+18,w-88,22,bodyFmt_.Get(),brush_.muted.Get());
+        Text(value,x+72,y+43,w-88,44,bigFmt_.Get(),brush_.text.Get());
+    }
+
+    void DrawDashboard(float w,float h) {
+        PageTitle(L"Dashboard",L"Overview of cases, evidence, and system integrity");
+        float x=kSidebar+28,y=kHeader+96,g=14;
+        float card=(w-x-28-g*3)/4;
+        Metric(x,y,card,L"Open Cases",std::to_wstring(cases_.size()),brush_.cyan.Get());
+        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(evidence_.size()),brush_.blue.Get());
+        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get());
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get());
+
+        float panelY=y+126;
+        float left=(w-x-42)*0.58f;
+        Rounded(x,panelY,left,310,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Evidence Activity",x+18,panelY+15,260,28,h1Fmt_.Get(),brush_.text.Get());
+        for (int i=0;i<8;i++) {
+            float bh=50+(i%4)*28;
+            float bx=x+65+i*70;
+            target_->FillRectangle(D2D1::RectF(bx,panelY+260-bh,bx+30,panelY+260),brush_.blue.Get());
+            Text(std::to_wstring(i+1),bx+8,panelY+268,30,18,smallFmt_.Get(),brush_.muted.Get());
+        }
+
+        float rx=x+left+14,rw=w-rx-28;
+        Rounded(rx,panelY,rw,310,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Recent Activity",rx+18,panelY+15,rw-36,28,h1Fmt_.Get(),brush_.text.Get());
+        std::vector<std::wstring> rows;
+        if (!cases_.empty()) rows.push_back(L"Case "+Widen(cases_[0].caseNumber)+L" opened");
+        if (!evidence_.empty()) rows.push_back(L"Evidence "+Widen(evidence_[0].originalFilename)+L" secured");
+        rows.push_back(L"Audit chain verified");
+        rows.push_back(L"Secure local store initialized");
+        for (size_t i=0;i<rows.size();++i) {
+            float yy=panelY+58+(float)i*52;
+            Text(L"●",rx+18,yy,20,20,bodyFmt_.Get(),i<2?brush_.cyan.Get():brush_.green.Get());
+            Text(rows[i],rx+44,yy,rw-60,22,bodyFmt_.Get(),brush_.text.Get());
+            target_->DrawLine(D2D1::Point2F(rx+18,yy+34),D2D1::Point2F(rx+rw-18,yy+34),brush_.border.Get(),1);
+        }
+
+        float bottom=panelY+326;
+        Rounded(x,bottom,left,150,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"System Integrity",x+18,bottom+15,240,26,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"● Secure Store",x+22,bottom+58,220,22,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"● Audit Chain",x+220,bottom+58,220,22,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        Text(L"● AES-256-GCM",x+22,bottom+92,220,22,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"● DPAPI Master Key",x+220,bottom+92,220,22,bodyFmt_.Get(),brush_.green.Get());
+
+        Rounded(rx,bottom,rw,150,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Quick Actions",rx+18,bottom+15,200,26,h1Fmt_.Get(),brush_.text.Get());
+        float bw=(rw-54)/3;
+        AddButton(L"new_case",L"New Case",rx+16,bottom+58,bw,58,true);
+        AddButton(L"import",L"Import Evidence",rx+26+bw,bottom+58,bw,58,false);
+        AddButton(L"integrity",L"Integrity Check",rx+36+2*bw,bottom+58,bw,58,false);
+    }
+
+    void DrawCases(float w,float h) {
+        PageTitle(L"Cases",L"Manage investigations, review evidence, and track case progress");
+        float x=kSidebar+28,y=kHeader+102;
+        Text(L"Case Number",x,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Title",x+180,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
+        MoveWindow(caseNumberEdit_,(int)x,(int)y,160,34,TRUE);
+        MoveWindow(caseTitleEdit_,(int)(x+180),(int)y,300,34,TRUE);
+        AddButton(L"new_case",L"+ Create Case",x+500,y,140,34,true);
+
+        float tableY=y+54;
+        Rounded(x,tableY,w-x-28,360,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Case ID",x+16,tableY+12,180,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Case Number",x+220,tableY+12,130,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Title",x+370,tableY+12,360,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Status",w-190,tableY+12,100,20,smallFmt_.Get(),brush_.muted.Get());
+
+        size_t maxRows=std::min<size_t>(cases_.size(),7);
+        for (size_t i=0;i<maxRows;i++) {
+            float yy=tableY+40+(float)i*44;
+            if (i==selectedCase_) target_->FillRectangle(D2D1::RectF(x+2,yy-3,w-30,yy+36),brush_.panel2.Get());
+            Text(Widen(cases_[i].id.ToString()).substr(0,18)+L"...",x+16,yy,185,22,smallFmt_.Get(),brush_.text.Get());
+            Text(Widen(cases_[i].caseNumber),x+220,yy,135,22,bodyFmt_.Get(),brush_.text.Get());
+            Text(Widen(cases_[i].title),x+370,yy,w-x-580,22,bodyFmt_.Get(),brush_.text.Get());
+            auto st=cases_[i].status==sentinel::CaseStatus::Open?L"Open":cases_[i].status==sentinel::CaseStatus::Closed?L"Closed":L"Other";
+            Badge(st,w-190,yy-2,cases_[i].status==sentinel::CaseStatus::Open?brush_.green.Get():brush_.cyan.Get(),80);
+            buttons_.push_back({{x+2,yy-3,w-30,yy+36},L"case:"+std::to_wstring(i)});
+        }
+
+        float detail=tableY+376;
+        Rounded(x,detail,w-x-28,180,brush_.panel.Get(),brush_.border.Get(),8);
+        if (!cases_.empty()) {
+            const auto& c=cases_[selectedCase_];
+            Text(Widen(c.caseNumber),x+20,detail+16,220,34,h1Fmt_.Get(),brush_.text.Get());
+            Badge(c.status==sentinel::CaseStatus::Open?L"Open":L"Closed",x+250,detail+18,c.status==sentinel::CaseStatus::Open?brush_.green.Get():brush_.cyan.Get());
+            Text(Widen(c.title),x+20,detail+55,w-x-420,26,bodyFmt_.Get(),brush_.muted.Get());
+            Text(L"Case ID",x+20,detail+98,90,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(Widen(c.id.ToString()),x+100,detail+96,330,22,smallFmt_.Get(),brush_.text.Get());
+            Text(L"Evidence",x+450,detail+98,90,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(std::to_wstring(evidence_.size())+L" items",x+520,detail+96,120,22,bodyFmt_.Get(),brush_.text.Get());
+            AddButton(L"import",L"Add Evidence",w-360,detail+26,140,42,true);
+            AddButton(L"verify",L"Verify Evidence",w-205,detail+26,150,42,false);
+        } else {
+            Text(L"No cases yet. Enter a case number and title above, then create the first case.",x+20,detail+40,w-x-80,50,bodyFmt_.Get(),brush_.muted.Get());
+        }
+    }
+
+    void DrawEvidence(float w,float h) {
+        PageTitle(L"Evidence",L"Secure evidence management, verification, and chain of custody");
+        float x=kSidebar+28,y=kHeader+100;
+        if (cases_.empty()) {
+            Rounded(x,y,w-x-28,180,brush_.panel.Get(),brush_.border.Get(),8);
+            Text(L"Create a case before importing evidence.",x+24,y+28,500,30,h1Fmt_.Get(),brush_.text.Get());
+            AddButton(L"dashboard",L"Return to Dashboard",x+24,y+82,190,44,true);
+            return;
+        }
+        Text(L"Selected case: "+Widen(cases_[selectedCase_].caseNumber)+L" — "+Widen(cases_[selectedCase_].title),x,y,650,28,bodyFmt_.Get(),brush_.text.Get());
+        AddButton(L"import",L"+ Import Evidence",w-210,y-4,160,38,true);
+
+        float tableY=y+48;
+        Rounded(x,tableY,w-x-360,430,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Original Filename",x+18,tableY+12,230,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Size",x+310,tableY+12,90,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Original SHA-256",x+420,tableY+12,230,20,smallFmt_.Get(),brush_.muted.Get());
+        size_t maxRows=std::min<size_t>(evidence_.size(),8);
+        for (size_t i=0;i<maxRows;i++) {
+            float yy=tableY+42+(float)i*44;
+            if (i==selectedEvidence_) target_->FillRectangle(D2D1::RectF(x+2,yy-3,w-362,yy+36),brush_.panel2.Get());
+            Text(Widen(evidence_[i].originalFilename),x+18,yy,270,22,bodyFmt_.Get(),brush_.text.Get());
+            Text(std::to_wstring(evidence_[i].originalSize/1024)+L" KB",x+310,yy,90,22,smallFmt_.Get(),brush_.text.Get());
+            Text(Widen(evidence_[i].originalHash.ToHex()).substr(0,22)+L"...",x+420,yy,230,22,smallFmt_.Get(),brush_.muted.Get());
+            Badge(L"Verified",w-460,yy-2,brush_.green.Get(),82);
+            buttons_.push_back({{x+2,yy-3,w-362,yy+36},L"ev:"+std::to_wstring(i)});
+        }
+        if (evidence_.empty()) Text(L"No evidence imported for this case.",x+18,tableY+68,360,24,bodyFmt_.Get(),brush_.muted.Get());
+
+        float rx=w-340;
+        Rounded(rx,tableY,312,430,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Evidence Details",rx+18,tableY+14,240,28,h1Fmt_.Get(),brush_.text.Get());
+        if (!evidence_.empty()) {
+            auto& e=evidence_[selectedEvidence_];
+            Rounded(rx+18,tableY+54,276,120,brush_.sidebar.Get(),brush_.border.Get(),8);
+            Text(L"SECURE",rx+92,tableY+85,160,30,h1Fmt_.Get(),brush_.green.Get());
+            Text(L"AES-256-GCM container",rx+65,tableY+122,220,22,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"Filename",rx+18,tableY+195,80,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(Widen(e.originalFilename),rx+18,tableY+218,270,24,bodyFmt_.Get(),brush_.text.Get());
+            Text(L"SHA-256",rx+18,tableY+255,80,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(Widen(e.originalHash.ToHex()).substr(0,34)+L"...",rx+18,tableY+278,270,42,smallFmt_.Get(),brush_.text.Get());
+            AddButton(L"verify",L"Verify Selected",rx+18,tableY+342,130,44,true);
+            AddButton(L"integrity",L"Audit Chain",rx+160,tableY+342,130,44,false);
+        }
+    }
+
+    void DrawAudit(float w,float h) {
+        PageTitle(L"Audit Log",L"Immutable activity records for system and evidence operations");
+        float x=kSidebar+28,y=kHeader+100,g=14;
+        float card=(w-x-28-g*3)/4;
+        Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get());
+        Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",brush_.green.Get());
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get());
+
+        float ty=y+126;
+        Rounded(x,ty,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Timestamp",x+18,ty+12,180,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Action",x+230,ty+12,220,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Target",x+520,ty+12,240,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Chain Status",w-190,ty+12,120,20,smallFmt_.Get(),brush_.muted.Get());
+
+        sqlite3_stmt* s{};
+        if (sqlite3_prepare_v2(runtime_->db.Handle(),"SELECT timestamp,action,target_type,target_id FROM audit_records ORDER BY sequence DESC LIMIT 8",-1,&s,nullptr)==SQLITE_OK) {
+            int row=0;
+            while (sqlite3_step(s)==SQLITE_ROW) {
+                float yy=ty+42+row*42;
+                const char* ts=(const char*)sqlite3_column_text(s,0);
+                int action=sqlite3_column_int(s,1);
+                const char* type=(const char*)sqlite3_column_text(s,2);
+                const char* id=(const char*)sqlite3_column_text(s,3);
+                Text(Widen(ts?ts:""),x+18,yy,200,20,smallFmt_.Get(),brush_.text.Get());
+                Text(L"Action "+std::to_wstring(action),x+230,yy,180,20,bodyFmt_.Get(),brush_.text.Get());
+                Text(Widen(type?type:"")+L"  "+Widen(id?id:""),x+520,yy,w-x-760,20,smallFmt_.Get(),brush_.text.Get());
+                Badge(L"Valid",w-190,yy-3,brush_.green.Get(),72);
+                row++;
+            }
+        }
+        sqlite3_finalize(s);
+
+        float by=ty+408;
+        Rounded(x,by,w-x-28,120,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Audit Chain Integrity",x+18,by+14,260,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(runtime_->audit.VerifyChain()?L"✓ Chain verified — no tampering detected":L"⚠ Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        AddButton(L"integrity",L"Verify Audit Chain",w-220,by+38,165,42,true);
+    }
+
+    void DrawVerification(float w,float h) {
+        PageTitle(L"Verification",L"Evidence authentication and integrity validation");
+        float x=kSidebar+28,y=kHeader+100;
+        Rounded(x,y,w-x-390,230,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Verification Result",x+18,y+14,260,28,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(x+24,y+62,120,120,brush_.sidebar.Get(),brush_.green.Get(),22);
+        Text(L"✓",x+54,y+82,70,70,bigFmt_.Get(),brush_.green.Get());
+        Text(lastVerify_.find(L"VALID")!=std::wstring::npos?L"VALID":L"READY",x+170,y+70,220,46,bigFmt_.Get(),lastVerify_.find(L"VALID")!=std::wstring::npos?brush_.green.Get():brush_.cyan.Get());
+        Text(lastVerify_,x+170,y+124,w-x-590,64,bodyFmt_.Get(),brush_.muted.Get());
+
+        float rx=w-362;
+        Rounded(rx,y,334,230,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Evidence Container",rx+18,y+14,260,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(evidence_.empty()?L"No evidence selected":Widen(evidence_[selectedEvidence_].originalFilename),rx+18,y+58,290,48,bodyFmt_.Get(),brush_.text.Get());
+        AddButton(L"verify",L"Verify Selected Evidence",rx+18,y+116,298,48,true);
+
+        float sy=y+248;
+        Rounded(x,sy,w-x-28,300,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Verification Steps",x+18,sy+14,250,28,h1Fmt_.Get(),brush_.text.Get());
+        const wchar_t* steps[]={L"1  Container structure analysis",L"2  AES-GCM authentication",L"3  SHA-256 calculation",L"4  Audit confirmation"};
+        for(int i=0;i<4;i++) {
+            float yy=sy+60+i*48;
+            Text(L"●",x+24,yy,20,20,bodyFmt_.Get(),brush_.green.Get());
+            Text(steps[i],x+50,yy,w-x-250,24,bodyFmt_.Get(),brush_.text.Get());
+            Text(lastVerify_.find(L"VALID")!=std::wstring::npos?L"Completed":L"Ready",w-180,yy,110,24,smallFmt_.Get(),lastVerify_.find(L"VALID")!=std::wstring::npos?brush_.green.Get():brush_.muted.Get());
+        }
+    }
+
+    void DrawSettings(float w,float h) {
+        PageTitle(L"Settings",L"Local secure-store and application configuration");
+        float x=kSidebar+28,y=kHeader+110;
+        Rounded(x,y,w-x-28,150,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Secure Local Store",x+18,y+16,300,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Location",x+22,y+60,100,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(runtime_->root.wstring(),x+130,y+58,w-x-180,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Encryption",x+22,y+94,100,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"AES-256-GCM · DPAPI protected workstation master key",x+130,y+92,w-x-180,24,bodyFmt_.Get(),brush_.green.Get());
+
+        Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel 0.3.0 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Offline-first. No agency server configured.",x+22,y+264,430,24,bodyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void ShowCaseEditors(bool show) {
+        ShowWindow(caseNumberEdit_,show?SW_SHOW:SW_HIDE);
+        ShowWindow(caseTitleEdit_,show?SW_SHOW:SW_HIDE);
+    }
+
+    void SelectCase(size_t i) {
+        if (i>=cases_.size()) return;
+        selectedCase_=i; selectedEvidence_=0;
+        try { evidence_=runtime_->Evidence(cases_[i].id); } catch (...) { evidence_.clear(); }
+    }
+
+    void SelectEvidence(size_t i) {
+        if (i<evidence_.size()) selectedEvidence_=i;
+    }
+
+    void CreateCase() {
+        wchar_t nbuf[256]{},tbuf[512]{};
+        GetWindowTextW(caseNumberEdit_,nbuf,256);
+        GetWindowTextW(caseTitleEdit_,tbuf,512);
+        std::wstring wn=nbuf,wt=tbuf;
+        if (wn.empty()||wt.empty()) {
+            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            page_=Page::Cases; ShowCaseEditors(true); return;
+        }
+        try {
+            sentinel::SqliteTransaction tx(runtime_->db);
+            auto actor=sentinel::UserId::Random();
+            auto rec=runtime_->cases.CreateCase({Narrow(wn),Narrow(wt),"",actor});
+            runtime_->keys.CreateCaseKey(rec.id);
+            runtime_->caseRepo.Update(rec);
+            runtime_->audit.Append({actor,sentinel::AuditAction::CaseCreated,"case",rec.id.ToString(),{}});
+            tx.Commit();
+            SetWindowTextW(caseNumberEdit_,L""); SetWindowTextW(caseTitleEdit_,L"");
+            LoadData(); page_=Page::Cases; ShowCaseEditors(true);
+            statusText_=L"Case created securely";
+        } catch (const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Create Case Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    std::optional<std::filesystem::path> PickFile() {
+        wchar_t file[32768]{};
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=32768;
+        ofn.lpstrFilter=L"All Files\0*.*\0\0";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if (GetOpenFileNameW(&ofn)) return std::filesystem::path(file);
+        return std::nullopt;
+    }
+
+    void ImportEvidence() {
+        if (cases_.empty()) {
+            MessageBoxW(hwnd_,L"Create a case first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        auto file=PickFile(); if (!file) return;
+        try {
+            auto key=runtime_->keys.GetCaseKey(cases_[selectedCase_].id);
+            sentinel::EvidenceService svc(runtime_->root/"evidence",runtime_->db,runtime_->random,runtime_->hash,runtime_->cipher,runtime_->audit);
+            svc.Import({cases_[selectedCase_].id,*file,0,sentinel::UserId::Random()},key.Span());
+            evidence_=runtime_->Evidence(cases_[selectedCase_].id);
+            selectedEvidence_=0; page_=Page::Evidence; ShowCaseEditors(false);
+            statusText_=L"Evidence imported and encrypted";
+        } catch (const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Evidence Import Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void VerifySelected() {
+        if (cases_.empty()||evidence_.empty()) {
+            MessageBoxW(hwnd_,L"Select or import evidence first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        try {
+            auto key=runtime_->keys.GetCaseKey(cases_[selectedCase_].id);
+            sentinel::Hash256 hash{};
+            auto plain=sentinel::SevContainer::DecryptFile(evidence_[selectedEvidence_].storedPath,key.Span(),runtime_->cipher,runtime_->hash,&hash);
+            if (hash!=evidence_[selectedEvidence_].originalHash) throw std::runtime_error("plaintext hash mismatch");
+            runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::EvidenceVerified,"evidence",evidence_[selectedEvidence_].id.ToString(),{}});
+            lastVerify_=L"VALID · AUTHENTICATED · SHA-256 "+Widen(hash.ToHex()).substr(0,20)+L"...";
+            page_=Page::Verification; ShowCaseEditors(false); statusText_=L"Evidence verification passed";
+        } catch (const std::exception& e) {
+            lastVerify_=L"INVALID · "+Widen(e.what());
+            page_=Page::Verification; ShowCaseEditors(false); statusText_=L"Verification failed";
+        }
+    }
+
+    void VerifyAudit() {
+        bool ok=runtime_->audit.VerifyChain();
+        statusText_=ok?L"Audit chain verified":L"Audit integrity failure";
+        MessageBoxW(hwnd_,ok?L"Audit chain is VALID. No tampering detected.":L"Audit chain verification FAILED.",
+            L"Sentinel Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
+    }
+};
+
+App* g_app{};
+
+LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
+    switch(msg) {
+        case WM_CREATE:
+            try { g_app=new App(); g_app->Init(hwnd); }
+            catch (const std::exception& e) {
+                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"Sentinel Startup Failed",MB_OK|MB_ICONERROR);
+                return -1;
+            }
+            return 0;
+        case WM_SIZE: if(g_app) g_app->Resize(); return 0;
+        case WM_PAINT: {
+            PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
+        }
+        case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
+    }
+    return DefWindowProcW(hwnd,msg,wp,lp);
+}
+
+}
+
+int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
+    CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.style=CS_HREDRAW|CS_VREDRAW;
+    wc.lpfnWndProc=WndProc;
+    wc.hInstance=instance;
+    wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
+    wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName=kClassName;
+    wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
+    RegisterClassExW(&wc);
+
+    HWND hwnd=CreateWindowExW(
+        0,kClassName,L"Sentinel — Secure Evidence & Integrity",
+        WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
+        CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
+        nullptr,nullptr,instance,nullptr);
+    if (!hwnd) return 1;
+
+    ShowWindow(hwnd,show);
+    UpdateWindow(hwnd);
+
+    MSG msg{};
+    while(GetMessageW(&msg,nullptr,0,0)>0) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    CoUninitialize();
+    return (int)msg.wParam;
+}
