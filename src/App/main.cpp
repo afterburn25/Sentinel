@@ -62,6 +62,7 @@ void Usage()
     std::cout <<
         "Sentinel 0.2.0\n\n"
         "Usage:\n"
+        "  SentinelCli <data-root> interactive\n"
         "  SentinelCli <data-root> init\n"
         "  SentinelCli <data-root> case-create <case-number> <title>\n"
         "  SentinelCli <data-root> case-list\n"
@@ -85,6 +86,176 @@ int main(int argc, char** argv)
         const std::filesystem::path root = argv[1];
         const std::string command = argv[2];
         Runtime rt(root, ResolveMigrations(argv[0]));
+
+
+        if (command == "interactive") {
+            for (;;) {
+                std::cout <<
+                    "\nSentinel 0.2.0 - Secure Local Console\n"
+                    "Data store: " << root.string() << "\n\n"
+                    "1. Create case\n"
+                    "2. List cases\n"
+                    "3. Import evidence\n"
+                    "4. List evidence\n"
+                    "5. Verify evidence container\n"
+                    "6. Verify audit chain\n"
+                    "0. Exit\n"
+                    "Selection: ";
+
+                std::string choice;
+                std::getline(std::cin, choice);
+
+                if (choice == "0") return 0;
+
+                if (choice == "1") {
+                    std::string number;
+                    std::string title;
+                    std::cout << "Case number: ";
+                    std::getline(std::cin, number);
+                    std::cout << "Title: ";
+                    std::getline(std::cin, title);
+
+                    sentinel::SqliteTransaction tx(rt.db);
+                    const auto actor = sentinel::UserId::Random();
+                    auto record = rt.cases.CreateCase({number, title, "", actor});
+                    rt.keys.CreateCaseKey(record.id);
+                    rt.caseRepo.Update(record);
+                    rt.audit.Append({
+                        actor,
+                        sentinel::AuditAction::CaseCreated,
+                        "case",
+                        record.id.ToString(),
+                        {}
+                    });
+                    tx.Commit();
+
+                    std::cout << "Created case " << record.id.ToString() << "\n";
+                    continue;
+                }
+
+                if (choice == "2") {
+                    const auto cases = rt.cases.ListCases();
+                    if (cases.empty()) {
+                        std::cout << "No cases.\n";
+                    } else {
+                        for (const auto& item : cases) {
+                            std::cout << item.id.ToString() << "\n"
+                                      << "  " << item.caseNumber
+                                      << " - " << item.title << "\n";
+                        }
+                    }
+                    continue;
+                }
+
+                if (choice == "3") {
+                    std::string caseText;
+                    std::string pathText;
+                    std::cout << "Case ID: ";
+                    std::getline(std::cin, caseText);
+                    std::cout << "Evidence file path: ";
+                    std::getline(std::cin, pathText);
+
+                    const auto caseId = sentinel::CaseId::Parse(caseText);
+                    if (!caseId) {
+                        std::cout << "Invalid case ID.\n";
+                        continue;
+                    }
+                    if (!rt.cases.GetCase(*caseId)) {
+                        std::cout << "Case not found.\n";
+                        continue;
+                    }
+
+                    auto caseKey = rt.keys.GetCaseKey(*caseId);
+                    sentinel::EvidenceService evidence(
+                        root / "evidence",
+                        rt.db,
+                        rt.random,
+                        rt.hash,
+                        rt.cipher,
+                        rt.audit);
+                    const auto imported = evidence.Import(
+                        {*caseId, std::filesystem::path(pathText), 0, sentinel::UserId::Random()},
+                        caseKey.Span());
+
+                    std::cout << "Imported evidence " << imported.id.ToString() << "\n"
+                              << "SHA-256: " << imported.originalHash.ToHex() << "\n"
+                              << "Stored: " << imported.storedPath.string() << "\n";
+                    continue;
+                }
+
+                if (choice == "4") {
+                    std::string caseText;
+                    std::cout << "Case ID: ";
+                    std::getline(std::cin, caseText);
+                    const auto caseId = sentinel::CaseId::Parse(caseText);
+                    if (!caseId) {
+                        std::cout << "Invalid case ID.\n";
+                        continue;
+                    }
+
+                    auto caseKey = rt.keys.GetCaseKey(*caseId);
+                    sentinel::EvidenceService evidence(
+                        root / "evidence",
+                        rt.db,
+                        rt.random,
+                        rt.hash,
+                        rt.cipher,
+                        rt.audit);
+                    const auto items = evidence.ListForCase(*caseId, caseKey.Span());
+                    if (items.empty()) {
+                        std::cout << "No evidence.\n";
+                    } else {
+                        for (const auto& item : items) {
+                            std::cout << item.id.ToString() << "\n"
+                                      << "  " << item.originalFilename << "\n"
+                                      << "  SHA-256: " << item.originalHash.ToHex() << "\n"
+                                      << "  Stored: " << item.storedPath.string() << "\n";
+                        }
+                    }
+                    continue;
+                }
+
+                if (choice == "5") {
+                    std::string caseText;
+                    std::string pathText;
+                    std::cout << "Case ID: ";
+                    std::getline(std::cin, caseText);
+                    std::cout << "SEV file path: ";
+                    std::getline(std::cin, pathText);
+                    const auto caseId = sentinel::CaseId::Parse(caseText);
+                    if (!caseId) {
+                        std::cout << "Invalid case ID.\n";
+                        continue;
+                    }
+
+                    auto caseKey = rt.keys.GetCaseKey(*caseId);
+                    sentinel::Hash256 plaintextHash{};
+                    try {
+                        const auto plain = sentinel::SevContainer::DecryptFile(
+                            pathText,
+                            caseKey.Span(),
+                            rt.cipher,
+                            rt.hash,
+                            &plaintextHash);
+                        std::cout << "VALID - authenticated evidence\n"
+                                  << "Plaintext SHA-256: " << plaintextHash.ToHex() << "\n"
+                                  << "Bytes: " << plain.size() << "\n";
+                    } catch (const std::exception& e) {
+                        std::cout << "INVALID - " << e.what() << "\n";
+                    }
+                    continue;
+                }
+
+                if (choice == "6") {
+                    const bool valid = rt.audit.VerifyChain();
+                    std::cout << "Audit chain: " << (valid ? "VALID" : "INVALID") << "\n"
+                              << "Head: " << rt.audit.GetCurrentHead().ToHex() << "\n";
+                    continue;
+                }
+
+                std::cout << "Unknown selection.\n";
+            }
+        }
 
         if (command == "init") {
             std::cout << "Sentinel secure store initialized\n";
