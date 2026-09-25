@@ -6,6 +6,7 @@
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
+#include "Sentinel/Update/UpdateService.hpp"
 
 #include <filesystem>
 #include <iostream>
@@ -79,6 +80,9 @@ int main() {
     Require(approval.status==operations::ApprovalStatus::Pending,"approval should start pending");
     operations::Approve(approval,"supervisor","approved test");
     Require(approval.status==operations::ApprovalStatus::Approved,"approval did not transition");
+
+    Require(update::UpdateService::IsNewerVersion("1.0.1","1.0.0"),"update version comparison failed");
+    Require(!update::UpdateService::IsNewerVersion("1.0.0","1.0.0"),"equal version should not update");
 
     agency::AgencySyncQueue queue;
     queue.Enqueue({"sync-1",agency::SyncItemType::AuditRecord,"audit:1",0,false});
