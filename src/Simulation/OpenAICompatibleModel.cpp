@@ -110,6 +110,113 @@ ParsedUrl ParseUrl(const std::string& url) {
     return out;
 }
 
+std::wstring ModelsPathFromChatPath(std::wstring path) {
+    const std::wstring full=L"/v1/chat/completions";
+    auto pos=path.find(full);
+    if(pos!=std::wstring::npos) {
+        path.replace(pos,full.size(),L"/v1/models");
+        return path;
+    }
+    const std::wstring shortPath=L"/chat/completions";
+    pos=path.find(shortPath);
+    if(pos!=std::wstring::npos) {
+        path.replace(pos,shortPath.size(),L"/models");
+        return path;
+    }
+    if(path==L"/" || path.empty()) return L"/v1/models";
+    auto slash=path.find_last_of(L'/');
+    if(slash!=std::wstring::npos) {
+        auto base=path.substr(0,slash);
+        if(base.find(L"/v1")!=std::wstring::npos) return base+L"/models";
+    }
+    return L"/v1/models";
+}
+
+std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
+    auto u=ParseUrl(endpoint);
+    auto modelsPath=ModelsPathFromChatPath(u.path);
+
+    HINTERNET session=WinHttpOpen(L"Sentinel/0.4",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    if(!session) throw std::runtime_error("WinHttpOpen failed");
+    WinHttpSetTimeouts(session,5000,5000,10000,15000);
+
+    HINTERNET connect=WinHttpConnect(session,u.host.c_str(),u.port,0);
+    if(!connect) {
+        WinHttpCloseHandle(session);
+        throw std::runtime_error("cannot connect to model host");
+    }
+
+    DWORD flags=u.secure?WINHTTP_FLAG_SECURE:0;
+    HINTERNET request=WinHttpOpenRequest(connect,L"GET",modelsPath.c_str(),nullptr,WINHTTP_NO_REFERER,WINHTTP_DEFAULT_ACCEPT_TYPES,flags);
+    if(!request) {
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        throw std::runtime_error("cannot create model discovery request");
+    }
+
+    std::wstring headers=L"Accept: application/json\r\n";
+    if(!apiKey.empty()) headers+=L"Authorization: Bearer "+Widen(apiKey)+L"\r\n";
+
+    BOOL ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
+    if(ok) ok=WinHttpReceiveResponse(request,nullptr);
+    if(!ok) {
+        WinHttpCloseHandle(request);
+        WinHttpCloseHandle(connect);
+        WinHttpCloseHandle(session);
+        throw std::runtime_error("model discovery request failed");
+    }
+
+    DWORD status=0,statusSize=sizeof(status);
+    WinHttpQueryHeaders(request,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,nullptr,&status,&statusSize,nullptr);
+
+    std::string body;
+    for(;;) {
+        DWORD avail=0;
+        if(!WinHttpQueryDataAvailable(request,&avail)) break;
+        if(!avail) break;
+        size_t old=body.size();
+        body.resize(old+avail);
+        DWORD read=0;
+        if(!WinHttpReadData(request,body.data()+old,avail,&read)) break;
+        body.resize(old+read);
+    }
+
+    WinHttpCloseHandle(request);
+    WinHttpCloseHandle(connect);
+    WinHttpCloseHandle(session);
+
+    if(status<200 || status>=300)
+        throw std::runtime_error("model discovery returned HTTP "+std::to_string(status)+": "+body.substr(0,300));
+
+    return body;
+}
+
+std::vector<std::string> ParseModelIds(const std::string& body) {
+    std::vector<std::string> models;
+    size_t pos=0;
+    while((pos=body.find("\"id\"",pos))!=std::string::npos) {
+        auto colon=body.find(':',pos+4);
+        if(colon==std::string::npos) break;
+        auto quote=body.find('"',colon+1);
+        if(quote==std::string::npos) break;
+        std::string raw;
+        bool escaped=false;
+        size_t i=quote+1;
+        for(;i<body.size();++i) {
+            char ch=body[i];
+            if(!escaped && ch=='"') break;
+            raw+=ch;
+            if(ch=='\\' && !escaped) escaped=true;
+            else escaped=false;
+        }
+        if(!raw.empty()) models.push_back(JsonUnescape(raw));
+        pos=i+1;
+    }
+    std::sort(models.begin(),models.end());
+    models.erase(std::unique(models.begin(),models.end()),models.end());
+    return models;
+}
+
 class OpenAICompatibleModel final : public IModelAdapter {
 public:
     OpenAICompatibleModel(std::string endpoint,std::string model,std::string apiKey)
@@ -228,6 +335,17 @@ std::unique_ptr<IModelAdapter> CreateOpenAICompatibleModel(
 {
     return std::make_unique<OpenAICompatibleModel>(
         std::move(endpoint),std::move(model),std::move(apiKey));
+}
+
+std::vector<std::string> DiscoverOpenAICompatibleModels(
+    std::string endpoint,
+    std::string apiKey)
+{
+    auto body=HttpGetJson(endpoint,apiKey);
+    auto models=ParseModelIds(body);
+    if(models.empty())
+        throw std::runtime_error("model server returned no selectable models");
+    return models;
 }
 
 }
