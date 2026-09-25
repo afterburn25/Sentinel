@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sentinel VERSION 0.4.3 LANGUAGES CXX RC)
+project(Sentinel VERSION 1.0.0 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,6 +26,11 @@ add_library(sentinel_core
     src/Evidence/EvidenceService.cpp
     src/Simulation/RuleBasedTestModel.cpp
     src/Simulation/OpenAICompatibleModel.cpp
+    src/Simulation/PersonaPolicy.cpp
+    src/Simulation/SettingsStore.cpp
+    src/Operations/Messaging.cpp
+    src/Operations/Supervisor.cpp
+    src/Agency/AgencyServer.cpp
 )
 
 target_include_directories(sentinel_core PUBLIC include)
@@ -73,6 +78,11 @@ if(SENTINEL_BUILD_TESTS)
     target_link_libraries(SentinelCoreTests PRIVATE sentinel_core)
     target_compile_definitions(SentinelCoreTests PRIVATE SENTINEL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     add_test(NAME SentinelCoreTests COMMAND SentinelCoreTests)
+
+    add_executable(SentinelPlatformTests tests/Unit/PlatformTests.cpp)
+    target_link_libraries(SentinelPlatformTests PRIVATE sentinel_core)
+    add_test(NAME SentinelPlatformTests COMMAND SentinelPlatformTests)
+
     add_test(
         NAME SentinelCliSelfTest
         COMMAND SentinelCli "${CMAKE_BINARY_DIR}/sentinel-self-test-data" self-test
