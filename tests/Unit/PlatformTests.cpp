@@ -1,5 +1,8 @@
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
+#include "Sentinel/Simulation/ResponseEvaluator.hpp"
+#include "Sentinel/Simulation/SessionStore.hpp"
+#include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -37,6 +40,34 @@ int main() {
         "send explicit sexual content");
     Require(!minorDecision.allowed,"minor-sensitive simulation policy should block");
     Require(minorDecision.requiresSupervisor,"minor-sensitive block should require supervisor");
+
+    auto evaluation=simulation::EvaluateResponse(settings.persona,simulation::AgeKnowledgeState::SelfReportedAdult,"My name is Casey.");
+    Require(evaluation.score>=80,"consistent response evaluation unexpectedly low");
+
+    simulation::ModelRegistry registry;
+    auto& registered=registry.Register(settings.endpoint,settings.model);
+    registered.evaluationScore=92;
+    registry.Approve(0);
+    registry.Activate(0);
+    Require(registry.ActiveIndex()==0,"model registry activation failed");
+
+    auto registryPath=std::filesystem::temp_directory_path()/"sentinel-model-registry-test.tsv";
+    registry.Save(registryPath);
+    simulation::ModelRegistry registry2;
+    registry2.Load(registryPath);
+    Require(registry2.Models().size()==1,"model registry persistence failed");
+    std::filesystem::remove(registryPath);
+
+    simulation::ModelContext session;
+    session.scenario="test";
+    session.personaSummary="Casey";
+    session.history.push_back({simulation::ChatTurn::Speaker::Investigator,"hello"});
+    auto sessionPath=std::filesystem::temp_directory_path()/"sentinel-session-test.tsv";
+    simulation::SaveSession(sessionPath,session);
+    simulation::ModelContext loadedSession;
+    Require(simulation::LoadSession(sessionPath,loadedSession),"session load failed");
+    Require(loadedSession.history.size()==1,"session turn did not persist");
+    std::filesystem::remove(sessionPath);
 
     auto adapter=operations::CreateInMemoryMessageAdapter();
     Require(adapter->Connected(),"local messaging adapter should be connected");
