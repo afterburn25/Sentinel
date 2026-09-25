@@ -16,6 +16,7 @@
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
+#include "Sentinel/Update/UpdateService.hpp"
 
 #include <windows.h>
 #include <windowsx.h>
@@ -366,6 +367,7 @@ public:
             else if (b.id==L"approval_approve") ApproveFirstPending();
             else if (b.id==L"agency_toggle") ToggleAgency();
             else if (b.id==L"agency_enqueue") EnqueueAgencySnapshot();
+            else if (b.id==L"check_updates") CheckForUpdates();
             else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
@@ -472,6 +474,7 @@ private:
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
+    std::wstring updateStatus_=L"Updates not checked";
 
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
@@ -1665,6 +1668,24 @@ private:
         return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
+    void CheckForUpdates() {
+        try {
+            sentinel::update::UpdateService service;
+            const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
+            auto info=service.Check(url,"1.0.0");
+            if(info.newer) {
+                updateStatus_=L"Update available: "+Widen(info.version);
+                statusText_=L"Sentinel update available";
+            } else {
+                updateStatus_=L"Current version 1.0.0 is up to date";
+                statusText_=L"No Sentinel update available";
+            }
+        } catch(const std::exception& e) {
+            updateStatus_=L"Update check failed: "+Widen(e.what());
+            statusText_=L"Update check failed";
+        }
+    }
+
     void DrawSettings(float w,float h) {
         PageTitle(L"Settings",L"Local secure-store and application configuration");
         float x=kSidebar+28,y=kHeader+110;
@@ -1675,10 +1696,12 @@ private:
         Text(L"Encryption",x+22,y+94,100,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"AES-256-GCM | DPAPI protected workstation master key",x+130,y+92,w-x-180,24,bodyFmt_.Get(),brush_.green.Get());
 
-        Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
+        Rounded(x,y+168,w-x-28,190,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
         Text(L"Sentinel 1.0.0 Development Release",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
         Text(agencyConfig_.enabled?L"Offline-first. Agency sync configuration enabled.":L"Offline-first. No active agency transport.",x+22,y+264,520,24,bodyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"check_updates",L"Check for Updates",x+22,y+304,170,38,false);
+        Text(updateStatus_,x+210,y+313,w-x-260,22,smallFmt_.Get(),brush_.muted.Get());
     }
 
     void ShowCaseEditors(bool show) {
