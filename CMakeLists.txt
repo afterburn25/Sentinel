@@ -47,6 +47,14 @@ if(SENTINEL_BUILD_TESTS)
     target_link_libraries(SentinelCoreTests PRIVATE sentinel_core)
     target_compile_definitions(SentinelCoreTests PRIVATE SENTINEL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     add_test(NAME SentinelCoreTests COMMAND SentinelCoreTests)
+    add_test(
+        NAME SentinelCliSelfTest
+        COMMAND SentinelCli "${CMAKE_BINARY_DIR}/sentinel-self-test-data" self-test
+    )
+    set_tests_properties(
+        SentinelCliSelfTest
+        PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
 endif()
 
 install(TARGETS SentinelCli
