@@ -68,16 +68,18 @@ jobs:
           }
           $lines | Set-Content -Encoding ascii "$root/SHA256SUMS.txt"
 
-      - name: Archive build
+      - name: Verify packaged launcher layout
         shell: pwsh
-        run: Compress-Archive -Path package/Sentinel-0.2.0-windows-x64/* -DestinationPath Sentinel-0.2.0-windows-x64.zip
+        run: |
+          $root = "package/Sentinel-0.2.0-windows-x64"
+          if (-not (Test-Path "$root/SentinelConsole.cmd")) { throw "SentinelConsole.cmd missing" }
+          if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
+          if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
           name: Sentinel-0.2.0-windows-x64
-          path: |
-            Sentinel-0.2.0-windows-x64.zip
-            package/Sentinel-0.2.0-windows-x64/SHA256SUMS.txt
+          path: package/Sentinel-0.2.0-windows-x64/
           if-no-files-found: error
           retention-days: 30
