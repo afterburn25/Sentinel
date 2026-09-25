@@ -46,6 +46,7 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         d2d1
         dwrite
         dwmapi
+        uxtheme
         windowscodecs
         comdlg32
         shell32
