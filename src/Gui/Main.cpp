@@ -8,9 +8,11 @@
 #include "Sentinel/Security/SecretProtector.hpp"
 #include "Sentinel/Storage/MigrationService.hpp"
 
-#define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
+#ifdef DecryptFile
+#undef DecryptFile
+#endif
 #include <commdlg.h>
 #include <d2d1.h>
 #include <dwrite.h>
@@ -131,7 +133,11 @@ public:
 
     HRESULT Init(HWND hwnd) {
         hwnd_=hwnd;
-        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,&factory_);
+        D2D1CreateFactory(
+            D2D1_FACTORY_TYPE_SINGLE_THREADED,
+            __uuidof(ID2D1Factory),
+            nullptr,
+            reinterpret_cast<void**>(factory_.GetAddressOf()));
         DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(writeFactory_.GetAddressOf()));
         CreateResources();
         LoadData();
