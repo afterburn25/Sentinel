@@ -34,13 +34,14 @@ add_library(sentinel_core
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Agency/AgencyServer.cpp
+    src/Update/UpdateService.cpp
 )
 
 target_include_directories(sentinel_core PUBLIC include)
 target_link_libraries(sentinel_core PUBLIC unofficial::sqlite3::sqlite3)
 
 if(WIN32)
-    target_link_libraries(sentinel_core PUBLIC bcrypt crypt32)
+    target_link_libraries(sentinel_core PUBLIC bcrypt crypt32 winhttp)
     target_compile_definitions(sentinel_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
 
