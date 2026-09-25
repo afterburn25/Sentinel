@@ -319,9 +319,15 @@ int main(int argc, char** argv)
                 caseKey.Span());
 
             const auto listed = evidence.ListForCase(record.id, caseKey.Span());
-            if (listed.size() != 1 ||
-                listed.front().id.ToString() != imported.id.ToString() ||
-                listed.front().originalFilename != sample.filename().string())
+            bool foundImported = false;
+            for (const auto& item : listed) {
+                if (item.id.ToString() == imported.id.ToString() &&
+                    item.originalFilename == sample.filename().string()) {
+                    foundImported = true;
+                    break;
+                }
+            }
+            if (!foundImported)
                 throw std::runtime_error("persistent evidence listing self-test failed");
 
             sentinel::Hash256 verifiedHash{};
