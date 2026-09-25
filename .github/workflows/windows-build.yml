@@ -49,6 +49,17 @@ jobs:
         shell: pwsh
         run: ctest --preset windows-msvc-release
 
+      - name: Verify no SQLite DLL dependency
+        shell: pwsh
+        run: |
+          $exe = "out/build/windows-msvc-release/Release/SentinelCli.exe"
+          if (-not (Test-Path $exe)) { throw "SentinelCli.exe missing before dependency check" }
+          $deps = & dumpbin /dependents $exe | Out-String
+          $deps | Write-Host
+          if ($deps -match '(?i)sqlite3\.dll') {
+            throw "SentinelCli.exe still depends on sqlite3.dll"
+          }
+
       - name: Install package
         shell: pwsh
         run: >-
