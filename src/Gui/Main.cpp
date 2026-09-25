@@ -10,6 +10,7 @@
 
 #define NOMINMAX
 #include <windows.h>
+#include <windowsx.h>
 #include <commdlg.h>
 #include <d2d1.h>
 #include <dwrite.h>
