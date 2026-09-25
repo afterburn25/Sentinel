@@ -45,6 +45,7 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         sentinel_core
         d2d1
         dwrite
+        dwmapi
         windowscodecs
         comdlg32
         shell32
