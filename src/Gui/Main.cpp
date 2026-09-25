@@ -914,6 +914,12 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_PAINT: {
             PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
         }
+        case WM_CTLCOLOREDIT: {
+            HDC dc=(HDC)wp;
+            SetTextColor(dc,RGB(238,246,255));
+            SetBkColor(dc,RGB(15,32,48));
+            return g_app ? (LRESULT)g_app->EditBrush() : (LRESULT)GetStockObject(BLACK_BRUSH);
+        }
         case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
