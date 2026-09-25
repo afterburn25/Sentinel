@@ -35,19 +35,19 @@ struct Runtime {
     sentinel::WindowsAesGcmCipher cipher;
     sentinel::WindowsDpapiSecretProtector dpapi;
     sentinel::MigrationService migrations;
+    sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
     sentinel::AuditService audit;
-    sentinel::KeyManager keys;
 
     Runtime(std::filesystem::path rootPath, const std::filesystem::path& migrationsPath)
         : root(std::move(rootPath)),
           cipher(random),
           migrations(db),
-          caseRepo(db),
+          keys(root / "keys" / "master.dpapi", db, dpapi, random, cipher),
+          caseRepo(db, &keys, &cipher),
           cases(caseRepo),
-          audit(db, hash),
-          keys(root / "keys" / "master.dpapi", db, dpapi, random, cipher)
+          audit(db, hash)
     {
         std::filesystem::create_directories(root);
         db.Open(root / "sentinel.db");
@@ -100,6 +100,7 @@ int main(int argc, char** argv)
             const auto actor = sentinel::UserId::Random();
             auto record = rt.cases.CreateCase({argv[3], argv[4], "", actor});
             rt.keys.CreateCaseKey(record.id);
+            rt.caseRepo.Update(record);
             rt.audit.Append({
                 actor,
                 sentinel::AuditAction::CaseCreated,
