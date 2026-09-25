@@ -208,6 +208,8 @@ public:
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1004,GetModuleHandleW(nullptr),nullptr);
         modelNameEdit_ = CreateWindowExW(0,L"EDIT",L"local-model",
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1005,GetModuleHandleW(nullptr),nullptr);
+        modelCombo_ = CreateWindowExW(0,L"COMBOBOX",L"",
+            WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1007,GetModuleHandleW(nullptr),nullptr);
         simScroll_ = CreateWindowExW(0,L"SCROLLBAR",L"",WS_CHILD|SBS_VERT,
             0,0,0,0,hwnd_,(HMENU)1006,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -215,6 +217,7 @@ public:
         SendMessageW(chatEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseNumberEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseTitleEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseNumberEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"CR-2026-0001");
@@ -224,6 +227,7 @@ public:
         SetWindowTheme(chatEdit_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(modelEndpointEdit_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(modelNameEdit_,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(modelCombo_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(simScroll_,L"DarkMode_Explorer",nullptr);
         SendMessageW(chatEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
@@ -299,6 +303,7 @@ public:
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset") ResetSimulation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
+            else if (b.id==L"sim_browse_models") BrowseModels();
             else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
@@ -375,7 +380,7 @@ public:
 private:
     struct Button { RectF rect; std::wstring id; };
 
-    HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},simScroll_{};
+    HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -586,7 +591,7 @@ private:
             DrawIcon(NavIcon(i),27,y+3,26,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],70,y+5,130,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.4.2 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.4.3 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -958,25 +963,32 @@ private:
 
         Text(L"OpenAI-compatible endpoint",rx+18,y+148,right-36,18,tinyFmt_.Get(),brush_.muted.Get());
         MoveWindow(modelEndpointEdit_,(int)(rx+18),(int)(y+168),(int)(right-36),32,TRUE);
-        Text(L"Model name",rx+18,y+207,100,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+226),(int)(right-142),32,TRUE);
-        AddButton(L"sim_model",L"Connect",rx+right-114,y+226,96,32,true);
-        StatusDot(rx+24,y+278,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
-        Text(modelStatus_,rx+36,y+267,right-54,36,tinyFmt_.Get(),brush_.text.Get());
 
-        Rounded(rx,y+332,right,188,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Model Suggestion",rx+18,y+346,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Rounded(rx+18,y+386,right-36,68,brush_.sidebar.Get(),brush_.border.Get(),8);
-        Text(simSuggestion_,rx+28,y+397,right-56,48,tinyFmt_.Get(),brush_.text.Get());
-        AddButton(L"sim_suggest",L"Generate",rx+18,y+466,118,34,false);
-        AddButton(L"sim_reset",L"Reset",rx+146,y+466,92,34,false);
-        Text(L"Responses are delayed in Simulation Lab to mimic natural pacing.",rx+18,y+503,right-36,15,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+208,118,32,false);
+        Text(L"Available models",rx+148,y+207,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelCombo_,(int)(rx+148),(int)(y+226),(int)(right-166),140,TRUE);
+
+        Text(L"Manual model",rx+18,y+250,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+269),(int)(right-142),32,TRUE);
+        AddButton(L"sim_model",L"Connect",rx+right-114,y+269,96,32,true);
+
+        StatusDot(rx+24,y+315,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        Text(modelStatus_,rx+36,y+304,right-54,34,tinyFmt_.Get(),brush_.text.Get());
+
+        Rounded(rx,y+346,right,174,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Model Suggestion",rx+18,y+360,right-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(rx+18,y+400,right-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+        Text(simSuggestion_,rx+28,y+410,right-56,42,tinyFmt_.Get(),brush_.text.Get());
+        AddButton(L"sim_suggest",L"Generate",rx+18,y+472,118,32,false);
+        AddButton(L"sim_reset",L"Reset",rx+146,y+472,92,32,false);
+        Text(L"Responses are delayed in Simulation Lab to mimic natural pacing.",rx+18,y+505,right-36,14,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void ShowChatEditor(bool show) {
         if(chatEdit_) ShowWindow(chatEdit_,show?SW_SHOW:SW_HIDE);
         if(modelEndpointEdit_) ShowWindow(modelEndpointEdit_,show?SW_SHOW:SW_HIDE);
         if(modelNameEdit_) ShowWindow(modelNameEdit_,show?SW_SHOW:SW_HIDE);
+        if(modelCombo_) ShowWindow(modelCombo_,show?SW_SHOW:SW_HIDE);
         if(simScroll_) ShowWindow(simScroll_,show?SW_SHOW:SW_HIDE);
     }
 
@@ -1054,11 +1066,58 @@ private:
         CloseClipboard();
     }
 
+    void BrowseModels() {
+        wchar_t endpoint[2048]{};
+        GetWindowTextW(modelEndpointEdit_,endpoint,2048);
+        std::wstring we=endpoint;
+        if(we.empty()) {
+            modelStatus_=L"Enter a model endpoint first.";
+            return;
+        }
+        modelStatus_=L"Browsing models...";
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        UpdateWindow(hwnd_);
+        try {
+            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(Narrow(we));
+            SendMessageW(modelCombo_,CB_RESETCONTENT,0,0);
+            for(const auto& item:models) {
+                auto w=Widen(item);
+                SendMessageW(modelCombo_,CB_ADDSTRING,0,(LPARAM)w.c_str());
+            }
+            if(!models.empty()) {
+                SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
+                SetWindowTextW(modelNameEdit_,Widen(models[0]).c_str());
+            }
+            modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
+            statusText_=L"Model list loaded";
+        } catch(const std::exception& e) {
+            modelStatus_=L"Browse failed: "+Widen(e.what());
+            statusText_=L"Model discovery failed";
+        }
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void ConfigureLocalModel() {
         wchar_t endpoint[2048]{}, modelName[512]{};
         GetWindowTextW(modelEndpointEdit_,endpoint,2048);
-        GetWindowTextW(modelNameEdit_,modelName,512);
-        std::wstring we=endpoint, wm=modelName;
+
+        std::wstring wm;
+        int sel=(int)SendMessageW(modelCombo_,CB_GETCURSEL,0,0);
+        if(sel!=CB_ERR) {
+            int len=(int)SendMessageW(modelCombo_,CB_GETLBTEXTLEN,sel,0);
+            if(len>=0) {
+                std::wstring selected((size_t)len+1,L'\0');
+                SendMessageW(modelCombo_,CB_GETLBTEXT,sel,(LPARAM)selected.data());
+                selected.resize((size_t)len);
+                wm=selected;
+                SetWindowTextW(modelNameEdit_,wm.c_str());
+            }
+        }
+        if(wm.empty()) {
+            GetWindowTextW(modelNameEdit_,modelName,512);
+            wm=modelName;
+        }
+        std::wstring we=endpoint;
         if(we.empty() || wm.empty()) {
             modelStatus_=L"Enter an endpoint URL and model name.";
             return;
@@ -1115,7 +1174,7 @@ private:
 
         Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel 0.4.2 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel 0.4.3 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
         Text(L"Offline-first. No agency server configured.",x+22,y+264,430,24,bodyFmt_.Get(),brush_.muted.Get());
     }
 
