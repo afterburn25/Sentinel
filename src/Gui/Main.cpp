@@ -123,6 +123,24 @@ struct Runtime {
         sqlite3_finalize(s);
         return count;
     }
+
+    long long EvidenceCount() {
+        sqlite3_stmt* s{};
+        long long count=0;
+        if (sqlite3_prepare_v2(db.Handle(),"SELECT COUNT(*) FROM evidence",-1,&s,nullptr)==SQLITE_OK &&
+            sqlite3_step(s)==SQLITE_ROW) count=sqlite3_column_int64(s,0);
+        sqlite3_finalize(s);
+        return count;
+    }
+
+    long long OpenCaseCount() {
+        sqlite3_stmt* s{};
+        long long count=0;
+        if (sqlite3_prepare_v2(db.Handle(),"SELECT COUNT(*) FROM cases WHERE status=1",-1,&s,nullptr)==SQLITE_OK &&
+            sqlite3_step(s)==SQLITE_ROW) count=sqlite3_column_int64(s,0);
+        sqlite3_finalize(s);
+        return count;
+    }
 };
 
 struct BrushSet {
@@ -412,25 +430,35 @@ private:
         for (int i=0;i<6;i++) {
             float y=(float)kHeader+24+i*60;
             if ((int)page_==i) {
-                target_->FillRectangle(D2D1::RectF(0,y-6,(float)kSidebar,y+44),brush_.panel2.Get());
-                target_->FillRectangle(D2D1::RectF(0,y-6,4,y+44),brush_.cyan.Get());
+                target_->FillRectangle(D2D1::RectF(0,y-7,(float)kSidebar,y+45),brush_.panel2.Get());
+                target_->FillRectangle(D2D1::RectF(0,y-7,4,y+45),brush_.cyan.Get());
+                Rounded(20,y-1,40,36,brush_.sidebar.Get(),brush_.border.Get(),8);
             }
-            DrawIcon(NavIcon(i),26,y+2,28,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
-            Text(names[i],66,y+5,135,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
+            DrawIcon(NavIcon(i),27,y+3,26,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
+            Text(names[i],70,y+5,130,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.3.1 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.3.2 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
     void DrawHeader(float w) {
-        Text(L"Secure Evidence  |  Integrity Assured",kSidebar+28,24,330,28,bodyFmt_.Get(),brush_.muted.Get());
-        Rounded(w-390,18,240,40,brush_.sidebar.Get(),brush_.border.Get(),7);
-        Text(L"Search cases, evidence, hashes...",w-372,28,210,24,smallFmt_.Get(),brush_.muted.Get());
-        Rounded(w-126,19,35,35,brush_.panel2.Get(),nullptr,18);
-        Text(L"JD",w-116,26,24,22,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Local Investigator",w-82,23,76,22,smallFmt_.Get(),brush_.text.Get());
-        StatusDot(w-173,65,4,brush_.green.Get());
-        Text(statusText_,w-162,56,152,18,smallFmt_.Get(),brush_.green.Get());
+        Text(L"EVIDENCE",kSidebar+28,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"|",kSidebar+104,24,12,20,tinyFmt_.Get(),brush_.border.Get());
+        Text(L"INTEGRITY",kSidebar+118,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"|",kSidebar+195,24,12,20,tinyFmt_.Get(),brush_.border.Get());
+        Text(L"JUSTICE",kSidebar+208,25,70,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(w-405,16,255,42,brush_.sidebar.Get(),brush_.border.Get(),8);
+        DrawIcon(IconKind::Search,w-390,27,18,brush_.muted.Get());
+        Text(L"Search cases, evidence, hashes...",w-366,27,190,22,smallFmt_.Get(),brush_.muted.Get());
+
+        Rounded(w-132,18,36,36,brush_.panel2.Get(),brush_.border.Get(),18);
+        Text(L"JD",w-122,26,22,20,smallFmt_.Get(),brush_.text.Get());
+        Text(L"Local",w-84,20,58,18,smallFmt_.Get(),brush_.text.Get());
+        Text(L"Investigator",w-84,36,76,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        StatusDot(w-174,67,4,brush_.green.Get());
+        Text(statusText_,w-163,58,153,18,tinyFmt_.Get(),brush_.green.Get());
     }
 
     void PageTitle(const std::wstring& title,const std::wstring& sub) {
@@ -438,16 +466,17 @@ private:
         Text(sub,kSidebar+30,kHeader+57,650,22,bodyFmt_.Get(),brush_.muted.Get());
     }
 
-    void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,ID2D1Brush* accent,IconKind icon) {
-        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),10);
-        target_->DrawLine(D2D1::Point2F(x+12,y+1),D2D1::Point2F(x+w-12,y+1),accent,1.4f);
-        Rounded(x+16,y+18,44,44,brush_.panel2.Get(),nullptr,12);
-        DrawIcon(icon,x+25,y+27,26,accent);
-        Text(label,x+74,y+16,w-92,22,bodyFmt_.Get(),brush_.muted.Get());
-        Text(value,x+74,y+41,w-92,44,bigFmt_.Get(),brush_.text.Get());
+    void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,const std::wstring& sub,ID2D1Brush* accent,IconKind icon) {
+        Rounded(x,y,w,112,brush_.panel.Get(),brush_.border.Get(),10);
+        target_->DrawLine(D2D1::Point2F(x+12,y+1),D2D1::Point2F(x+w-12,y+1),accent,1.6f);
+        Rounded(x+16,y+17,46,46,brush_.panel2.Get(),nullptr,12);
+        DrawIcon(icon,x+26,y+27,26,accent);
+        Text(label,x+76,y+15,w-94,22,bodyFmt_.Get(),brush_.muted.Get());
+        Text(value,x+76,y+39,w-94,42,bigFmt_.Get(),brush_.text.Get());
+        Text(sub,x+76,y+80,w-124,18,tinyFmt_.Get(),brush_.muted.Get());
         for(int i=0;i<5;i++) {
-            float bh=8.0f+i*4.0f;
-            target_->FillRectangle(D2D1::RectF(x+w-54+i*8,y+82-bh,x+w-49+i*8,y+82),accent);
+            float bh=8.0f+i*4.2f;
+            target_->FillRectangle(D2D1::RectF(x+w-54+i*8,y+91-bh,x+w-49+i*8,y+91),accent);
         }
     }
 
@@ -455,12 +484,12 @@ private:
         PageTitle(L"Dashboard",L"Overview of cases, evidence, and system integrity");
         float x=kSidebar+28,y=kHeader+96,g=14;
         float card=(w-x-28-g*3)/4;
-        Metric(x,y,card,L"Open Cases",std::to_wstring(cases_.size()),brush_.cyan.Get(),IconKind::Folder);
-        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(evidence_.size()),brush_.blue.Get(),IconKind::Database);
-        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get(),IconKind::Chain);
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get(),IconKind::Lock);
+        Metric(x,y,card,L"Open Cases",std::to_wstring(runtime_->OpenCaseCount()),L"Active investigations",brush_.cyan.Get(),IconKind::Folder);
+        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(runtime_->EvidenceCount()),L"Encrypted local objects",brush_.blue.Get(),IconKind::Database);
+        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),L"Hash-linked events",brush_.cyan.Get(),IconKind::Chain);
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",L"DPAPI protected",brush_.green.Get(),IconKind::Lock);
 
-        float panelY=y+126;
+        float panelY=y+130;
         float left=(w-x-42)*0.58f;
         Rounded(x,panelY,left,310,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Evidence Activity",x+18,panelY+15,260,28,h1Fmt_.Get(),brush_.text.Get());
@@ -491,13 +520,22 @@ private:
         Rounded(rx,panelY,rw,310,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Recent Activity",rx+18,panelY+15,rw-36,28,h1Fmt_.Get(),brush_.text.Get());
         std::vector<std::wstring> rows;
-        if (!cases_.empty()) rows.push_back(L"Case "+Widen(cases_[0].caseNumber)+L" opened");
-        if (!evidence_.empty()) rows.push_back(L"Evidence "+Widen(evidence_[0].originalFilename)+L" secured");
-        rows.push_back(L"Audit chain verified");
-        rows.push_back(L"Secure local store initialized");
+        sqlite3_stmt* recent{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),"SELECT action,target_type,target_id FROM audit_records ORDER BY sequence DESC LIMIT 4",-1,&recent,nullptr)==SQLITE_OK) {
+            while(sqlite3_step(recent)==SQLITE_ROW) {
+                int action=sqlite3_column_int(recent,0);
+                const char* type=(const char*)sqlite3_column_text(recent,1);
+                const char* id=(const char*)sqlite3_column_text(recent,2);
+                std::wstring row=L"Action "+std::to_wstring(action)+L" | "+Widen(type?type:"");
+                if(id && *id) row+=L" | "+Widen(id);
+                rows.push_back(row);
+            }
+        }
+        sqlite3_finalize(recent);
+        if(rows.empty()) rows.push_back(L"Secure local store initialized");
         for (size_t i=0;i<rows.size();++i) {
             float yy=panelY+58+(float)i*52;
-            DrawIcon(i<2?IconKind::Document:IconKind::Check,rx+18,yy-1,20,i<2?brush_.cyan.Get():brush_.green.Get());
+            DrawIcon(i==0?IconKind::Document:IconKind::Check,rx+18,yy-1,20,i==0?brush_.cyan.Get():brush_.green.Get());
             Text(rows[i],rx+50,yy,rw-66,22,bodyFmt_.Get(),brush_.text.Get());
             target_->DrawLine(D2D1::Point2F(rx+18,yy+34),D2D1::Point2F(rx+rw-18,yy+34),brush_.border.Get(),1);
         }
@@ -516,10 +554,35 @@ private:
 
         Rounded(rx,bottom,rw,150,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Quick Actions",rx+18,bottom+15,200,26,h1Fmt_.Get(),brush_.text.Get());
-        float bw=(rw-54)/3;
-        AddButton(L"new_case",L"New Case",rx+16,bottom+58,bw,58,true);
-        AddButton(L"import",L"Import Evidence",rx+26+bw,bottom+58,bw,58,false);
-        AddButton(L"integrity",L"Integrity Check",rx+36+2*bw,bottom+58,bw,58,false);
+        float gap=10.0f;
+        float bw=(rw-42-gap*3)/4.0f;
+        const float by=bottom+54, bh=72;
+        Rounded(rx+12,by,bw,bh,brush_.blue.Get(),brush_.cyan.Get(),8);
+        DrawIcon(IconKind::Folder,rx+24,by+14,26,brush_.text.Get());
+        Text(L"New Case",rx+56,by+16,bw-64,22,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Create investigation",rx+56,by+40,bw-64,18,tinyFmt_.Get(),brush_.text.Get());
+        buttons_.push_back({{rx+12,by,rx+12+bw,by+bh},L"new_case"});
+
+        float q2=rx+12+bw+gap;
+        Rounded(q2,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
+        DrawIcon(IconKind::Database,q2+12,by+14,26,brush_.cyan.Get());
+        Text(L"Import",q2+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Add evidence",q2+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
+        buttons_.push_back({{q2,by,q2+bw,by+bh},L"import"});
+
+        float q3=q2+bw+gap;
+        Rounded(q3,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
+        DrawIcon(IconKind::Shield,q3+12,by+14,26,brush_.green.Get());
+        Text(L"Verify",q3+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Authenticate file",q3+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
+        buttons_.push_back({{q3,by,q3+bw,by+bh},L"verify"});
+
+        float q4=q3+bw+gap;
+        Rounded(q4,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
+        DrawIcon(IconKind::Check,q4+12,by+14,26,brush_.green.Get());
+        Text(L"Integrity",q4+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Verify audit chain",q4+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
+        buttons_.push_back({{q4,by,q4+bw,by+bh},L"integrity"});
     }
 
     void DrawCases(float w,float h) {
@@ -618,10 +681,10 @@ private:
         PageTitle(L"Audit Log",L"Immutable activity records for system and evidence operations");
         float x=kSidebar+28,y=kHeader+100,g=14;
         float card=(w-x-28-g*3)/4;
-        Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get(),IconKind::Chain);
-        Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),brush_.cyan.Get(),IconKind::Document);
-        Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",brush_.green.Get(),IconKind::Shield);
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",brush_.green.Get(),IconKind::Lock);
+        Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",L"Tamper-evident ledger",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get(),IconKind::Chain);
+        Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),L"Recorded system events",brush_.cyan.Get(),IconKind::Document);
+        Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",L"Current chain status",brush_.green.Get(),IconKind::Shield);
+        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",L"Local encrypted mode",brush_.green.Get(),IconKind::Lock);
 
         float ty=y+126;
         Rounded(x,ty,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
