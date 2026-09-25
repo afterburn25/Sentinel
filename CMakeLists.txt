@@ -25,6 +25,7 @@ add_library(sentinel_core
     src/Evidence/SevContainer.cpp
     src/Evidence/EvidenceService.cpp
     src/Simulation/RuleBasedTestModel.cpp
+    src/Simulation/OpenAICompatibleModel.cpp
 )
 
 target_include_directories(sentinel_core PUBLIC include)
@@ -54,6 +55,8 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         shlwapi
         ole32
         uuid
+        winhttp
+        comctl32
     )
     target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE)
 endif()
