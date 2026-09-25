@@ -17,6 +17,7 @@
 #include <d2d1.h>
 #include <dwrite.h>
 #include <dwmapi.h>
+#include <uxtheme.h>
 #include <shlobj.h>
 #include <wrl/client.h>
 
@@ -80,6 +81,34 @@ std::filesystem::path MigrationsDir() {
     if (std::filesystem::exists(p)) return p;
     p = std::filesystem::current_path() / "migrations";
     return p;
+}
+
+std::wstring AuditActionName(int action) {
+    switch(action) {
+        case 1: return L"Application initialized";
+        case 100: return L"Case created";
+        case 101: return L"Case opened";
+        case 102: return L"Case updated";
+        case 103: return L"Case closed";
+        case 104: return L"Case reopened";
+        case 200: return L"Evidence import started";
+        case 201: return L"Evidence imported";
+        case 202: return L"Evidence viewed";
+        case 203: return L"Evidence verified";
+        case 204: return L"Evidence exported";
+        case 205: return L"Evidence derivative created";
+        case 206: return L"Evidence integrity failure";
+        case 300: return L"Key created";
+        case 301: return L"Key rotated";
+        case 400: return L"Integrity check started";
+        case 401: return L"Integrity check completed";
+        case 402: return L"Integrity check failed";
+        case 500: return L"Recovery started";
+        case 501: return L"Recovery completed";
+        case 502: return L"Recovery failed";
+        case 900: return L"Application shutdown";
+        default: return L"System event";
+    }
 }
 
 struct Runtime {
@@ -170,6 +199,12 @@ public:
             0,0,0,0,hwnd_,(HMENU)1002,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(caseNumberEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
+        SendMessageW(caseTitleEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
+        SendMessageW(caseNumberEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"CR-2026-0001");
+        SendMessageW(caseTitleEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Investigation title");
+        SetWindowTheme(caseNumberEdit_,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(caseTitleEdit_,L"DarkMode_Explorer",nullptr);
         ShowCaseEditors(false);
         return S_OK;
     }
@@ -234,6 +269,11 @@ public:
             InvalidateRect(hwnd_,nullptr,FALSE);
             return;
         }
+    }
+
+    HBRUSH EditBrush() {
+        static HBRUSH brush = CreateSolidBrush(RGB(15,32,48));
+        return brush;
     }
 
 private:
@@ -437,7 +477,7 @@ private:
             DrawIcon(NavIcon(i),27,y+3,26,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],70,y+5,130,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.3.2 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.3.3 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -526,7 +566,7 @@ private:
                 int action=sqlite3_column_int(recent,0);
                 const char* type=(const char*)sqlite3_column_text(recent,1);
                 const char* id=(const char*)sqlite3_column_text(recent,2);
-                std::wstring row=L"Action "+std::to_wstring(action)+L" | "+Widen(type?type:"");
+                std::wstring row=AuditActionName(action)+L" | "+Widen(type?type:"");
                 if(id && *id) row+=L" | "+Widen(id);
                 rows.push_back(row);
             }
@@ -703,7 +743,7 @@ private:
                 const char* type=(const char*)sqlite3_column_text(s,2);
                 const char* id=(const char*)sqlite3_column_text(s,3);
                 Text(Widen(ts?ts:""),x+18,yy,200,20,smallFmt_.Get(),brush_.text.Get());
-                Text(L"Action "+std::to_wstring(action),x+230,yy,180,20,bodyFmt_.Get(),brush_.text.Get());
+                Text(AuditActionName(action),x+230,yy,250,20,bodyFmt_.Get(),brush_.text.Get());
                 Text(Widen(type?type:"")+L"  "+Widen(id?id:""),x+520,yy,w-x-760,20,smallFmt_.Get(),brush_.text.Get());
                 Badge(L"Valid",w-190,yy-3,brush_.green.Get(),72);
                 row++;
