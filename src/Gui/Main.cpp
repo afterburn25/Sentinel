@@ -233,7 +233,7 @@ private:
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     ComPtr<IDWriteFactory> writeFactory_;
-    ComPtr<IDWriteTextFormat> titleFmt_,h1Fmt_,bodyFmt_,smallFmt_,bigFmt_;
+    ComPtr<IDWriteTextFormat> titleFmt_,h1Fmt_,bodyFmt_,smallFmt_,tinyFmt_,bigFmt_;
     BrushSet brush_;
     bool brushesReady_{false};
     std::vector<Button> buttons_;
@@ -251,6 +251,7 @@ private:
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,24,L"en-us",&h1Fmt_);
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,15,L"en-us",&bodyFmt_);
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,12,L"en-us",&smallFmt_);
+            writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_NORMAL,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,9,L"en-us",&tinyFmt_);
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,34,L"en-us",&bigFmt_);
         }
         if (!brushesReady_ && target_) {
@@ -403,7 +404,7 @@ private:
         DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
         DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
         Text(L"Sentinel",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,50,132,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -417,7 +418,7 @@ private:
             DrawIcon(NavIcon(i),26,y+2,28,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],66,y+5,135,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.3.0 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.3.1 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -438,7 +439,8 @@ private:
     }
 
     void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,ID2D1Brush* accent,IconKind icon) {
-        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),9);
+        Rounded(x,y,w,108,brush_.panel.Get(),brush_.border.Get(),10);
+        target_->DrawLine(D2D1::Point2F(x+12,y+1),D2D1::Point2F(x+w-12,y+1),accent,1.4f);
         Rounded(x+16,y+18,44,44,brush_.panel2.Get(),nullptr,12);
         DrawIcon(icon,x+25,y+27,26,accent);
         Text(label,x+74,y+16,w-92,22,bodyFmt_.Get(),brush_.muted.Get());
@@ -462,11 +464,27 @@ private:
         float left=(w-x-42)*0.58f;
         Rounded(x,panelY,left,310,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Evidence Activity",x+18,panelY+15,260,28,h1Fmt_.Get(),brush_.text.Get());
-        for (int i=0;i<8;i++) {
-            float bh=50+(i%4)*28;
-            float bx=x+65+i*70;
-            target_->FillRectangle(D2D1::RectF(bx,panelY+260-bh,bx+30,panelY+260),brush_.blue.Get());
-            Text(std::to_wstring(i+1),bx+8,panelY+268,30,18,smallFmt_.Get(),brush_.muted.Get());
+        const float chartLeft=x+54, chartRight=x+left-22, chartTop=panelY+58, chartBottom=panelY+254;
+        for(int gy=0;gy<5;gy++) {
+            float yy=chartTop+(chartBottom-chartTop)*gy/4.0f;
+            target_->DrawLine(D2D1::Point2F(chartLeft,yy),D2D1::Point2F(chartRight,yy),brush_.border.Get(),0.7f);
+        }
+        if (evidence_.empty()) {
+            DrawIcon(IconKind::Database,x+left*0.50f-22,panelY+112,44,brush_.muted.Get());
+            Text(L"No evidence activity yet",x+left*0.50f-90,panelY+166,180,24,bodyFmt_.Get(),brush_.muted.Get());
+            Text(L"Imported evidence will appear here.",x+left*0.50f-110,panelY+192,220,20,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const int bars=std::min<int>(8,(int)evidence_.size());
+            for(int i=0;i<bars;i++) {
+                float bh=48.0f+22.0f*(i%5);
+                float bx=chartLeft+24+i*((chartRight-chartLeft-60)/8.0f);
+                target_->FillRectangle(D2D1::RectF(bx,chartBottom-bh,bx+28,chartBottom),brush_.blue.Get());
+            }
+        }
+        static const wchar_t* labels[]={L"Mon",L"Tue",L"Wed",L"Thu",L"Fri",L"Sat",L"Sun",L"Now"};
+        for(int i=0;i<8;i++) {
+            float bx=chartLeft+12+i*((chartRight-chartLeft-28)/8.0f);
+            Text(labels[i],bx,chartBottom+12,42,18,tinyFmt_.Get(),brush_.muted.Get());
         }
 
         float rx=x+left+14,rw=w-rx-28;
@@ -479,18 +497,22 @@ private:
         rows.push_back(L"Secure local store initialized");
         for (size_t i=0;i<rows.size();++i) {
             float yy=panelY+58+(float)i*52;
-            Text(L"*",rx+18,yy,20,20,bodyFmt_.Get(),i<2?brush_.cyan.Get():brush_.green.Get());
-            Text(rows[i],rx+44,yy,rw-60,22,bodyFmt_.Get(),brush_.text.Get());
+            DrawIcon(i<2?IconKind::Document:IconKind::Check,rx+18,yy-1,20,i<2?brush_.cyan.Get():brush_.green.Get());
+            Text(rows[i],rx+50,yy,rw-66,22,bodyFmt_.Get(),brush_.text.Get());
             target_->DrawLine(D2D1::Point2F(rx+18,yy+34),D2D1::Point2F(rx+rw-18,yy+34),brush_.border.Get(),1);
         }
 
         float bottom=panelY+326;
         Rounded(x,bottom,left,150,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"System Integrity",x+18,bottom+15,240,26,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"● Secure Store",x+22,bottom+58,220,22,bodyFmt_.Get(),brush_.green.Get());
-        Text(L"● Audit Chain",x+220,bottom+58,220,22,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
-        Text(L"● AES-256-GCM",x+22,bottom+92,220,22,bodyFmt_.Get(),brush_.green.Get());
-        Text(L"● DPAPI Master Key",x+220,bottom+92,220,22,bodyFmt_.Get(),brush_.green.Get());
+        StatusDot(x+29,bottom+69,5,brush_.green.Get());
+        Text(L"Secure Store",x+43,bottom+58,160,22,bodyFmt_.Get(),brush_.green.Get());
+        StatusDot(x+227,bottom+69,5,runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        Text(L"Audit Chain",x+241,bottom+58,160,22,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        StatusDot(x+29,bottom+103,5,brush_.green.Get());
+        Text(L"AES-256-GCM",x+43,bottom+92,160,22,bodyFmt_.Get(),brush_.green.Get());
+        StatusDot(x+227,bottom+103,5,brush_.green.Get());
+        Text(L"DPAPI Master Key",x+241,bottom+92,180,22,bodyFmt_.Get(),brush_.green.Get());
 
         Rounded(rx,bottom,rw,150,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Quick Actions",rx+18,bottom+15,200,26,h1Fmt_.Get(),brush_.text.Get());
@@ -555,7 +577,7 @@ private:
             AddButton(L"dashboard",L"Return to Dashboard",x+24,y+82,190,44,true);
             return;
         }
-        Text(L"Selected case: "+Widen(cases_[selectedCase_].caseNumber)+L" — "+Widen(cases_[selectedCase_].title),x,y,650,28,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Selected case: "+Widen(cases_[selectedCase_].caseNumber)+L" - "+Widen(cases_[selectedCase_].title),x,y,650,28,bodyFmt_.Get(),brush_.text.Get());
         AddButton(L"import",L"+ Import Evidence",w-210,y-4,160,38,true);
 
         float tableY=y+48;
@@ -629,7 +651,7 @@ private:
         float by=ty+408;
         Rounded(x,by,w-x-28,120,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Audit Chain Integrity",x+18,by+14,260,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(runtime_->audit.VerifyChain()?L"✓ Chain verified — no tampering detected":L"WARNING  Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        Text(runtime_->audit.VerifyChain()?L"Chain verified - no tampering detected":L"WARNING  Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
         AddButton(L"integrity",L"Verify Audit Chain",w-220,by+38,165,42,true);
     }
 
@@ -669,7 +691,7 @@ private:
         Text(L"Location",x+22,y+60,100,20,smallFmt_.Get(),brush_.muted.Get());
         Text(runtime_->root.wstring(),x+130,y+58,w-x-180,24,bodyFmt_.Get(),brush_.text.Get());
         Text(L"Encryption",x+22,y+94,100,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"AES-256-GCM · DPAPI protected workstation master key",x+130,y+92,w-x-180,24,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"AES-256-GCM | DPAPI protected workstation master key",x+130,y+92,w-x-180,24,bodyFmt_.Get(),brush_.green.Get());
 
         Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
@@ -758,10 +780,10 @@ private:
             auto plain=sentinel::SevContainer::DecryptFile(evidence_[selectedEvidence_].storedPath,key.Span(),runtime_->cipher,runtime_->hash,&hash);
             if (hash!=evidence_[selectedEvidence_].originalHash) throw std::runtime_error("plaintext hash mismatch");
             runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::EvidenceVerified,"evidence",evidence_[selectedEvidence_].id.ToString(),{}});
-            lastVerify_=L"VALID · AUTHENTICATED · SHA-256 "+Widen(hash.ToHex()).substr(0,20)+L"...";
+            lastVerify_=L"VALID | AUTHENTICATED | SHA-256 "+Widen(hash.ToHex()).substr(0,20)+L"...";
             page_=Page::Verification; ShowCaseEditors(false); statusText_=L"Evidence verification passed";
         } catch (const std::exception& e) {
-            lastVerify_=L"INVALID · "+Widen(e.what());
+            lastVerify_=L"INVALID | "+Widen(e.what());
             page_=Page::Verification; ShowCaseEditors(false); statusText_=L"Verification failed";
         }
     }
