@@ -65,6 +65,7 @@ void Usage()
         "  SentinelCli <data-root> case-create <case-number> <title>\n"
         "  SentinelCli <data-root> case-list\n"
         "  SentinelCli <data-root> evidence-import <case-id> <file>\n"
+        "  SentinelCli <data-root> evidence-list <case-id>\n"
         "  SentinelCli <data-root> evidence-verify <case-id> <sev-file>\n"
         "  SentinelCli <data-root> audit-verify\n";
 }
@@ -144,6 +145,7 @@ int main(int argc, char** argv)
             auto caseKey = rt.keys.GetCaseKey(*caseId);
             sentinel::EvidenceService evidence(
                 root / "evidence",
+                rt.db,
                 rt.random,
                 rt.hash,
                 rt.cipher,
@@ -159,6 +161,41 @@ int main(int argc, char** argv)
             std::cout << "Original SHA-256: " << result.originalHash.ToHex() << "\n";
             std::cout << "Container SHA-256: " << result.containerHash.ToHex() << "\n";
             std::cout << "Stored: " << result.storedPath.string() << "\n";
+            return 0;
+        }
+
+
+        if (command == "evidence-list") {
+            if (argc < 4) {
+                Usage();
+                return 2;
+            }
+            const auto caseId = sentinel::CaseId::Parse(argv[3]);
+            if (!caseId) throw std::runtime_error("invalid case id");
+            if (!rt.cases.GetCase(*caseId)) throw std::runtime_error("case not found");
+
+            auto caseKey = rt.keys.GetCaseKey(*caseId);
+            sentinel::EvidenceService evidence(
+                root / "evidence",
+                rt.db,
+                rt.random,
+                rt.hash,
+                rt.cipher,
+                rt.audit);
+
+            const auto items = evidence.ListForCase(*caseId, caseKey.Span());
+            if (items.empty()) {
+                std::cout << "No evidence.\n";
+                return 0;
+            }
+
+            for (const auto& item : items) {
+                std::cout << item.id.ToString() << "  "
+                          << item.originalFilename << "  "
+                          << item.originalSize << " bytes  "
+                          << item.originalHash.ToHex() << "\n";
+                std::cout << "  " << item.storedPath.string() << "\n";
+            }
             return 0;
         }
 
