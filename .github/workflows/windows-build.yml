@@ -98,7 +98,7 @@ jobs:
         shell: pwsh
         run: |
           $root = "package/Sentinel-0.2.0-windows-x64"
-          if (-not (Test-Path "$root/SentinelConsole.cmd")) { throw "SentinelConsole.cmd missing" }
+          if (-not (Test-Path "$root/Sentinel.exe")) { throw "Sentinel.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
 
