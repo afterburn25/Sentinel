@@ -15,6 +15,7 @@
 #undef DecryptFile
 #endif
 #include <commdlg.h>
+#include <commctrl.h>
 #include <d2d1.h>
 #include <dwrite.h>
 #include <dwmapi.h>
@@ -24,6 +25,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -37,6 +39,8 @@ namespace {
 constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
+constexpr UINT_PTR kSimReplyTimer = 4101;
+constexpr int kSimVisibleRows = 6;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Settings };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
@@ -200,9 +204,17 @@ public:
             0,0,0,0,hwnd_,(HMENU)1002,GetModuleHandleW(nullptr),nullptr);
         chatEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
             0,0,0,0,hwnd_,(HMENU)1003,GetModuleHandleW(nullptr),nullptr);
+        modelEndpointEdit_ = CreateWindowExW(0,L"EDIT",L"http://127.0.0.1:1234/v1/chat/completions",
+            WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1004,GetModuleHandleW(nullptr),nullptr);
+        modelNameEdit_ = CreateWindowExW(0,L"EDIT",L"local-model",
+            WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1005,GetModuleHandleW(nullptr),nullptr);
+        simScroll_ = CreateWindowExW(0,L"SCROLLBAR",L"",WS_CHILD|SBS_VERT,
+            0,0,0,0,hwnd_,(HMENU)1006,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(chatEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseNumberEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseTitleEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseNumberEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"CR-2026-0001");
@@ -210,9 +222,16 @@ public:
         SetWindowTheme(caseNumberEdit_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(caseTitleEdit_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(chatEdit_,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(modelEndpointEdit_,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(modelNameEdit_,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(simScroll_,L"DarkMode_Explorer",nullptr);
         SendMessageW(chatEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
-        SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message...");
+        SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
+        SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
+        SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
+        SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         model_=sentinel::simulation::CreateRuleBasedTestModel();
+        modelStatus_=L"Built-in test model";
         ResetSimulation();
         ShowCaseEditors(false);
         ShowChatEditor(false);
@@ -279,6 +298,7 @@ public:
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset") ResetSimulation();
+            else if (b.id==L"sim_model") ConfigureLocalModel();
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
             InvalidateRect(hwnd_,nullptr,FALSE);
@@ -291,10 +311,58 @@ public:
         return brush;
     }
 
+    void HandleSimScroll(WPARAM wp) {
+        if(page_!=Page::Simulation) return;
+        int maxStart=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
+        switch(LOWORD(wp)) {
+            case SB_LINEUP: simFirstVisible_--; break;
+            case SB_LINEDOWN: simFirstVisible_++; break;
+            case SB_PAGEUP: simFirstVisible_-=kSimVisibleRows; break;
+            case SB_PAGEDOWN: simFirstVisible_+=kSimVisibleRows; break;
+            case SB_THUMBTRACK:
+            case SB_THUMBPOSITION: simFirstVisible_=HIWORD(wp); break;
+            case SB_TOP: simFirstVisible_=0; break;
+            case SB_BOTTOM: simFirstVisible_=maxStart; break;
+        }
+        simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
+        UpdateSimulationScrollbar();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void HandleSimWheel(short delta) {
+        if(page_!=Page::Simulation) return;
+        simFirstVisible_ += delta>0 ? -2 : 2;
+        int maxStart=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
+        simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
+        UpdateSimulationScrollbar();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void HandleTimer(UINT_PTR id) {
+        if(id!=kSimReplyTimer) return;
+        KillTimer(hwnd_,kSimReplyTimer);
+        if(!simBotTyping_) return;
+        try {
+            if(model_) {
+                auto reply=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,reply});
+                statusText_=L"Model response received";
+            }
+        } catch(const std::exception& e) {
+            simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::ModelSuggestion,
+                std::string("Model error: ")+e.what()});
+            statusText_=L"Model request failed";
+        }
+        simBotTyping_=false;
+        simPendingMessage_.clear();
+        ScrollSimulationToBottom();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
 private:
     struct Button { RectF rect; std::wstring id; };
 
-    HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{};
+    HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},simScroll_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -305,6 +373,10 @@ private:
     std::unique_ptr<sentinel::simulation::IModelAdapter> model_;
     sentinel::simulation::ModelContext simContext_;
     std::wstring simSuggestion_=L"No suggestion generated yet";
+    std::wstring modelStatus_=L"Built-in test model";
+    int simFirstVisible_{0};
+    bool simBotTyping_{false};
+    std::string simPendingMessage_;
 
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
@@ -500,7 +572,7 @@ private:
             DrawIcon(NavIcon(i),27,y+3,26,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],70,y+5,130,28,bodyFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v0.4.0 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v0.4.1 GUI Alpha",24,760,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,782,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -813,59 +885,98 @@ private:
     void DrawSimulation(float w,float h) {
         PageTitle(L"Simulation Lab",L"Safe synthetic conversation testing and model evaluation");
         float x=kSidebar+28,y=kHeader+102;
-        float right=330.0f;
+        float right=350.0f;
         float chatW=w-x-right-44;
 
         Rounded(x,y,chatW,520,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Synthetic Conversation",x+18,y+14,260,28,h1Fmt_.Get(),brush_.text.Get());
         Badge(L"SIMULATION",x+chatW-116,y+16,brush_.cyan.Get(),96);
 
-        float yy=y+58;
-        size_t start=simContext_.history.size()>7?simContext_.history.size()-7:0;
-        for(size_t i=start;i<simContext_.history.size();++i) {
-            const auto& turn=simContext_.history[i];
+        const float transcriptTop=y+58;
+        const float transcriptBottom=y+432;
+        const int total=(int)simContext_.history.size();
+        const int maxStart=std::max(0,total-kSimVisibleRows);
+        simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
+        const int end=std::min(total,simFirstVisible_+kSimVisibleRows);
+        const int visible=std::max(0,end-simFirstVisible_);
+        float yy=transcriptBottom-visible*58.0f;
+        for(int i=simFirstVisible_;i<end;++i) {
+            const auto& turn=simContext_.history[(size_t)i];
             bool investigator=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
             bool suggestion=turn.speaker==sentinel::simulation::ChatTurn::Speaker::ModelSuggestion;
-            float bubbleW=std::min(chatW-90.0f,560.0f);
-            float bx=investigator?x+chatW-bubbleW-20:x+20;
+            float bubbleW=std::min(chatW-112.0f,560.0f);
+            float bx=investigator?x+chatW-bubbleW-34:x+20;
             ID2D1Brush* fill=investigator?brush_.panel2.Get():brush_.sidebar.Get();
             ID2D1Brush* border=suggestion?brush_.yellow.Get():(investigator?brush_.blue.Get():brush_.border.Get());
-            Rounded(bx,yy,bubbleW,52,fill,border,9);
-            Text(investigator?L"Investigator":suggestion?L"Model Suggestion":L"Synthetic Subject",bx+12,yy+6,bubbleW-24,16,tinyFmt_.Get(),
+            Rounded(bx,yy,bubbleW,48,fill,border,9);
+            Text(investigator?L"Investigator":suggestion?L"Model / System":L"Synthetic Subject",bx+12,yy+5,bubbleW-24,15,tinyFmt_.Get(),
                 suggestion?brush_.yellow.Get():(investigator?brush_.cyan.Get():brush_.green.Get()));
-            Text(Widen(turn.text),bx+12,yy+23,bubbleW-24,24,smallFmt_.Get(),brush_.text.Get());
-            yy+=64;
+            Text(Widen(turn.text),bx+12,yy+20,bubbleW-24,24,smallFmt_.Get(),brush_.text.Get());
+            yy+=58;
+        }
+        if(simBotTyping_) {
+            Rounded(x+20,transcriptBottom-42,190,32,brush_.sidebar.Get(),brush_.border.Get(),16);
+            StatusDot(x+38,transcriptBottom-26,3,brush_.green.Get());
+            Text(L"Synthetic subject is typing...",x+50,transcriptBottom-35,150,20,tinyFmt_.Get(),brush_.muted.Get());
         }
 
-        MoveWindow(chatEdit_,(int)(x+18),(int)(y+456),(int)(chatW-248),38,TRUE);
-        AddButton(L"sim_send",L"Send Test Message",x+chatW-216,y+456,198,38,true);
+        MoveWindow(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
+        UpdateSimulationScrollbar();
+
+        MoveWindow(chatEdit_,(int)(x+18),(int)(y+454),(int)(chatW-240),40,TRUE);
+        AddButton(L"sim_send",L"Send",x+chatW-210,y+454,190,40,true);
 
         float rx=x+chatW+14;
-        Rounded(rx,y,right,250,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Scenario State",rx+18,y+14,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Mode",rx+18,y+58,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Synthetic only",rx+116,y+56,190,20,bodyFmt_.Get(),brush_.green.Get());
-        Text(L"Scenario",rx+18,y+90,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Neutral conversation test",rx+116,y+88,190,20,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Persona",rx+18,y+122,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Alex - synthetic profile",rx+116,y+120,190,20,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Policy",rx+18,y+154,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        StatusDot(rx+121,y+163,4,brush_.green.Get());
-        Text(L"Test-safe",rx+132,y+153,150,20,smallFmt_.Get(),brush_.green.Get());
-        Text(L"Model",rx+18,y+186,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(model_?model_->Name():"Not configured"),rx+116,y+184,190,40,tinyFmt_.Get(),brush_.text.Get());
+        Rounded(rx,y,right,318,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Scenario / Model",rx+18,y+14,right-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Mode",rx+18,y+56,86,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"Synthetic only",rx+110,y+54,210,20,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"Persona",rx+18,y+86,86,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"Alex - fictional test profile",rx+110,y+84,210,20,smallFmt_.Get(),brush_.text.Get());
+        Text(L"Policy",rx+18,y+116,86,18,tinyFmt_.Get(),brush_.muted.Get());
+        StatusDot(rx+115,y+125,4,brush_.green.Get());
+        Text(L"Simulation-safe",rx+126,y+115,170,20,smallFmt_.Get(),brush_.green.Get());
 
-        Rounded(rx,y+264,right,256,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Model Suggestion",rx+18,y+278,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Rounded(rx+18,y+320,right-36,112,brush_.sidebar.Get(),brush_.border.Get(),8);
-        Text(simSuggestion_,rx+30,y+334,right-60,86,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"sim_suggest",L"Generate Suggestion",rx+18,y+448,154,38,false);
-        AddButton(L"sim_reset",L"Reset Session",rx+184,y+448,128,38,false);
-        Text(L"No external messages are sent from Simulation Lab.",rx+18,y+494,right-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"OpenAI-compatible endpoint",rx+18,y+148,right-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelEndpointEdit_,(int)(rx+18),(int)(y+168),(int)(right-36),32,TRUE);
+        Text(L"Model name",rx+18,y+207,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+226),(int)(right-142),32,TRUE);
+        AddButton(L"sim_model",L"Connect",rx+right-114,y+226,96,32,true);
+        StatusDot(rx+24,y+278,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        Text(modelStatus_,rx+36,y+267,right-54,36,tinyFmt_.Get(),brush_.text.Get());
+
+        Rounded(rx,y+332,right,188,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Model Suggestion",rx+18,y+346,right-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(rx+18,y+386,right-36,68,brush_.sidebar.Get(),brush_.border.Get(),8);
+        Text(simSuggestion_,rx+28,y+397,right-56,48,tinyFmt_.Get(),brush_.text.Get());
+        AddButton(L"sim_suggest",L"Generate",rx+18,y+466,118,34,false);
+        AddButton(L"sim_reset",L"Reset",rx+146,y+466,92,34,false);
+        Text(L"Responses are delayed in Simulation Lab to mimic natural pacing.",rx+18,y+503,right-36,15,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void ShowChatEditor(bool show) {
         if(chatEdit_) ShowWindow(chatEdit_,show?SW_SHOW:SW_HIDE);
+        if(modelEndpointEdit_) ShowWindow(modelEndpointEdit_,show?SW_SHOW:SW_HIDE);
+        if(modelNameEdit_) ShowWindow(modelNameEdit_,show?SW_SHOW:SW_HIDE);
+        if(simScroll_) ShowWindow(simScroll_,show?SW_SHOW:SW_HIDE);
+    }
+
+    void UpdateSimulationScrollbar() {
+        if(!simScroll_) return;
+        int maxStart=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
+        SCROLLINFO si{};
+        si.cbSize=sizeof(si);
+        si.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
+        si.nMin=0;
+        si.nMax=std::max(0,(int)simContext_.history.size()-1);
+        si.nPage=kSimVisibleRows;
+        si.nPos=std::clamp(simFirstVisible_,0,maxStart);
+        SetScrollInfo(simScroll_,SB_CTL,&si,TRUE);
+    }
+
+    void ScrollSimulationToBottom() {
+        simFirstVisible_=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
+        UpdateSimulationScrollbar();
     }
 
     void ResetSimulation() {
@@ -875,24 +986,51 @@ private:
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
             "Simulation ready. Send a test message to begin."});
         simSuggestion_=L"No suggestion generated yet";
+        simBotTyping_=false;
+        simPendingMessage_.clear();
+        KillTimer(hwnd_,kSimReplyTimer);
         if(chatEdit_) SetWindowTextW(chatEdit_,L"");
+        ScrollSimulationToBottom();
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
     void SendSimulationMessage() {
+        if(simBotTyping_) return;
         wchar_t buffer[2048]{};
         GetWindowTextW(chatEdit_,buffer,2048);
         std::wstring message=buffer;
+        while(!message.empty() && (message.back()==L'\r' || message.back()==L'\n' || message.back()==L' ')) message.pop_back();
         if(message.empty()) return;
         auto utf8=Narrow(message);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
-        if(model_) {
-            auto reply=model_->GenerateSyntheticReply(utf8,simContext_);
-            simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,reply});
-        }
         SetWindowTextW(chatEdit_,L"");
         simSuggestion_=L"No suggestion generated yet";
-        statusText_=L"Simulation message processed";
+        simPendingMessage_=utf8;
+        simBotTyping_=true;
+        ScrollSimulationToBottom();
+        int delay=std::clamp(900+(int)utf8.size()*32,1200,3600);
+        SetTimer(hwnd_,kSimReplyTimer,(UINT)delay,nullptr);
+        statusText_=L"Synthetic subject typing";
+        SetFocus(chatEdit_);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void ConfigureLocalModel() {
+        wchar_t endpoint[2048]{}, modelName[512]{};
+        GetWindowTextW(modelEndpointEdit_,endpoint,2048);
+        GetWindowTextW(modelNameEdit_,modelName,512);
+        std::wstring we=endpoint, wm=modelName;
+        if(we.empty() || wm.empty()) {
+            modelStatus_=L"Enter an endpoint URL and model name.";
+            return;
+        }
+        try {
+            model_=sentinel::simulation::CreateOpenAICompatibleModel(Narrow(we),Narrow(wm));
+            modelStatus_=L"Connected configuration: "+wm;
+            statusText_=L"Local model configured";
+        } catch(const std::exception& e) {
+            modelStatus_=L"Configuration error: "+Widen(e.what());
+        }
     }
 
     void GenerateSimulationSuggestion() {
@@ -900,10 +1038,23 @@ private:
             simSuggestion_=L"No model adapter configured.";
             return;
         }
-        auto suggestion=model_->GenerateInvestigatorSuggestion(simContext_);
-        simSuggestion_=Widen(suggestion);
-        simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::ModelSuggestion,suggestion});
-        statusText_=L"Test suggestion generated";
+        try {
+            auto suggestion=model_->GenerateInvestigatorSuggestion(simContext_);
+            simSuggestion_=Widen(suggestion);
+            statusText_=L"Test suggestion generated";
+        } catch(const std::exception& e) {
+            simSuggestion_=L"Model error: "+Widen(e.what());
+            statusText_=L"Model request failed";
+        }
+    }
+
+    static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
+        auto* app=reinterpret_cast<App*>(ref);
+        if(msg==WM_KEYDOWN && wp==VK_RETURN) {
+            if(app) app->SendSimulationMessage();
+            return 0;
+        }
+        return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
     void DrawSettings(float w,float h) {
@@ -918,7 +1069,7 @@ private:
 
         Rounded(x,y+168,w-x-28,145,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel 0.3.0 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel 0.4.1 Native GUI Alpha",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
         Text(L"Offline-first. No agency server configured.",x+22,y+264,430,24,bodyFmt_.Get(),brush_.muted.Get());
     }
 
@@ -1040,6 +1191,9 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             SetBkColor(dc,RGB(15,32,48));
             return g_app ? (LRESULT)g_app->EditBrush() : (LRESULT)GetStockObject(BLACK_BRUSH);
         }
+        case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
+        case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
+        case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
         case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
