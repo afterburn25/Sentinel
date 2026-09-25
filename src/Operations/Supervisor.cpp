@@ -1,17 +1,20 @@
 #include "Sentinel/Operations/Supervisor.hpp"
-#include <iomanip>
-#include <sstream>
-#include <functional>
+#include "Sentinel/Security/Crypto.hpp"
+#include <span>
 
 namespace sentinel::operations {
+
 std::string ComputeApprovalActionHash(const std::string& canonicalAction) {
-    auto v=std::hash<std::string>{}(canonicalAction);
-    std::ostringstream out; out<<std::hex<<std::setw(sizeof(v)*2)<<std::setfill('0')<<v;
-    return out.str();
+    sentinel::WindowsHashService hash;
+    auto chars=std::span<const char>(canonicalAction.data(),canonicalAction.size());
+    auto bytes=std::as_bytes(chars);
+    return hash.Sha256(bytes).ToHex();
 }
+
 ApprovalRequest CreateApprovalRequest(const std::string& action,const std::string& requestedBy) {
     ApprovalRequest r;
-    r.id="approval-"+ComputeApprovalActionHash(action+"|"+requestedBy);
+    const auto seed=action+"|"+requestedBy;
+    r.id="approval-"+ComputeApprovalActionHash(seed).substr(0,24);
     r.action=action;
     r.actionHash=ComputeApprovalActionHash(action);
     r.requestedBy=requestedBy;
