@@ -238,13 +238,24 @@ void SqliteCaseRepository::Update(const CaseRecord& r)
     const auto modified = ToIso8601Utc(r.modifiedAt);
 
     sqlite3_bind_text(stmt, 1, id.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_blob(stmt, 2, number.cipher.data(), static_cast<int>(number.cipher.size()), SQLITE_TRANSIENT);
+    static const std::byte emptyBlob{0};
+    const auto bindCipher = [&](int index, const std::vector<std::byte>& value) {
+        sqlite3_bind_blob(
+            stmt,
+            index,
+            value.empty() ? static_cast<const void*>(&emptyBlob)
+                          : static_cast<const void*>(value.data()),
+            static_cast<int>(value.size()),
+            SQLITE_TRANSIENT);
+    };
+
+    bindCipher(2, number.cipher);
     sqlite3_bind_blob(stmt, 3, number.nonce.data(), static_cast<int>(number.nonce.size()), SQLITE_TRANSIENT);
     sqlite3_bind_blob(stmt, 4, number.tag.data(), static_cast<int>(number.tag.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_blob(stmt, 5, title.cipher.data(), static_cast<int>(title.cipher.size()), SQLITE_TRANSIENT);
+    bindCipher(5, title.cipher);
     sqlite3_bind_blob(stmt, 6, title.nonce.data(), static_cast<int>(title.nonce.size()), SQLITE_TRANSIENT);
     sqlite3_bind_blob(stmt, 7, title.tag.data(), static_cast<int>(title.tag.size()), SQLITE_TRANSIENT);
-    sqlite3_bind_blob(stmt, 8, description.cipher.data(), static_cast<int>(description.cipher.size()), SQLITE_TRANSIENT);
+    bindCipher(8, description.cipher);
     sqlite3_bind_blob(stmt, 9, description.nonce.data(), static_cast<int>(description.nonce.size()), SQLITE_TRANSIENT);
     sqlite3_bind_blob(stmt, 10, description.tag.data(), static_cast<int>(description.tag.size()), SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 11, static_cast<int>(r.status));
