@@ -45,4 +45,8 @@ std::unique_ptr<IModelAdapter> CreateOpenAICompatibleModel(
     std::string model,
     std::string apiKey = {});
 
+std::vector<std::string> DiscoverOpenAICompatibleModels(
+    std::string endpoint,
+    std::string apiKey = {});
+
 }
