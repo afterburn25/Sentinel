@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(SENTINEL_BUILD_TESTS "Build Sentinel tests" ON)
 option(SENTINEL_BUILD_TOOLS "Build Sentinel command-line tools" ON)
+option(SENTINEL_BUILD_GUI "Build Sentinel native Windows GUI" ON)
 
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
@@ -36,6 +37,24 @@ endif()
 add_executable(SentinelCli src/App/main.cpp)
 target_link_libraries(SentinelCli PRIVATE sentinel_core)
 
+if(WIN32 AND SENTINEL_BUILD_GUI)
+    add_executable(Sentinel WIN32
+        src/Gui/Main.cpp
+    )
+    target_link_libraries(Sentinel PRIVATE
+        sentinel_core
+        d2d1
+        dwrite
+        windowscodecs
+        comdlg32
+        shell32
+        shlwapi
+        ole32
+        uuid
+    )
+    target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE)
+endif()
+
 if(SENTINEL_BUILD_TOOLS)
     add_executable(SentinelEvidenceVerifier tools/SentinelEvidenceVerifier/main.cpp)
     target_link_libraries(SentinelEvidenceVerifier PRIVATE sentinel_core)
@@ -60,6 +79,12 @@ endif()
 install(TARGETS SentinelCli
     RUNTIME DESTINATION bin
 )
+
+if(WIN32 AND SENTINEL_BUILD_GUI)
+    install(TARGETS Sentinel
+        RUNTIME DESTINATION .
+    )
+endif()
 
 if(SENTINEL_BUILD_TOOLS)
     install(TARGETS SentinelEvidenceVerifier
