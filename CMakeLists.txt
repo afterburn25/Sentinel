@@ -69,3 +69,5 @@ endif()
 
 install(DIRECTORY migrations/ DESTINATION migrations)
 install(FILES README.md DESTINATION .)
+
+install(FILES resources/SentinelConsole.cmd DESTINATION .)
