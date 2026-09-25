@@ -9,6 +9,7 @@
 #include "Sentinel/Storage/MigrationService.hpp"
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -67,7 +68,8 @@ void Usage()
         "  SentinelCli <data-root> evidence-import <case-id> <file>\n"
         "  SentinelCli <data-root> evidence-list <case-id>\n"
         "  SentinelCli <data-root> evidence-verify <case-id> <sev-file>\n"
-        "  SentinelCli <data-root> audit-verify\n";
+        "  SentinelCli <data-root> audit-verify\n"
+        "  SentinelCli <data-root> self-test\n";
 }
 
 }
@@ -219,6 +221,136 @@ int main(int argc, char** argv)
             std::cout << "Evidence authentication: VALID\n";
             std::cout << "Plaintext SHA-256: " << plaintextHash.ToHex() << "\n";
             std::cout << "Plaintext bytes: " << plaintext.size() << "\n";
+            return 0;
+        }
+
+
+        if (command == "self-test") {
+            const auto actor = sentinel::UserId::Random();
+            sentinel::CaseRecord record;
+            {
+                sentinel::SqliteTransaction tx(rt.db);
+                record = rt.cases.CreateCase({
+                    "SELFTEST-0001",
+                    "Sentinel End-to-End Self Test",
+                    "Encrypted local test case",
+                    actor
+                });
+                rt.keys.CreateCaseKey(record.id);
+                rt.caseRepo.Update(record);
+                rt.audit.Append({
+                    actor,
+                    sentinel::AuditAction::CaseCreated,
+                    "case",
+                    record.id.ToString(),
+                    {}
+                });
+                tx.Commit();
+            }
+
+            const auto reopened = rt.cases.GetCase(record.id);
+            if (!reopened ||
+                reopened->caseNumber != "SELFTEST-0001" ||
+                reopened->title != "Sentinel End-to-End Self Test" ||
+                reopened->description != "Encrypted local test case")
+                throw std::runtime_error("encrypted case reopen self-test failed");
+
+            sqlite3_stmt* secureCheck{};
+            if (sqlite3_prepare_v2(
+                    rt.db.Handle(),
+                    "SELECT case_number,title,description,"
+                    "case_number_cipher,title_cipher,description_cipher "
+                    "FROM cases WHERE id=?1",
+                    -1,
+                    &secureCheck,
+                    nullptr) != SQLITE_OK)
+                throw std::runtime_error("self-test case storage query failed");
+
+            const auto caseText = record.id.ToString();
+            sqlite3_bind_text(
+                secureCheck, 1, caseText.c_str(), -1, SQLITE_TRANSIENT);
+
+            if (sqlite3_step(secureCheck) != SQLITE_ROW) {
+                sqlite3_finalize(secureCheck);
+                throw std::runtime_error("self-test case row missing");
+            }
+
+            const auto* legacyNumber =
+                reinterpret_cast<const char*>(sqlite3_column_text(secureCheck, 0));
+            const auto* legacyTitle =
+                reinterpret_cast<const char*>(sqlite3_column_text(secureCheck, 1));
+            const auto* legacyDescription =
+                reinterpret_cast<const char*>(sqlite3_column_text(secureCheck, 2));
+
+            const bool plaintextBlank =
+                (!legacyNumber || legacyNumber[0] == '\0') &&
+                (!legacyTitle || legacyTitle[0] == '\0') &&
+                (!legacyDescription || legacyDescription[0] == '\0');
+            const bool encryptedPresent =
+                sqlite3_column_type(secureCheck, 3) == SQLITE_BLOB &&
+                sqlite3_column_type(secureCheck, 4) == SQLITE_BLOB &&
+                sqlite3_column_type(secureCheck, 5) == SQLITE_BLOB;
+
+            sqlite3_finalize(secureCheck);
+
+            if (!plaintextBlank || !encryptedPresent)
+                throw std::runtime_error("case metadata was not stored encrypted");
+
+            const auto sample = root / "self-test-evidence.txt";
+            const std::string payload =
+                "Sentinel end-to-end authenticated evidence self-test\n";
+            {
+                std::ofstream out(sample, std::ios::binary | std::ios::trunc);
+                if (!out) throw std::runtime_error("cannot create self-test evidence");
+                out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+            }
+
+            auto caseKey = rt.keys.GetCaseKey(record.id);
+            sentinel::EvidenceService evidence(
+                root / "evidence",
+                rt.db,
+                rt.random,
+                rt.hash,
+                rt.cipher,
+                rt.audit);
+
+            const auto imported = evidence.Import(
+                {record.id, sample, 0, actor},
+                caseKey.Span());
+
+            const auto listed = evidence.ListForCase(record.id, caseKey.Span());
+            if (listed.size() != 1 ||
+                listed.front().id.ToString() != imported.id.ToString() ||
+                listed.front().originalFilename != sample.filename().string())
+                throw std::runtime_error("persistent evidence listing self-test failed");
+
+            sentinel::Hash256 verifiedHash{};
+            const auto recovered = sentinel::SevContainer::DecryptFile(
+                imported.storedPath,
+                caseKey.Span(),
+                rt.cipher,
+                rt.hash,
+                &verifiedHash);
+
+            const std::string recoveredText(
+                reinterpret_cast<const char*>(recovered.data()),
+                recovered.size());
+
+            if (recoveredText != payload ||
+                verifiedHash != imported.originalHash)
+                throw std::runtime_error("evidence authentication self-test failed");
+
+            if (!rt.audit.VerifyChain())
+                throw std::runtime_error("audit-chain self-test failed");
+
+            std::filesystem::remove(sample);
+
+            std::cout << "SENTINEL SELF-TEST: PASS\n";
+            std::cout << "Case encryption: PASS\n";
+            std::cout << "Case reopen: PASS\n";
+            std::cout << "Evidence encryption/authentication: PASS\n";
+            std::cout << "Evidence persistence/listing: PASS\n";
+            std::cout << "Audit chain: PASS\n";
             return 0;
         }
 
