@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sentinel VERSION 0.2.0 LANGUAGES CXX)
+project(Sentinel VERSION 0.4.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,7 @@ target_link_libraries(SentinelCli PRIVATE sentinel_core)
 if(WIN32 AND SENTINEL_BUILD_GUI)
     add_executable(Sentinel WIN32
         src/Gui/Main.cpp
+        resources/SentinelVersion.rc
     )
     target_link_libraries(Sentinel PRIVATE
         sentinel_core
