@@ -54,7 +54,22 @@ jobs:
         run: |
           $exe = "out/build/windows-msvc-release/Release/SentinelCli.exe"
           if (-not (Test-Path $exe)) { throw "SentinelCli.exe missing before dependency check" }
-          $deps = & dumpbin /dependents $exe | Out-String
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+          $vsRoot = & $vswhere -latest -products * -property installationPath
+          if (-not $vsRoot) { throw "Visual Studio installation not found" }
+
+          $devCmd = Join-Path $vsRoot "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $devCmd)) { throw "VsDevCmd.bat not found" }
+
+          $outputFile = Join-Path $env:RUNNER_TEMP "sentinel-dependencies.txt"
+          $cmd = '"' + $devCmd + '" -arch=x64 -host_arch=x64 >nul && dumpbin /dependents "' + $exe + '" > "' + $outputFile + '"'
+          cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin dependency inspection failed" }
+
+          $deps = Get-Content $outputFile -Raw
           $deps | Write-Host
           if ($deps -match '(?i)sqlite3\.dll') {
             throw "SentinelCli.exe still depends on sqlite3.dll"
