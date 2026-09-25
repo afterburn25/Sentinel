@@ -1025,11 +1025,18 @@ private:
             return;
         }
         try {
-            model_=sentinel::simulation::CreateOpenAICompatibleModel(Narrow(we),Narrow(wm));
-            modelStatus_=L"Connected configuration: "+wm;
-            statusText_=L"Local model configured";
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(Narrow(we),Narrow(wm));
+            sentinel::simulation::ModelContext testContext;
+            testContext.scenario="Sentinel local model connection test";
+            testContext.personaSummary="Synthetic test only.";
+            auto probe=candidate->GenerateInvestigatorSuggestion(testContext);
+            model_=std::move(candidate);
+            modelStatus_=L"Connected: "+wm;
+            simSuggestion_=L"Connection test passed.";
+            statusText_=L"Local model connected";
         } catch(const std::exception& e) {
-            modelStatus_=L"Configuration error: "+Widen(e.what());
+            modelStatus_=L"Connection failed: "+Widen(e.what());
+            statusText_=L"Local model connection failed";
         }
     }
 
