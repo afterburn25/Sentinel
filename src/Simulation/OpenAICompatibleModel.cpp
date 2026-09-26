@@ -136,7 +136,7 @@ std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     auto u=ParseUrl(endpoint);
     auto modelsPath=ModelsPathFromChatPath(u.path);
 
-    HINTERNET session=WinHttpOpen(L"Sentinel/0.4",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
     if(!session) throw std::runtime_error("WinHttpOpen failed");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
 
@@ -231,10 +231,15 @@ public:
         const ModelContext& context) override
     {
         std::string system =
-            "You are a synthetic test counterpart inside Sentinel Simulation Lab. "
-            "This is a closed simulation only. Stay consistent with this fictional persona: "
-            + context.personaSummary +
-            " Do not claim real-world actions occurred. Reply naturally and concisely to the investigator's test message.";
+            "You are the synthetic counterpart inside Sentinel Simulation Lab. This is a closed simulation only. "
+            "Stay strictly consistent with this configured fictional persona: " + context.personaSummary + " "
+            "Conversation rules: answer the investigator's most recent message directly before adding anything else; "
+            "use the recent conversation history to resolve pronouns, follow-ups, yes/no replies, and references such as 'that' or 'why'; "
+            "do not ignore a direct question and pivot to an unrelated topic; do not invent persona facts that are not in the configured profile; "
+            "if a requested fact is not configured, say naturally that you have not shared or established it yet; "
+            "keep tone natural and conversational, usually 1-3 short sentences; ask at most one relevant follow-up question; "
+            "avoid repetitive stock phrases and do not sound like a customer-service bot; "
+            "do not claim real-world actions occurred outside this simulation.";
 
         return Complete(system,context,std::string(investigatorMessage));
     }
@@ -243,9 +248,10 @@ public:
         const ModelContext& context) override
     {
         std::string system =
-            "You are Sentinel's test response assistant inside a closed Simulation Lab. "
-            "Suggest one concise investigator reply for testing. "
-            "Preserve the configured synthetic persona facts, avoid inventing facts, and do not send anything automatically.";
+            "You are Sentinel's response-review assistant inside a closed Simulation Lab. "
+            "Suggest one concise investigator reply that directly responds to the synthetic subject's latest message. "
+            "Use the conversation history, preserve all configured persona facts, do not invent facts, "
+            "avoid abrupt topic changes, and do not send anything automatically.";
         return Complete(system,context,{});
     }
 
@@ -275,7 +281,7 @@ private:
         json+="]}";
 
         auto u=ParseUrl(endpoint_);
-        HINTERNET session=WinHttpOpen(L"Sentinel/0.4",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+        HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
         if(!session) throw std::runtime_error("WinHttpOpen failed");
         WinHttpSetTimeouts(session,10000,10000,30000,60000);
 
