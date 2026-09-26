@@ -128,5 +128,8 @@ install(FILES
     resources/SentinelConsole.cmd
     resources/Install-Sentinel.ps1
     resources/Uninstall-Sentinel.ps1
+    resources/Setup-Sentinel-AI.cmd
     DESTINATION .
 )
+
+install(DIRECTORY resources/ai/ DESTINATION ai)
