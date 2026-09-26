@@ -1003,90 +1003,98 @@ private:
 
 
     void DrawSimulation(float w,float h) {
-        PageTitle(L"Simulation Lab",L"Safe synthetic conversation testing and model evaluation");
-        float x=kSidebar+28,y=kHeader+102;
-        float right=350.0f;
-        float chatW=w-x-right-44;
+        PageTitle(L"Simulation Lab",L"Synthetic conversation testing, model selection, and evidence capture");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+102.0f;
+        const float gap=14.0f;
+        const float sideW=390.0f;
+        const float chatW=std::max(560.0f,w-x-sideW-gap-28.0f);
 
-        Rounded(x,y,chatW,520,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Synthetic Conversation",x+18,y+14,260,28,h1Fmt_.Get(),brush_.text.Get());
-        Badge(L"SIMULATION",x+chatW-116,y+16,brush_.cyan.Get(),96);
+        // Conversation card
+        Rounded(x,y,chatW,540,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Synthetic Conversation",x+20,y+12,280,34,h1Fmt_.Get(),brush_.text.Get());
+        Badge(L"SIMULATION",x+chatW-126,y+15,brush_.cyan.Get(),104);
 
-        const float transcriptTop=y+58;
-        const float transcriptBottom=y+432;
+        const float transcriptTop=y+56;
+        const float transcriptBottom=y+430;
         const int total=(int)simContext_.history.size();
         const int maxStart=std::max(0,total-kSimVisibleRows);
         simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
         const int end=std::min(total,simFirstVisible_+kSimVisibleRows);
         const int visible=std::max(0,end-simFirstVisible_);
         simMessageRects_.clear();
-        float yy=transcriptBottom-visible*58.0f;
+
+        float yy=transcriptBottom-visible*82.0f;
         for(int i=simFirstVisible_;i<end;++i) {
             const auto& turn=simContext_.history[(size_t)i];
-            bool investigator=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
-            bool suggestion=turn.speaker==sentinel::simulation::ChatTurn::Speaker::ModelSuggestion;
-            float bubbleW=std::min(chatW-112.0f,560.0f);
-            float bx=investigator?x+chatW-bubbleW-34:x+20;
+            const bool investigator=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
+            const bool suggestion=turn.speaker==sentinel::simulation::ChatTurn::Speaker::ModelSuggestion;
+            const float bubbleW=std::min(chatW-120.0f,610.0f);
+            const float bx=investigator?x+chatW-bubbleW-34.0f:x+20.0f;
             ID2D1Brush* fill=investigator?brush_.panel2.Get():brush_.sidebar.Get();
             ID2D1Brush* border=suggestion?brush_.yellow.Get():(investigator?brush_.blue.Get():brush_.border.Get());
-            Rounded(bx,yy,bubbleW,48,fill,border,9);
-            Text(investigator?L"Investigator":suggestion?L"Model / System":L"Synthetic Subject",bx+12,yy+5,bubbleW-72,15,tinyFmt_.Get(),
+
+            Rounded(bx,yy,bubbleW,72,fill,border,10);
+            TextLine(investigator?L"Investigator":suggestion?L"Model / System":L"Synthetic Subject",
+                bx+12,yy+5,bubbleW-78,17,tinyFmt_.Get(),
                 suggestion?brush_.yellow.Get():(investigator?brush_.cyan.Get():brush_.green.Get()));
-            Text(L"Copy",bx+bubbleW-46,yy+5,34,15,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{bx+bubbleW-52,yy+2,bx+bubbleW-8,yy+18},L"copy:"+std::to_wstring(i)});
-            Text(Widen(turn.text),bx+12,yy+20,bubbleW-24,24,smallFmt_.Get(),brush_.text.Get());
-            simMessageRects_.push_back({{bx,yy,bx+bubbleW,yy+48},(size_t)i});
-            yy+=58;
+            TextLine(L"Copy",bx+bubbleW-54,yy+5,42,17,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{bx+bubbleW-58,yy+3,bx+bubbleW-8,yy+21},L"copy:"+std::to_wstring(i)});
+            Text(Widen(turn.text),bx+12,yy+25,bubbleW-24,40,smallFmt_.Get(),brush_.text.Get());
+            simMessageRects_.push_back({{bx,yy,bx+bubbleW,yy+72},(size_t)i});
+            yy+=82;
         }
+
         if(simBotTyping_) {
-            Rounded(x+20,transcriptBottom-42,190,32,brush_.sidebar.Get(),brush_.border.Get(),16);
-            StatusDot(x+38,transcriptBottom-26,3,brush_.green.Get());
-            Text(L"Synthetic subject is typing...",x+50,transcriptBottom-35,150,20,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(x+20,transcriptBottom-36,218,30,brush_.sidebar.Get(),brush_.border.Get(),15);
+            StatusDot(x+38,transcriptBottom-21,3,brush_.green.Get());
+            TextLine(L"Synthetic subject is typing...",x+50,transcriptBottom-34,174,26,tinyFmt_.Get(),brush_.muted.Get());
         }
 
         MoveWindow(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
-        // Full-size composer restored.  The native EDIT itself is inset and vertically
-        // centered so its caret/text no longer hugs the top edge of the 40px composer.
-        Rounded(x+18,y+454,chatW-240,40,brush_.sidebar.Get(),brush_.border.Get(),9);
-        MoveWindow(chatEdit_,(int)(x+30),(int)(y+463),(int)(chatW-264),22,TRUE);
-        buttons_.push_back({{x+18,y+454,x+chatW-222,y+494},L"sim_focus"});
-        AddButton(L"sim_send",L"Send",x+chatW-210,y+454,190,40,true);
+        // Full-size composer with vertically centered native edit.
+        Rounded(x+18,y+452,chatW-236,46,brush_.sidebar.Get(),brush_.border.Get(),10);
+        MoveWindow(chatEdit_,(int)(x+30),(int)(y+464),(int)(chatW-260),22,TRUE);
+        buttons_.push_back({{x+18,y+452,x+chatW-218,y+498},L"sim_focus"});
+        AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
-        float rx=x+chatW+14;
-        Rounded(rx,y,right,318,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Scenario / Model",rx+18,y+14,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Mode",rx+18,y+56,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Synthetic only",rx+110,y+54,210,20,bodyFmt_.Get(),brush_.green.Get());
-        Text(L"Persona",rx+18,y+86,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(simSettings_.persona.name+" - synthetic profile"),rx+110,y+84,210,20,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Policy",rx+18,y+116,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        StatusDot(rx+115,y+125,4,brush_.green.Get());
-        Text(L"Simulation-safe",rx+126,y+115,170,20,smallFmt_.Get(),brush_.green.Get());
+        // Model / scenario card
+        const float rx=x+chatW+gap;
+        Rounded(rx,y,sideW,330,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Scenario & Model",rx+18,y+12,sideW-36,34,h1Fmt_.Get(),brush_.text.Get());
 
-        Text(L"OpenAI-compatible endpoint",rx+18,y+148,right-36,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelEndpointEdit_,(int)(rx+18),(int)(y+168),(int)(right-36),32,TRUE);
+        TextLine(L"Persona",rx+18,y+54,84,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name+" - synthetic profile"),rx+108,y+52,sideW-126,24,smallFmt_.Get(),brush_.text.Get());
 
-        AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+208,118,32,false);
-        Text(L"Available models",rx+148,y+207,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelCombo_,(int)(rx+148),(int)(y+226),(int)(right-166),140,TRUE);
+        TextLine(L"Age state",rx+18,y+84,84,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+108,y+82,sideW-126,24,smallFmt_.Get(),brush_.cyan.Get());
 
-        Text(L"Manual model",rx+18,y+250,100,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+269),(int)(right-142),32,TRUE);
-        AddButton(L"sim_model",L"Connect",rx+right-114,y+269,96,32,true);
+        TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
 
-        StatusDot(rx+24,y+315,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
-        Text(modelStatus_,rx+36,y+304,right-54,34,tinyFmt_.Get(),brush_.text.Get());
+        AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
+        TextLine(L"Available model",rx+158,y+180,110,20,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
 
-        Rounded(rx,y+346,right,174,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Model Suggestion",rx+18,y+360,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Rounded(rx+18,y+400,right-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
-        Text(simSuggestion_,rx+28,y+410,right-56,42,tinyFmt_.Get(),brush_.text.Get());
-        AddButton(L"sim_suggest",L"Generate",rx+18,y+472,92,32,false);
-        AddButton(L"sim_reset",L"Reset",rx+118,y+472,72,32,false);
-        AddButton(L"sim_preserve",L"Preserve",rx+198,y+472,96,32,false);
-        Text(L"Responses are delayed in Simulation Lab to mimic natural pacing.",rx+18,y+505,right-36,14,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
+        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
+        AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
+
+        StatusDot(rx+24,y+307,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        TextLine(modelStatus_,rx+36,y+294,sideW-54,28,tinyFmt_.Get(),brush_.text.Get());
+
+        // Suggestion card
+        Rounded(rx,y+344,sideW,196,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Suggestion",rx+18,y+356,sideW-36,32,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(rx+18,y+394,sideW-36,70,brush_.sidebar.Get(),brush_.border.Get(),8);
+        Text(simSuggestion_,rx+28,y+404,sideW-56,50,tinyFmt_.Get(),brush_.text.Get());
+
+        const float bw=(sideW-52)/3.0f;
+        AddButton(L"sim_suggest",L"Generate",rx+18,y+478,bw,36,false);
+        AddButton(L"sim_reset",L"Reset",rx+26+bw,y+478,bw,36,false);
+        AddButton(L"sim_preserve",L"Preserve",rx+34+bw*2,y+478,bw,36,false);
     }
 
     void ShowChatEditor(bool show) {
