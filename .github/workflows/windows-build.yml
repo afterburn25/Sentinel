@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: sentinel-v1-${{ github.workflow }}-${{ github.ref }}
+  group: sentinel-v103-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
