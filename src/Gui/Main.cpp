@@ -640,6 +640,11 @@ public:
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         operatingStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
+        personaCommunicationCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
+        personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
+        personaGrammarCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1036,GetModuleHandleW(nullptr),nullptr);
+        personaTypoCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1037,GetModuleHandleW(nullptr),nullptr);
+        personaEmojiCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         chatFont_=CreateFontW(
@@ -660,7 +665,8 @@ public:
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
-            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_};
+            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
+            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -728,6 +734,21 @@ public:
         const wchar_t* confidenceItems[]={
             L"Very low",L"Low",L"Medium",L"High",L"Very high"
         };
+        const wchar_t* communicationItems[]={
+            L"Age-appropriate",L"Simple",L"Average",L"Advanced"
+        };
+        const wchar_t* slangItems[]={
+            L"None",L"Light",L"Moderate",L"Heavy"
+        };
+        const wchar_t* grammarItems[]={
+            L"Careful",L"Casual",L"Loose",L"Very loose"
+        };
+        const wchar_t* typoItems[]={
+            L"None",L"Rare",L"Occasional",L"Frequent"
+        };
+        const wchar_t* emojiItems[]={
+            L"None",L"Rare",L"Occasional",L"Frequent"
+        };
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
@@ -744,6 +765,11 @@ public:
         fillCombo(personaPersonalityCombo_,personalityItems,std::size(personalityItems));
         fillCombo(personaSocialCombo_,socialItems,std::size(socialItems));
         fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
+        fillCombo(personaCommunicationCombo_,communicationItems,std::size(communicationItems));
+        fillCombo(personaSlangCombo_,slangItems,std::size(slangItems));
+        fillCombo(personaGrammarCombo_,grammarItems,std::size(grammarItems));
+        fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
+        fillCombo(personaEmojiCombo_,emojiItems,std::size(emojiItems));
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
         LoadPersonaMedia();
@@ -1056,6 +1082,7 @@ private:
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
+    HWND personaCommunicationCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -1802,7 +1829,8 @@ private:
             personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
-            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_,
+            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_
         };
         for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
     }
@@ -1892,6 +1920,13 @@ private:
             MoveControl(scenarioSeedEdit_,(int)(x+72),(int)(sy+92),74,32);
             MoveControl(minDelayEdit_,(int)(x+250),(int)(sy+92),86,32);
             MoveControl(maxDelayEdit_,(int)(x+370),(int)(sy+92),86,32);
+
+            const float ty=sy+158;
+            MoveControl(personaCommunicationCombo_,(int)(x+112),(int)(ty+44),145,150);
+            MoveControl(personaSlangCombo_,(int)(x+327),(int)(ty+44),140,150);
+            MoveControl(personaGrammarCombo_,(int)(x+547),(int)(ty+44),145,150);
+            MoveControl(personaTypoCombo_,(int)(x+112),(int)(ty+84),145,150);
+            MoveControl(personaEmojiCombo_,(int)(x+347),(int)(ty+84),140,150);
         }
 
         if(page_==Page::Agency) {
@@ -1929,6 +1964,11 @@ private:
         SendMessageW(personaPersonalityCombo_,CB_SETCURSEL,FindComboText(personaPersonalityCombo_,simSettings_.persona.personality),0);
         SendMessageW(personaSocialCombo_,CB_SETCURSEL,FindComboText(personaSocialCombo_,simSettings_.persona.socialStyle),0);
         SendMessageW(personaConfidenceCombo_,CB_SETCURSEL,FindComboText(personaConfidenceCombo_,simSettings_.persona.confidenceLevel),0);
+        SendMessageW(personaCommunicationCombo_,CB_SETCURSEL,FindComboText(personaCommunicationCombo_,simSettings_.persona.communicationLevel),0);
+        SendMessageW(personaSlangCombo_,CB_SETCURSEL,FindComboText(personaSlangCombo_,simSettings_.persona.slangLevel),0);
+        SendMessageW(personaGrammarCombo_,CB_SETCURSEL,FindComboText(personaGrammarCombo_,simSettings_.persona.grammarQuality),0);
+        SendMessageW(personaTypoCombo_,CB_SETCURSEL,FindComboText(personaTypoCombo_,simSettings_.persona.typoFrequency),0);
+        SendMessageW(personaEmojiCombo_,CB_SETCURSEL,FindComboText(personaEmojiCombo_,simSettings_.persona.emojiLevel),0);
 
         SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
         SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
@@ -1957,6 +1997,21 @@ private:
             simSettings_.persona.background=Narrow(EditText(personaBackgroundEdit_));
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
             simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
+            simSettings_.persona.communicationLevel=ComboText(personaCommunicationCombo_);
+            simSettings_.persona.slangLevel=ComboText(personaSlangCombo_);
+            simSettings_.persona.grammarQuality=ComboText(personaGrammarCombo_);
+            simSettings_.persona.typoFrequency=ComboText(personaTypoCombo_);
+            simSettings_.persona.emojiLevel=ComboText(personaEmojiCombo_);
+            // These are age-sensitive derived defaults for now; later they can
+            // be exposed as advanced controls without changing the profile format.
+            const int age=simSettings_.persona.age;
+            simSettings_.persona.vocabularyLevel =
+                simSettings_.persona.communicationLevel=="Advanced" ? "Advanced" :
+                simSettings_.persona.communicationLevel=="Simple" ? "Simple" :
+                (age<=17 ? "Teen age-appropriate" : "Age-appropriate");
+            simSettings_.persona.capitalizationStyle =
+                simSettings_.persona.grammarQuality=="Careful" ? "Standard" : "Casual";
+            simSettings_.persona.messageLength = age<=17 ? "Short" : "Short to medium";
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
@@ -1976,7 +2031,15 @@ private:
                 ", family context "+simSettings_.persona.familyContext+", personality "+simSettings_.persona.personality+
                 ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
                 ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
-                ", writing style "+simSettings_.persona.writingStyle+".";
+                ", writing style "+simSettings_.persona.writingStyle+
+                ", communication level "+simSettings_.persona.communicationLevel+
+                ", slang "+simSettings_.persona.slangLevel+
+                ", grammar "+simSettings_.persona.grammarQuality+
+                ", typo frequency "+simSettings_.persona.typoFrequency+
+                ", emoji use "+simSettings_.persona.emojiLevel+
+                ", vocabulary "+simSettings_.persona.vocabularyLevel+
+                ", capitalization "+simSettings_.persona.capitalizationStyle+
+                ", message length "+simSettings_.persona.messageLength+".";
             LoadPersonaMedia();
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
             statusText_=L"Persona, policy, scenario, and delay settings saved";
@@ -2927,8 +2990,22 @@ private:
         TextLine(L"Policy",x+474,sy+92,52,30,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
 
+        // Texting voice / communication imperfections.
+        const float ty=sy+158;
+        Rounded(x,ty,contentW,142,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Texting Voice",x+18,ty+10,180,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Age influences vocabulary and message length; these controls tune how polished or casual the persona sounds.",
+            x+205,ty+10,contentW-225,28,tinyFmt_.Get(),brush_.muted.Get());
+
+        TextLine(L"Communication",x+20,ty+48,88,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Slang",x+275,ty+48,48,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Grammar",x+485,ty+48,56,24,tinyFmt_.Get(),brush_.muted.Get());
+
+        TextLine(L"Typos",x+20,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Emoji use",x+275,ty+88,66,24,tinyFmt_.Get(),brush_.muted.Get());
+
         // Approved benign persona media library.
-        const float my=sy+158;
+        const float my=ty+156;
         Rounded(x,my,contentW,170,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Persona Media Library",x+18,my+10,250,28,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Imported images are unapproved until explicitly reviewed. Benign ordinary-use media only.",
