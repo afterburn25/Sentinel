@@ -29,6 +29,7 @@ static void Require(bool v,const char* msg) {
 int main() {
     using namespace sentinel;
 
+    std::cerr<<"checkpoint: settings"<<std::endl;
     simulation::SimulationSettings settings;
     settings.endpoint="http://127.0.0.1:1234/v1/chat/completions";
     settings.model="test-model";
@@ -46,6 +47,7 @@ int main() {
     Require(loaded.ageState==simulation::AgeKnowledgeState::SelfReportedAdult,"age state did not round-trip");
     std::filesystem::remove(path);
 
+    std::cerr<<"checkpoint: policy"<<std::endl;
     auto minorDecision=simulation::EvaluateSimulationPolicy(
         simulation::AgeKnowledgeState::DocumentedMinor,
         "send explicit sexual content");
@@ -55,6 +57,7 @@ int main() {
     auto evaluation=simulation::EvaluateResponse(settings.persona,simulation::AgeKnowledgeState::SelfReportedAdult,"My name is Casey.");
     Require(evaluation.score>=80,"consistent response evaluation unexpectedly low");
 
+    std::cerr<<"checkpoint: registry"<<std::endl;
     simulation::ModelRegistry registry;
     auto& registered=registry.Register(settings.endpoint,settings.model);
     registered.evaluationScore=92;
@@ -69,6 +72,7 @@ int main() {
     Require(registry2.Models().size()==1,"model registry persistence failed");
     std::filesystem::remove(registryPath);
 
+    std::cerr<<"checkpoint: session"<<std::endl;
     simulation::ModelContext session;
     session.scenario="test";
     session.personaSummary="Casey";
@@ -80,6 +84,7 @@ int main() {
     Require(loadedSession.history.size()==1,"session turn did not persist");
     std::filesystem::remove(sessionPath);
 
+    std::cerr<<"checkpoint: training-review"<<std::endl;
     {
         auto dbPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.db";
         std::filesystem::remove(dbPath);
@@ -140,12 +145,14 @@ int main() {
         std::filesystem::remove(dbPath);
     }
 
+    std::cerr<<"checkpoint: messaging"<<std::endl;
     auto adapter=operations::CreateInMemoryMessageAdapter();
     Require(adapter->Connected(),"local messaging adapter should be connected");
     auto msg=adapter->QueueOperatorApproved("conversation-1","hello");
     Require(msg.state==operations::DeliveryState::Queued,"approved message should queue");
     Require(adapter->Poll("conversation-1").size()==1,"queued message should poll");
 
+    std::cerr<<"checkpoint: automation"<<std::endl;
     channels::AutomationEngine automation;
     auto ordinary=automation.Decide({
         channels::AutomationMode::AuthorizedAutomatic,
@@ -183,6 +190,7 @@ int main() {
     Require(noLegalActivation.decision==channels::AutomationDecisionKind::RequireApproval,
         "inactive jurisdiction profile must prevent auto-send");
 
+    std::cerr<<"checkpoint: channels"<<std::endl;
     auto localChannel=std::make_unique<channels::LocalSimulationChannelAdapter>(
         operations::CreateInMemoryMessageAdapter());
     Require(localChannel->Capabilities().Has(channels::SendText),
@@ -205,6 +213,7 @@ int main() {
     Require(update::UpdateService::IsNewerVersion("1.0.1","1.0.0"),"update version comparison failed");
     Require(!update::UpdateService::IsNewerVersion("1.0.0","1.0.0"),"equal version should not update");
 
+    std::cerr<<"checkpoint: agency"<<std::endl;
     agency::AgencySyncQueue queue;
     queue.Enqueue({"sync-1",agency::SyncItemType::AuditRecord,"audit:1",0,false});
     Require(queue.PendingCount()==1,"agency sync queue count incorrect");
