@@ -350,6 +350,7 @@ public:
             else if (b.id==L"integrity") VerifyAudit();
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
+            else if (b.id==L"sim_focus") SetFocus(chatEdit_);
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset") ResetSimulation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
@@ -1031,9 +1032,12 @@ private:
         MoveWindow(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
-        Rounded(x+18,y+448,chatW-240,48,brush_.sidebar.Get(),brush_.border.Get(),10);
-        MoveWindow(chatEdit_,(int)(x+30),(int)(y+465),(int)(chatW-264),22,TRUE);
-        AddButton(L"sim_send",L"Send",x+chatW-210,y+452,190,40,true);
+        // Full-size composer restored.  The native EDIT itself is inset and vertically
+        // centered so its caret/text no longer hugs the top edge of the 40px composer.
+        Rounded(x+18,y+454,chatW-240,40,brush_.sidebar.Get(),brush_.border.Get(),9);
+        MoveWindow(chatEdit_,(int)(x+30),(int)(y+463),(int)(chatW-264),22,TRUE);
+        buttons_.push_back({{x+18,y+454,x+chatW-222,y+494},L"sim_focus"});
+        AddButton(L"sim_send",L"Send",x+chatW-210,y+454,190,40,true);
 
         float rx=x+chatW+14;
         Rounded(rx,y,right,318,brush_.panel.Get(),brush_.border.Get(),8);
