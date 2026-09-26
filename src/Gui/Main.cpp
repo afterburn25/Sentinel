@@ -765,9 +765,10 @@ public:
                         currentConversationId_,
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         simPreparedReply_);
-                    statusText_=simContext_.recalledMemory.empty()
-                        ? L"Model response received"
-                        : L"Model response received with prior-conversation context";
+                    const auto source=Widen(model_?model_->Name():"No model");
+                    statusText_=L"Response from "+source;
+                    if(!simContext_.recalledMemory.empty())
+                        statusText_+=L" | prior-conversation context used";
                 } else {
                     statusText_=L"Model request failed";
                 }
