@@ -245,23 +245,9 @@ public:
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
 
-        // The Windows EDIT control owns the insertion point. Sentinel only provides
-        // a clearly visible caret for the dark theme; it never manually repositions
-        // it. This avoids EM_POSFROMCHAR snapping an end-of-text caret back to x=0.
-        if(msg==WM_SETFOCUS) {
-            const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
-            DestroyCaret();
-            CreateCaret(hwnd,nullptr,2,22);
-            ShowCaret(hwnd);
-            return result;
-        }
-
-        if(msg==WM_KILLFOCUS) {
-            HideCaret(hwnd);
-            DestroyCaret();
-            return DefSubclassProc(hwnd,msg,wp,lp);
-        }
-
+        // Do not create, destroy, hide, show, or manually position a caret here.
+        // The native Windows EDIT control owns its caret and automatically moves it
+        // with typing, mouse clicks, selection changes, paste, delete and undo.
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
             return 0;
