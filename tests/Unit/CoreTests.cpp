@@ -153,6 +153,9 @@ void TestWindowsCryptoAndSev()
 #ifdef _WIN32
 void TestUnifiedChannelCore()
 {
+    auto RequireChannel=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
     const auto root = std::filesystem::temp_directory_path() / ("sentinel-channel-test-" + sentinel::Uuid::Random().ToString());
     std::filesystem::create_directories(root);
 
@@ -166,25 +169,25 @@ void TestUnifiedChannelCore()
 
     auto federal=rules.LatestProfile(sentinel::channels::RuleLayerType::Federal,"US");
     auto louisiana=rules.LatestProfile(sentinel::channels::RuleLayerType::State,"US","LA");
-    assert(federal.has_value());
-    assert(louisiana.has_value());
-    assert(!federal->AutomationLegallyActive());
-    assert(!louisiana->AutomationLegallyActive());
+    RequireChannel(federal.has_value(),"federal jurisdiction baseline missing");
+    RequireChannel(louisiana.has_value(),"Louisiana jurisdiction baseline missing");
+    RequireChannel(!federal->AutomationLegallyActive(),"federal reference baseline should not self-authorize automation");
+    RequireChannel(!louisiana->AutomationLegallyActive(),"Louisiana reference baseline should not self-authorize automation");
 
     rules.SelectForOperation(
         "unit-operation","US","LA",federal->id,louisiana->id,{},"unit-test");
     auto stack=rules.SelectedForOperation("unit-operation");
-    assert(stack.has_value());
-    assert(stack->federal.has_value());
-    assert(stack->state.has_value());
-    assert(!stack->fullyActive);
+    RequireChannel(stack.has_value(),"operation rule stack was not persisted");
+    RequireChannel(stack->federal.has_value(),"operation rule stack missing federal layer");
+    RequireChannel(stack->state.has_value(),"operation rule stack missing state layer");
+    RequireChannel(!stack->fullyActive,"draft rule stack unexpectedly marked active");
 
     sentinel::channels::ChannelCoreStore store(db);
     const auto subject=store.CreateSubject("case-test","Cross-channel subject");
     const auto identity=store.AddSubjectIdentity(
         subject,"phone","twilio","+13375550199","+1 337-555-0199",
         sentinel::channels::IdentityLinkState::Candidate,0.75);
-    assert(store.ConfirmSubjectIdentity(identity,"unit-test"));
+    RequireChannel(store.ConfirmSubjectIdentity(identity,"unit-test"),"subject identity confirmation failed");
 
     sentinel::channels::ChannelAccount account;
     account.type=sentinel::channels::ChannelType::Sms;
@@ -238,13 +241,13 @@ void TestUnifiedChannelCore()
     store.RecordMessage(message);
 
     auto found=store.FindConversation("twilio",accountId,"sms:+13375550199");
-    assert(found.has_value());
-    assert(found->subjectId==subject);
+    RequireChannel(found.has_value(),"channel conversation lookup failed");
+    RequireChannel(found->subjectId==subject,"channel conversation subject mismatch");
 
     auto recent=store.RecentMessages(conversationId,10);
-    assert(recent.size()==1);
-    assert(recent[0].body=="hello");
-    assert(recent[0].subjectId==subject);
+    RequireChannel(recent.size()==1,"normalized message count mismatch");
+    RequireChannel(recent[0].body=="hello","normalized message body mismatch");
+    RequireChannel(recent[0].subjectId==subject,"normalized message subject mismatch");
 
     db.Close();
     std::filesystem::remove_all(root);
