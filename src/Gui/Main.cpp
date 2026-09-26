@@ -50,7 +50,8 @@ namespace {
 constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
-constexpr UINT_PTR kSimReplyTimer = 4101;
+constexpr UINT_PTR kSimTypingStartTimer = 4101;
+constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
@@ -198,6 +199,23 @@ class App {
 public:
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
+        if(msg==WM_SETFOCUS) {
+            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+            CreateCaret(hwnd,nullptr,2,22);
+            DWORD start=0,end=0;
+            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
+            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
+            int x=(short)LOWORD(pos);
+            int y=(short)HIWORD(pos);
+            SetCaretPos(std::max(8,x),std::max(7,y));
+            ShowCaret(hwnd);
+            return result;
+        }
+        if(msg==WM_KILLFOCUS) {
+            HideCaret(hwnd);
+            DestroyCaret();
+            return DefSubclassProc(hwnd,msg,wp,lp);
+        }
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
             return 0;
@@ -240,7 +258,7 @@ public:
         simScroll_ = CreateWindowExW(0,L"SCROLLBAR",L"",WS_CHILD|SBS_VERT,
             0,0,0,0,hwnd_,(HMENU)1006,GetModuleHandleW(nullptr),nullptr);
 
-        personaNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1010,GetModuleHandleW(nullptr),nullptr);
+        personaNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1010,GetModuleHandleW(nullptr),nullptr);
         personaAgeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1011,GetModuleHandleW(nullptr),nullptr);
         personaLocationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1012,GetModuleHandleW(nullptr),nullptr);
         personaInterestsEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1013,GetModuleHandleW(nullptr),nullptr);
@@ -540,30 +558,67 @@ public:
     }
 
     void HandleTimer(UINT_PTR id) {
+        if(id==kSimTypingStartTimer) {
+            KillTimer(hwnd_,kSimTypingStartTimer);
+            if(!simReplyPending_ || simPendingMessage_.empty()) return;
+
+            simBotTyping_=true;
+            statusText_=L"Synthetic subject typing";
+            ScrollSimulationToBottom();
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            UpdateWindow(hwnd_);
+
+            try {
+                if(model_) {
+                    simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                }
+            } catch(const std::exception& e) {
+                simPreparedReply_=std::string("Model error: ")+e.what();
+            }
+
+            int typingDelay=1200+(int)simPreparedReply_.size()*42;
+            typingDelay=std::clamp(typingDelay,1800,9000);
+            SetTimer(hwnd_,kSimReplyTimer,(UINT)typingDelay,nullptr);
+            return;
+        }
+
         if(id!=kSimReplyTimer) return;
         KillTimer(hwnd_,kSimReplyTimer);
-        if(!simBotTyping_) return;
+        if(!simReplyPending_) return;
+
         try {
-            if(model_) {
-                auto reply=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
-                simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,reply});
-                runtime_->conversationMemory.Append(
-                    currentConversationId_,
-                    sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
-                    reply);
-                statusText_=simContext_.recalledMemory.empty()
-                    ? L"Model response received"
-                    : L"Model response received with prior-conversation context";
+            if(!simPreparedReply_.empty()) {
+                const bool modelError=simPreparedReply_.rfind("Model error:",0)==0;
+                auto speaker=modelError
+                    ? sentinel::simulation::ChatTurn::Speaker::ModelSuggestion
+                    : sentinel::simulation::ChatTurn::Speaker::SyntheticSubject;
+                simContext_.history.push_back({speaker,simPreparedReply_});
+                if(!modelError) {
+                    runtime_->conversationMemory.Append(
+                        currentConversationId_,
+                        sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                        simPreparedReply_);
+                    statusText_=simContext_.recalledMemory.empty()
+                        ? L"Model response received"
+                        : L"Model response received with prior-conversation context";
+                } else {
+                    statusText_=L"Model request failed";
+                }
             }
         } catch(const std::exception& e) {
             simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::ModelSuggestion,
                 std::string("Model error: ")+e.what()});
             statusText_=L"Model request failed";
         }
+
         simBotTyping_=false;
+        simReplyPending_=false;
         simPendingMessage_.clear();
+        simPreparedReply_.clear();
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         ScrollSimulationToBottom();
+        SetFocus(chatEdit_);
+        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
@@ -592,7 +647,9 @@ private:
     int archiveCursor_{0};
     int simFirstVisible_{0};
     bool simBotTyping_{false};
+    bool simReplyPending_{false};
     std::string simPendingMessage_;
+    std::string simPreparedReply_;
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
     sentinel::simulation::SimulationSettings simSettings_;
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
@@ -1295,7 +1352,10 @@ private:
 
             const float lx=x+20, lf=x+132, lw=colW-152;
             float row=y+54;
-            MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
+            MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32);
+            RECT personaNameRect{8,6,std::max(20,(int)lw-8),27};
+            SendMessageW(personaNameEdit_,EM_SETRECTNP,0,(LPARAM)&personaNameRect);
+            row+=42;
 
             MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
             MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170); row+=42;
@@ -1460,6 +1520,7 @@ private:
         simSuggestion_=L"No suggestion generated yet";
         simBotTyping_=false;
         simPendingMessage_.clear();
+        KillTimer(hwnd_,kSimTypingStartTimer);
         KillTimer(hwnd_,kSimReplyTimer);
         if(chatEdit_) {
             SetWindowTextW(chatEdit_,L"");
@@ -1505,7 +1566,8 @@ private:
             simContext_.recalledMemory.clear();
             simBotTyping_=false;
             simPendingMessage_.clear();
-            KillTimer(hwnd_,kSimReplyTimer);
+            KillTimer(hwnd_,kSimTypingStartTimer);
+        KillTimer(hwnd_,kSimReplyTimer);
             if(chatEdit_) {
                 SetWindowTextW(chatEdit_,L"");
                 SetFocus(chatEdit_);
@@ -1520,7 +1582,7 @@ private:
     }
 
     void SendSimulationMessage() {
-        if(simBotTyping_) return;
+        if(simBotTyping_ || simReplyPending_) return;
         wchar_t buffer[2048]{};
         GetWindowTextW(chatEdit_,buffer,2048);
         std::wstring message=buffer;
@@ -1539,12 +1601,16 @@ private:
         SetWindowTextW(chatEdit_,L"");
         simSuggestion_=L"No suggestion generated yet";
         simPendingMessage_=utf8;
-        simBotTyping_=true;
+        simPreparedReply_.clear();
+        simReplyPending_=true;
+        simBotTyping_=false;
         ScrollSimulationToBottom();
-        int natural=simSettings_.minDelayMs+(int)utf8.size()*72;
-        int delay=std::clamp(natural,simSettings_.minDelayMs,simSettings_.maxDelayMs);
-        SetTimer(hwnd_,kSimReplyTimer,(UINT)delay,nullptr);
-        statusText_=L"Synthetic subject typing";
+
+        // Human-like pacing: first read/think silently, then show typing.
+        int readingDelay=1400+(int)utf8.size()*28;
+        readingDelay=std::clamp(readingDelay,1600,5200);
+        SetTimer(hwnd_,kSimTypingStartTimer,(UINT)readingDelay,nullptr);
+        statusText_=L"Message delivered";
         SetFocus(chatEdit_);
         SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
         InvalidateRect(chatEdit_,nullptr,FALSE);
