@@ -20,16 +20,11 @@
 #include <stdexcept>
 
 static void Require(bool v,const char* msg) {
-    if(!v) {
-        std::cerr<<"TEST FAILURE: "<<msg<<std::endl;
-        throw std::runtime_error(msg);
-    }
+    if(!v) throw std::runtime_error(msg);
 }
 
 int main() {
     using namespace sentinel;
-
-    std::cerr<<"checkpoint: settings"<<std::endl;
     simulation::SimulationSettings settings;
     settings.endpoint="http://127.0.0.1:1234/v1/chat/completions";
     settings.model="test-model";
@@ -46,8 +41,6 @@ int main() {
     Require(loaded.scenario.name=="Regression","scenario did not round-trip");
     Require(loaded.ageState==simulation::AgeKnowledgeState::SelfReportedAdult,"age state did not round-trip");
     std::filesystem::remove(path);
-
-    std::cerr<<"checkpoint: policy"<<std::endl;
     auto minorDecision=simulation::EvaluateSimulationPolicy(
         simulation::AgeKnowledgeState::DocumentedMinor,
         "send explicit sexual content");
@@ -56,8 +49,6 @@ int main() {
 
     auto evaluation=simulation::EvaluateResponse(settings.persona,simulation::AgeKnowledgeState::SelfReportedAdult,"My name is Casey.");
     Require(evaluation.score>=80,"consistent response evaluation unexpectedly low");
-
-    std::cerr<<"checkpoint: registry"<<std::endl;
     simulation::ModelRegistry registry;
     auto& registered=registry.Register(settings.endpoint,settings.model);
     registered.evaluationScore=92;
@@ -71,8 +62,6 @@ int main() {
     registry2.Load(registryPath);
     Require(registry2.Models().size()==1,"model registry persistence failed");
     std::filesystem::remove(registryPath);
-
-    std::cerr<<"checkpoint: session"<<std::endl;
     simulation::ModelContext session;
     session.scenario="test";
     session.personaSummary="Casey";
@@ -83,12 +72,9 @@ int main() {
     Require(simulation::LoadSession(sessionPath,loadedSession),"session load failed");
     Require(loadedSession.history.size()==1,"session turn did not persist");
     std::filesystem::remove(sessionPath);
-
-    std::cerr<<"checkpoint: training-review"<<std::endl;
     {
         auto dbPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.db";
         std::filesystem::remove(dbPath);
-        std::cerr<<"training review: open db"<<std::endl;
         SqliteDatabase db;
         db.Open(dbPath);
         db.Execute(
@@ -112,24 +98,18 @@ int main() {
             ") VALUES("
             "'log-1','conversation-1','Casey','test-model','reactive_reply','hi','hey :)',"
             "'Casey persona','likes movies','{}',500,900,'allowed');");
-
-        std::cerr<<"training review: stage"<<std::endl;
         simulation::TrainingReviewStore reviews(db);
         auto staged=reviews.StageLatestReply("conversation-1");
         Require(staged.has_value(),"latest persona reply should stage for review");
         Require(staged->status==simulation::TrainingReviewStatus::Pending,
             "new training review item should start pending");
-        std::cerr<<"training review: approve"<<std::endl;
         Require(reviews.Review(staged->id,simulation::TrainingReviewStatus::Approved,"tester","good example"),
             "training review approval failed");
-
-        std::cerr<<"training review: counts"<<std::endl;
         auto counts=reviews.Counts();
         Require(counts.approved==1 && counts.pending==0,
             "training review counts are incorrect after approval");
 
         auto datasetPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.jsonl";
-        std::cerr<<"training review: export"<<std::endl;
         const auto exported=reviews.ExportApprovedJsonl(datasetPath);
         Require(exported==1,"approved dataset export count incorrect");
         std::ifstream dataset(datasetPath);
@@ -139,20 +119,16 @@ int main() {
             "dataset export lost source-log provenance");
         Require(jsonl.find("\"input\":\"hi\"")!=std::string::npos,
             "dataset export lost input text");
-        std::cerr<<"training review: cleanup"<<std::endl;
+        dataset.close();
         db.Close();
         std::filesystem::remove(datasetPath);
         std::filesystem::remove(dbPath);
     }
-
-    std::cerr<<"checkpoint: messaging"<<std::endl;
     auto adapter=operations::CreateInMemoryMessageAdapter();
     Require(adapter->Connected(),"local messaging adapter should be connected");
     auto msg=adapter->QueueOperatorApproved("conversation-1","hello");
     Require(msg.state==operations::DeliveryState::Queued,"approved message should queue");
     Require(adapter->Poll("conversation-1").size()==1,"queued message should poll");
-
-    std::cerr<<"checkpoint: automation"<<std::endl;
     channels::AutomationEngine automation;
     auto ordinary=automation.Decide({
         channels::AutomationMode::AuthorizedAutomatic,
@@ -189,8 +165,6 @@ int main() {
         true});
     Require(noLegalActivation.decision==channels::AutomationDecisionKind::RequireApproval,
         "inactive jurisdiction profile must prevent auto-send");
-
-    std::cerr<<"checkpoint: channels"<<std::endl;
     auto localChannel=std::make_unique<channels::LocalSimulationChannelAdapter>(
         operations::CreateInMemoryMessageAdapter());
     Require(localChannel->Capabilities().Has(channels::SendText),
@@ -212,8 +186,6 @@ int main() {
 
     Require(update::UpdateService::IsNewerVersion("1.0.1","1.0.0"),"update version comparison failed");
     Require(!update::UpdateService::IsNewerVersion("1.0.0","1.0.0"),"equal version should not update");
-
-    std::cerr<<"checkpoint: agency"<<std::endl;
     agency::AgencySyncQueue queue;
     queue.Enqueue({"sync-1",agency::SyncItemType::AuditRecord,"audit:1",0,false});
     Require(queue.PendingCount()==1,"agency sync queue count incorrect");
