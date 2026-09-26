@@ -132,11 +132,24 @@ std::wstring ModelsPathFromChatPath(std::wstring path) {
     return L"/v1/models";
 }
 
+bool IsLoopbackHost(const std::wstring& host) {
+    std::wstring lower=host;
+    std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t ch){ return (wchar_t)towlower(ch); });
+    return lower==L"127.0.0.1" || lower==L"localhost" || lower==L"::1" || lower==L"[::1]";
+}
+
+HINTERNET OpenWinHttpSession(const ParsedUrl& u) {
+    const DWORD access=IsLoopbackHost(u.host)
+        ? WINHTTP_ACCESS_TYPE_NO_PROXY
+        : WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
+    return WinHttpOpen(L"Sentinel/1.0",access,nullptr,nullptr,0);
+}
+
 std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     auto u=ParseUrl(endpoint);
     auto modelsPath=ModelsPathFromChatPath(u.path);
 
-    HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=OpenWinHttpSession(u);
     if(!session) throw std::runtime_error("WinHttpOpen failed");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
 
@@ -157,13 +170,21 @@ std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     std::wstring headers=L"Accept: application/json\r\n";
     if(!apiKey.empty()) headers+=L"Authorization: Bearer "+Widen(apiKey)+L"\r\n";
 
-    BOOL ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
-    if(ok) ok=WinHttpReceiveResponse(request,nullptr);
+    BOOL ok=FALSE;
+    DWORD lastError=ERROR_SUCCESS;
+    for(int attempt=0;attempt<3 && !ok;++attempt) {
+        ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
+        if(ok) ok=WinHttpReceiveResponse(request,nullptr);
+        if(!ok) {
+            lastError=GetLastError();
+            if(attempt<2) Sleep(350);
+        }
+    }
     if(!ok) {
         WinHttpCloseHandle(request);
         WinHttpCloseHandle(connect);
         WinHttpCloseHandle(session);
-        throw std::runtime_error("model discovery request failed");
+        throw std::runtime_error("model discovery request failed (WinHTTP "+std::to_string(lastError)+")");
     }
 
     DWORD status=0,statusSize=sizeof(status);
@@ -219,8 +240,9 @@ std::vector<std::string> ParseModelIds(const std::string& body) {
 
 class OpenAICompatibleModel final : public IModelAdapter {
 public:
-    OpenAICompatibleModel(std::string endpoint,std::string model,std::string apiKey)
-        : endpoint_(std::move(endpoint)), model_(std::move(model)), apiKey_(std::move(apiKey)) {}
+    OpenAICompatibleModel(std::string endpoint,std::string model,std::string apiKey,double temperature,int maxTokens)
+        : endpoint_(std::move(endpoint)), model_(std::move(model)), apiKey_(std::move(apiKey)),
+          temperature_(std::clamp(temperature,0.0,2.0)), maxTokens_(std::clamp(maxTokens,32,1024)) {}
 
     std::string Name() const override {
         return "OpenAI-compatible model: " + model_;
@@ -233,16 +255,19 @@ public:
         std::string system =
             "You are the synthetic counterpart inside Sentinel Simulation Lab. This is a closed simulation only. "
             "Stay strictly consistent with this configured fictional persona: " + context.personaSummary + " "
-            "Conversation rules: answer the investigator's most recent message directly before adding anything else; "
-            "use the recent conversation history to resolve pronouns, follow-ups, yes/no replies, and references such as 'that' or 'why'; "
-            "do not ignore a direct question and pivot to an unrelated topic; do not invent persona facts that are not in the configured profile; "
-            "if a requested fact is not configured, say naturally that you have not shared or established it yet; "
-            "keep tone natural and conversational, usually 1-3 short sentences; ask at most one relevant follow-up question; "
-            "avoid repetitive stock phrases and do not sound like a customer-service bot; "
-            "when older conversation memory is provided, remember the meaning and important facts but paraphrase naturally. "
-            "Do not repeat old lines word-for-word unless the investigator explicitly asks for an exact quote. "
-            "Human-style recall can be slightly approximate in wording while remaining faithful to the remembered facts. "
-            "do not claim real-world actions occurred outside this simulation.";
+            "Conversation rules: respond to the actual meaning of the investigator's most recent message first. "
+            "Use recent history to resolve pronouns, follow-ups, yes/no replies, references such as 'that' or 'why', and the active topic. "
+            "Do not pivot to an unrelated subject and do not invent persona facts that are not configured or established in the conversation. "
+            "If a fact is unknown, handle that naturally without fabricating it. "
+            "Write like a real person in an ongoing chat, not a customer-service assistant. Usually use 1-3 short sentences. "
+            "A follow-up question is optional, not required. Never add a generic question merely to keep the conversation going. "
+            "Avoid generic filler acknowledgments and canned openings. In particular, do not habitually start with phrases such as "
+            "'Yeah, I'm listening', 'I didn't expect that', 'That makes sense', or 'What happened next?'. "
+            "Vary openings, rhythm, sentence length, and wording according to the persona and the immediate context. "
+            "Compare against the recent synthetic-subject replies in history and avoid reusing their openings or sentence patterns. "
+            "When older conversation memory is provided, preserve its meaning and facts but paraphrase naturally. "
+            "Do not repeat old lines word-for-word unless explicitly asked for an exact quote. "
+            "Do not claim real-world actions occurred outside this simulation.";
 
         if(!context.recalledMemory.empty()) {
             system += " Relevant earlier-conversation memory follows. Treat it as private background context, not as text to copy: " +
@@ -264,13 +289,16 @@ public:
 
 private:
     std::string endpoint_,model_,apiKey_;
+    double temperature_{0.65};
+    int maxTokens_{220};
 
     std::string Complete(
         const std::string& system,
         const ModelContext& context,
         const std::string& latestUser)
     {
-        std::string json="{\"model\":\""+JsonEscape(model_)+"\",\"temperature\":0.35,\"messages\":[";
+        std::string json="{\"model\":\""+JsonEscape(model_)+"\",\"temperature\":"+std::to_string(temperature_)+
+            ",\"top_p\":0.92,\"max_tokens\":"+std::to_string(maxTokens_)+",\"messages\":[";
         json+="{\"role\":\"system\",\"content\":\""+JsonEscape(system)+"\"}";
         for(const auto& turn:context.history) {
             if(turn.speaker==ChatTurn::Speaker::ModelSuggestion) continue;
@@ -288,7 +316,7 @@ private:
         json+="]}";
 
         auto u=ParseUrl(endpoint_);
-        HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+        HINTERNET session=OpenWinHttpSession(u);
         if(!session) throw std::runtime_error("WinHttpOpen failed");
         WinHttpSetTimeouts(session,10000,10000,30000,60000);
 
@@ -344,10 +372,12 @@ private:
 std::unique_ptr<IModelAdapter> CreateOpenAICompatibleModel(
     std::string endpoint,
     std::string model,
-    std::string apiKey)
+    std::string apiKey,
+    double temperature,
+    int maxTokens)
 {
     return std::make_unique<OpenAICompatibleModel>(
-        std::move(endpoint),std::move(model),std::move(apiKey));
+        std::move(endpoint),std::move(model),std::move(apiKey),temperature,maxTokens);
 }
 
 std::vector<std::string> DiscoverOpenAICompatibleModels(

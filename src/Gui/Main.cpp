@@ -31,12 +31,14 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <filesystem>
 #include <chrono>
 #include <memory>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <fstream>
@@ -98,6 +100,96 @@ std::filesystem::path MigrationsDir() {
     if (std::filesystem::exists(p)) return p;
     p = std::filesystem::current_path() / "migrations";
     return p;
+}
+
+bool IsLocalModelEndpoint(const std::string& endpoint) {
+    return endpoint.find("127.0.0.1") != std::string::npos ||
+           endpoint.find("localhost") != std::string::npos;
+}
+
+std::wstring ReadTextFileTail(const std::filesystem::path& path,size_t maxChars=1800) {
+    if(!std::filesystem::exists(path)) return {};
+    std::ifstream in(path,std::ios::binary);
+    if(!in) return {};
+    std::string bytes((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+    if(bytes.size()>maxChars) bytes=bytes.substr(bytes.size()-maxChars);
+    return Widen(bytes);
+}
+
+bool StartBundledAiService(std::wstring* failure = nullptr) {
+    const auto aiDir = ExeDir() / L"ai";
+    const auto script = aiDir / L"Start-Sentinel-With-AI.ps1";
+    const auto setup = ExeDir() / L"Setup-Sentinel-AI.cmd";
+    const auto model = aiDir / L"models" / L"Qwen3.5-9B-Q4_K_M.gguf";
+    const auto startupLog = aiDir / L"logs" / L"startup.log";
+
+    if (!std::filesystem::exists(script)) {
+        if (failure) *failure = L"Bundled AI launcher is missing: " + script.wstring();
+        return false;
+    }
+
+    bool runtimeFound=false;
+    for(const auto& root : {aiDir/L"runtime",aiDir/L"runtime_cpu"}) {
+        if(!std::filesystem::exists(root)) continue;
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+            if(entry.is_regular_file() && _wcsicmp(entry.path().filename().c_str(),L"llama-server.exe")==0) {
+                runtimeFound=true;
+                break;
+            }
+        }
+        if(runtimeFound) break;
+    }
+
+    if(!std::filesystem::exists(model)) {
+        if(failure) {
+            *failure=L"Local model is not installed: "+model.wstring()+
+                L". Run "+setup.wstring()+L" once to download/install the local AI backend.";
+        }
+        return false;
+    }
+    if(!runtimeFound) {
+        if(failure) {
+            *failure=L"llama.cpp runtime is not installed under "+aiDir.wstring()+
+                L". Run "+setup.wstring()+L" once to install/repair the local AI backend.";
+        }
+        return false;
+    }
+
+    std::filesystem::create_directories(aiDir/L"logs");
+    std::wstring command =
+        L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" +
+        script.wstring() + L"\" -NoLaunch";
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(
+            nullptr, command.data(), nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW, nullptr, ExeDir().c_str(), &si, &pi)) {
+        if (failure) *failure = L"Could not launch PowerShell for the bundled local AI service. Windows error "+std::to_wstring(GetLastError())+L".";
+        return false;
+    }
+
+    const DWORD wait = WaitForSingleObject(pi.hProcess, 180000);
+    DWORD exitCode = 1;
+    if (wait == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    if (wait != WAIT_OBJECT_0) {
+        if (failure) *failure = L"Timed out while starting the bundled local AI service. See "+startupLog.wstring();
+        return false;
+    }
+    if (exitCode != 0) {
+        if (failure) {
+            auto detail=ReadTextFileTail(startupLog);
+            *failure=L"Bundled local AI service failed (PowerShell exit "+std::to_wstring(exitCode)+L").";
+            if(!detail.empty()) *failure+=L" Startup log: "+detail;
+            else *failure+=L" No startup log was produced.";
+        }
+        return false;
+    }
+    return true;
 }
 
 std::wstring AuditActionName(int action) {
@@ -192,44 +284,228 @@ struct Runtime {
 };
 
 struct BrushSet {
-    ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red;
+    ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red, selection;
+};
+
+struct SelectableTextRun {
+    std::wstring text;
+    RectF rect;
+    IDWriteTextFormat* format{};
+    DWRITE_TEXT_ALIGNMENT align{DWRITE_TEXT_ALIGNMENT_LEADING};
+    bool noWrap{false};
+    bool paragraphCenter{false};
 };
 
 class App {
 public:
+    static void PositionVisibleChatCaret(HWND hwnd) {
+        if(GetFocus()!=hwnd) return;
+
+        DWORD selStart=0,selEnd=0;
+        SendMessageW(hwnd,EM_GETSEL,(WPARAM)&selStart,(LPARAM)&selEnd);
+
+        const int textLen=GetWindowTextLengthW(hwnd);
+        int x=8;
+        int y=7;
+
+        if(selEnd < (DWORD)textLen) {
+            const LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)selEnd,0);
+            if(pos!=-1) {
+                x=(int)(short)LOWORD(pos);
+                y=(int)(short)HIWORD(pos);
+            }
+        } else if(textLen>0) {
+            // EM_POSFROMCHAR does not return a usable position for the insertion
+            // point *after* the final character. Measure the final character and
+            // place the caret immediately after it instead of snapping to x=0.
+            const int last=textLen-1;
+            const LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)last,0);
+            if(pos!=-1) {
+                x=(int)(short)LOWORD(pos);
+                y=(int)(short)HIWORD(pos);
+
+                std::wstring fullText((size_t)textLen+1,L'\0');
+                GetWindowTextW(hwnd,fullText.data(),textLen+1);
+                wchar_t ch[2]{fullText[(size_t)last],L'\0'};
+
+                HDC dc=GetDC(hwnd);
+                if(dc) {
+                    HFONT font=(HFONT)SendMessageW(hwnd,WM_GETFONT,0,0);
+                    HGDIOBJ oldFont=nullptr;
+                    if(font) oldFont=SelectObject(dc,font);
+                    SIZE size{};
+                    if(ch[0] && GetTextExtentPoint32W(dc,ch,1,&size)) x+=std::max(1L,size.cx);
+                    else x+=8;
+                    if(oldFont) SelectObject(dc,oldFont);
+                    ReleaseDC(hwnd,dc);
+                }
+            }
+        }
+
+        SetCaretPos(std::max(8,x),std::max(7,y));
+    }
+
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
+
         if(msg==WM_SETFOCUS) {
-            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+            const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+            DestroyCaret();
             CreateCaret(hwnd,nullptr,2,22);
-            DWORD start=0,end=0;
-            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
-            int x=(short)LOWORD(pos);
-            int y=(short)HIWORD(pos);
-            SetCaretPos(std::max(8,x),std::max(7,y));
+            PositionVisibleChatCaret(hwnd);
             ShowCaret(hwnd);
             return result;
         }
+
         if(msg==WM_KILLFOCUS) {
             HideCaret(hwnd);
             DestroyCaret();
             return DefSubclassProc(hwnd,msg,wp,lp);
         }
+
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
             return 0;
         }
-        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP) {
-            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
-            DWORD start=0,end=0;
-            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
-            SetCaretPos(std::max(8,(int)(short)LOWORD(pos)),std::max(7,(int)(short)HIWORD(pos)));
-            ShowCaret(hwnd);
-            return result;
+
+        if(msg==WM_KEYDOWN && (GetKeyState(VK_CONTROL)&0x8000)) {
+            switch(wp) {
+                case 'A': SendMessageW(hwnd,EM_SETSEL,0,-1); PositionVisibleChatCaret(hwnd); return 0;
+                case 'C': SendMessageW(hwnd,WM_COPY,0,0); return 0;
+                case 'X': SendMessageW(hwnd,WM_CUT,0,0); PositionVisibleChatCaret(hwnd); return 0;
+                case 'V': SendMessageW(hwnd,WM_PASTE,0,0); PositionVisibleChatCaret(hwnd); return 0;
+                case 'Z': SendMessageW(hwnd,WM_UNDO,0,0); PositionVisibleChatCaret(hwnd); return 0;
+            }
         }
-        return DefSubclassProc(hwnd,msg,wp,lp);
+
+        if(msg==WM_CONTEXTMENU) {
+            DWORD selStart=0,selEnd=0;
+            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&selStart,(LPARAM)&selEnd);
+            const bool hasSelection=selStart!=selEnd;
+            const bool canPaste=IsClipboardFormatAvailable(CF_UNICODETEXT)!=FALSE;
+            const bool canUndo=SendMessageW(hwnd,EM_CANUNDO,0,0)!=0;
+
+            HMENU menu=CreatePopupMenu();
+            if(!menu) return 0;
+            AppendMenuW(menu,MF_STRING|(canUndo?0:MF_GRAYED),1,L"Undo");
+            AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),2,L"Cut");
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),3,L"Copy");
+            AppendMenuW(menu,MF_STRING|(canPaste?0:MF_GRAYED),4,L"Paste");
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),5,L"Delete");
+            AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+            AppendMenuW(menu,MF_STRING,6,L"Select All");
+
+            POINT pt{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+            if(pt.x==-1 && pt.y==-1) {
+                RECT rc{};
+                GetWindowRect(hwnd,&rc);
+                pt.x=rc.left+12;
+                pt.y=rc.top+12;
+            }
+
+            const int cmd=TrackPopupMenu(
+                menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,pt.x,pt.y,0,hwnd,nullptr);
+            DestroyMenu(menu);
+
+            switch(cmd) {
+                case 1: SendMessageW(hwnd,WM_UNDO,0,0); break;
+                case 2: SendMessageW(hwnd,WM_CUT,0,0); break;
+                case 3: SendMessageW(hwnd,WM_COPY,0,0); break;
+                case 4: SendMessageW(hwnd,WM_PASTE,0,0); break;
+                case 5: SendMessageW(hwnd,WM_CLEAR,0,0); break;
+                case 6: SendMessageW(hwnd,EM_SETSEL,0,-1); break;
+            }
+            PositionVisibleChatCaret(hwnd);
+            return 0;
+        }
+
+        const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP ||
+           msg==WM_PASTE || msg==WM_CUT || msg==WM_CLEAR || msg==WM_UNDO) {
+            PositionVisibleChatCaret(hwnd);
+        }
+        return result;
+    }
+
+    void BeginTextSelection(float x,float y) {
+        selectionDragging_=false;
+        selectionMouseDown_=true;
+        selectionStartPoint_={x,y};
+        const int run=FindSelectableRun(x,y);
+        if(run<0) {
+            selectedTextRun_=-1;
+            selectionAnchor_=selectionActive_=0;
+            return;
+        }
+        selectedTextRun_=run;
+        selectionAnchor_=selectionActive_=HitTestTextPosition(textRuns_[(size_t)run],x,y);
+        SetCapture(hwnd_);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    bool UpdateTextSelection(float x,float y) {
+        if(!selectionMouseDown_ || selectedTextRun_<0 || selectedTextRun_>=(int)textRuns_.size()) return false;
+        if(std::abs(x-selectionStartPoint_.x)>3.0f || std::abs(y-selectionStartPoint_.y)>3.0f)
+            selectionDragging_=true;
+        selectionActive_=HitTestTextPosition(textRuns_[(size_t)selectedTextRun_],x,y);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return true;
+    }
+
+    bool EndTextSelection(float x,float y) {
+        if(!selectionMouseDown_) return false;
+        if(selectedTextRun_>=0 && selectedTextRun_<(int)textRuns_.size())
+            selectionActive_=HitTestTextPosition(textRuns_[(size_t)selectedTextRun_],x,y);
+        const bool consumed=selectionDragging_;
+        selectionMouseDown_=false;
+        if(GetCapture()==hwnd_) ReleaseCapture();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return consumed;
+    }
+
+    bool CopySelectedTextAt(float x,float y) {
+        if(selectedTextRun_<0 || selectedTextRun_>=(int)textRuns_.size()) return false;
+        const auto& run=textRuns_[(size_t)selectedTextRun_];
+        const size_t a=std::min(selectionAnchor_,selectionActive_);
+        const size_t b=std::max(selectionAnchor_,selectionActive_);
+        if(a>=b || a>=run.text.size()) return false;
+        const auto selected=run.text.substr(a,std::min(b,run.text.size())-a);
+
+        HMENU menu=CreatePopupMenu();
+        if(!menu) return false;
+        AppendMenuW(menu,MF_STRING,1,L"Copy");
+        AppendMenuW(menu,MF_STRING,2,L"Select All");
+        POINT pt{(LONG)x,(LONG)y};
+        ClientToScreen(hwnd_,&pt);
+        const int cmd=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,pt.x,pt.y,0,hwnd_,nullptr);
+        DestroyMenu(menu);
+        if(cmd==2) {
+            selectionAnchor_=0;
+            selectionActive_=run.text.size();
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            return true;
+        }
+        if(cmd!=1) return true;
+
+        if(!OpenClipboard(hwnd_)) return true;
+        EmptyClipboard();
+        const SIZE_T bytes=(selected.size()+1)*sizeof(wchar_t);
+        HGLOBAL mem=GlobalAlloc(GMEM_MOVEABLE,bytes);
+        if(mem) {
+            void* ptr=GlobalLock(mem);
+            if(ptr) {
+                memcpy(ptr,selected.c_str(),bytes);
+                GlobalUnlock(mem);
+                SetClipboardData(CF_UNICODETEXT,mem);
+                mem=nullptr;
+            }
+            if(mem) GlobalFree(mem);
+        }
+        CloseClipboard();
+        statusText_=L"Selected text copied";
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return true;
     }
 
     App() : runtime_(std::make_unique<Runtime>()) {}
@@ -386,8 +662,43 @@ public:
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
 
-        model_=sentinel::simulation::CreateRuleBasedTestModel();
-        modelStatus_=L"Built-in contextual model";
+        // Prefer the configured OpenAI-compatible local model at startup. If a
+        // bundled localhost model is configured but not running yet, Sentinel starts
+        // the bundled llama.cpp service itself so opening Sentinel.exe directly works.
+        if(!simSettings_.endpoint.empty() && !simSettings_.model.empty()) {
+            auto connectConfiguredModel=[&]() {
+                auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                    simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,simSettings_.maxTokens);
+                sentinel::simulation::ModelContext testContext;
+                testContext.scenario="Sentinel local model startup connection test";
+                testContext.personaSummary="Synthetic test only.";
+                (void)candidate->GenerateInvestigatorSuggestion(testContext);
+                model_=std::move(candidate);
+                modelStatus_=L"Connected automatically: "+Widen(simSettings_.model);
+            };
+
+            try {
+                connectConfiguredModel();
+            } catch(const std::exception& firstError) {
+                bool recovered=false;
+                std::wstring launcherFailure;
+                if(IsLocalModelEndpoint(simSettings_.endpoint) && StartBundledAiService(&launcherFailure)) {
+                    try {
+                        connectConfiguredModel();
+                        recovered=true;
+                    } catch(...) {}
+                }
+                if(!recovered) {
+                    model_=sentinel::simulation::CreateRuleBasedTestModel();
+                    modelStatus_=L"Local model unavailable; built-in fallback active. ";
+                    if(!launcherFailure.empty()) modelStatus_+=launcherFailure;
+                    else modelStatus_+=Widen(firstError.what());
+                }
+            }
+        } else {
+            model_=sentinel::simulation::CreateRuleBasedTestModel();
+            modelStatus_=L"Built-in contextual model";
+        }
         ResumeOrCreateConversation();
         ApplyPageControls();
         return S_OK;
@@ -414,6 +725,7 @@ public:
         target_->FillRectangle(D2D1::RectF((float)kSidebar,0,w,(float)kHeader),brush_.panel.Get());
         target_->DrawLine(D2D1::Point2F((float)kSidebar,(float)kHeader),D2D1::Point2F(w,(float)kHeader),brush_.border.Get(),1);
 
+        textRuns_.clear();
         DrawBrand();
         DrawSidebar();
         DrawHeader(w);
@@ -465,6 +777,7 @@ public:
             else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
             else if (b.id==L"sim_browse_models") BrowseModels();
+            else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"model_register") RegisterCurrentModel();
@@ -479,6 +792,7 @@ public:
             else if (b.id==L"agency_toggle") ToggleAgency();
             else if (b.id==L"agency_enqueue") EnqueueAgencySnapshot();
             else if (b.id==L"check_updates") CheckForUpdates();
+            else if (b.id==L"ai_diagnostics") RunAiDiagnostics();
             else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
@@ -607,9 +921,10 @@ public:
                         currentConversationId_,
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         simPreparedReply_);
-                    statusText_=simContext_.recalledMemory.empty()
-                        ? L"Model response received"
-                        : L"Model response received with prior-conversation context";
+                    const auto source=Widen(model_?model_->Name():"No model");
+                    statusText_=L"Response from "+source;
+                    if(!simContext_.recalledMemory.empty())
+                        statusText_+=L" | prior-conversation context used";
                 } else {
                     statusText_=L"Model request failed";
                 }
@@ -670,6 +985,7 @@ private:
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
+    std::wstring aiDiagnostics_=L"Not run";
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -679,6 +995,13 @@ private:
     BrushSet brush_;
     bool brushesReady_{false};
     std::vector<Button> buttons_;
+    std::vector<SelectableTextRun> textRuns_;
+    int selectedTextRun_{-1};
+    size_t selectionAnchor_{0};
+    size_t selectionActive_{0};
+    bool selectionMouseDown_{false};
+    bool selectionDragging_{false};
+    D2D1_POINT_2F selectionStartPoint_{0,0};
 
     void CreateResources() {
         if (!target_) {
@@ -702,6 +1025,7 @@ private:
             brush_.panel2=mk(0x12283A); brush_.border=mk(0x24445C); brush_.text=mk(0xEEF6FF);
             brush_.muted=mk(0x93A9BC); brush_.blue=mk(0x1597F6); brush_.cyan=mk(0x22C7FF);
             brush_.green=mk(0x38E89A); brush_.yellow=mk(0xF6C84A); brush_.red=mk(0xFF5B66);
+            brush_.selection=mk(0x2D7FF9,0.55f);
             brushesReady_=true;
         }
     }
@@ -716,22 +1040,88 @@ private:
         if (selectedEvidence_>=evidence_.size()) selectedEvidence_=0;
     }
 
+    ComPtr<IDWriteTextLayout> CreateSelectableLayout(const SelectableTextRun& run) const {
+        ComPtr<IDWriteTextLayout> layout;
+        if(FAILED(writeFactory_->CreateTextLayout(
+                run.text.c_str(),(UINT32)run.text.size(),run.format,
+                std::max(1.0f,run.rect.r-run.rect.l),
+                std::max(1.0f,run.rect.b-run.rect.t),&layout)) || !layout)
+            return {};
+        if(run.noWrap) layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        layout->SetTextAlignment(run.align);
+        if(run.paragraphCenter) layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        return layout;
+    }
+
+    int RegisterSelectableText(
+        const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,
+        DWRITE_TEXT_ALIGNMENT align,bool noWrap,bool paragraphCenter)
+    {
+        textRuns_.push_back({s,{x,y,x+w,y+h},fmt,align,noWrap,paragraphCenter});
+        return (int)textRuns_.size()-1;
+    }
+
+    void DrawSelectionForRun(int runIndex,IDWriteTextLayout* layout,float x,float y) {
+        if(runIndex!=selectedTextRun_ || !layout) return;
+        const size_t a=std::min(selectionAnchor_,selectionActive_);
+        const size_t b=std::max(selectionAnchor_,selectionActive_);
+        if(a>=b) return;
+
+        UINT32 actual=0;
+        layout->HitTestTextRange(
+            (UINT32)std::min(a,(size_t)UINT32_MAX),
+            (UINT32)std::min(b-a,(size_t)UINT32_MAX),
+            x,y,nullptr,0,&actual);
+        if(!actual) return;
+        std::vector<DWRITE_HIT_TEST_METRICS> metrics(actual);
+        if(FAILED(layout->HitTestTextRange(
+                (UINT32)a,(UINT32)(b-a),x,y,metrics.data(),actual,&actual))) return;
+        for(UINT32 i=0;i<actual;i++) {
+            const auto& m=metrics[i];
+            target_->FillRectangle(
+                D2D1::RectF(m.left,m.top,m.left+m.width,m.top+m.height),
+                brush_.selection.Get());
+        }
+    }
+
+    int FindSelectableRun(float x,float y) const {
+        for(int i=(int)textRuns_.size()-1;i>=0;--i)
+            if(textRuns_[(size_t)i].rect.Contains(x,y) && !textRuns_[(size_t)i].text.empty()) return i;
+        return -1;
+    }
+
+    size_t HitTestTextPosition(const SelectableTextRun& run,float x,float y) const {
+        auto layout=CreateSelectableLayout(run);
+        if(!layout) return 0;
+        BOOL trailing=FALSE,inside=FALSE;
+        DWRITE_HIT_TEST_METRICS metrics{};
+        const float localX=x-run.rect.l;
+        const float localY=y-run.rect.t;
+        if(FAILED(layout->HitTestPoint(localX,localY,&trailing,&inside,&metrics))) return 0;
+        size_t pos=(size_t)metrics.textPosition + (trailing?metrics.length:0);
+        return std::min(pos,run.text.size());
+    }
+
     void Text(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br) {
-        target_->DrawTextW(s.c_str(),(UINT32)s.size(),fmt,D2D1::RectF(x,y,x+w,y+h),br);
+        if(w<=1 || h<=1) return;
+        const int runIndex=RegisterSelectableText(s,x,y,w,h,fmt,DWRITE_TEXT_ALIGNMENT_LEADING,false,false);
+        auto layout=CreateSelectableLayout(textRuns_[(size_t)runIndex]);
+        if(!layout) return;
+        DrawSelectionForRun(runIndex,layout.Get(),x,y);
+        target_->DrawTextLayout(D2D1::Point2F(x,y),layout.Get(),br,D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
     void TextLine(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br,
                   DWRITE_TEXT_ALIGNMENT align=DWRITE_TEXT_ALIGNMENT_LEADING) {
         if(w<=1 || h<=1) return;
-        ComPtr<IDWriteTextLayout> layout;
-        if(FAILED(writeFactory_->CreateTextLayout(s.c_str(),(UINT32)s.size(),fmt,w,h,&layout)) || !layout) return;
-        layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-        layout->SetTextAlignment(align);
-        layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        const int runIndex=RegisterSelectableText(s,x,y,w,h,fmt,align,true,true);
+        auto layout=CreateSelectableLayout(textRuns_[(size_t)runIndex]);
+        if(!layout) return;
         DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};
         ComPtr<IDWriteInlineObject> sign;
         if(SUCCEEDED(writeFactory_->CreateEllipsisTrimmingSign(fmt,&sign)))
             layout->SetTrimming(&trim,sign.Get());
+        DrawSelectionForRun(runIndex,layout.Get(),x,y);
         target_->DrawTextLayout(D2D1::Point2F(x,y),layout.Get(),br,D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
@@ -1266,7 +1656,8 @@ private:
         TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
         AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
-        TextLine(L"Available model",rx+158,y+180,110,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_install_ai",L"Install / Repair AI",rx+154,y+182,132,34,true);
+        TextLine(L"Available model",rx+296,y+180,76,20,tinyFmt_.Get(),brush_.muted.Get());
 
         TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
@@ -1349,7 +1740,7 @@ private:
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
 
             MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
-            MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
+            MoveControl(modelCombo_,(int)(rx+296),(int)(y+201),(int)(sideW-314),150,TRUE);
             MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
         }
 
@@ -1693,6 +2084,26 @@ private:
         CloseClipboard();
     }
 
+    void InstallOrRepairLocalAi() {
+        const auto setup=ExeDir()/L"Setup-Sentinel-AI.cmd";
+        if(!std::filesystem::exists(setup)) {
+            modelStatus_=L"AI installer is missing: "+setup.wstring();
+            statusText_=L"Local AI installer missing";
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            return;
+        }
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",setup.c_str(),nullptr,ExeDir().c_str(),SW_SHOWNORMAL);
+        if(rc<=32) {
+            modelStatus_=L"Could not launch AI installer. ShellExecute error "+std::to_wstring(rc)+L".";
+            statusText_=L"Local AI installer failed to launch";
+        } else {
+            modelStatus_=L"AI installer launched. Complete setup, then click Browse Models.";
+            statusText_=L"Local AI installation / repair started";
+        }
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void BrowseModels() {
         wchar_t endpoint[2048]{};
         GetWindowTextW(modelEndpointEdit_,endpoint,2048);
@@ -1714,12 +2125,41 @@ private:
             if(!models.empty()) {
                 SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
                 SetWindowTextW(modelNameEdit_,Widen(models[0]).c_str());
+                modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
+                statusText_=L"Model list loaded";
+            } else {
+                SendMessageW(modelCombo_,CB_RESETCONTENT,0,0);
+                const std::wstring none=L"<no local models discovered>";
+                SendMessageW(modelCombo_,CB_ADDSTRING,0,(LPARAM)none.c_str());
+                SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
+                modelStatus_=L"No models returned by /v1/models. The local backend is not running correctly or has no loaded model.";
+                statusText_=L"No local models available";
             }
-            modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
-            statusText_=L"Model list loaded";
         } catch(const std::exception& e) {
-            modelStatus_=L"Browse failed: "+Widen(e.what());
-            statusText_=L"Model discovery failed";
+            bool recovered=false;
+            std::wstring launcherFailure;
+            if(IsLocalModelEndpoint(Narrow(we)) && StartBundledAiService(&launcherFailure)) {
+                try {
+                    auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(Narrow(we));
+                    SendMessageW(modelCombo_,CB_RESETCONTENT,0,0);
+                    for(const auto& item:models) {
+                        auto w=Widen(item);
+                        SendMessageW(modelCombo_,CB_ADDSTRING,0,(LPARAM)w.c_str());
+                    }
+                    if(!models.empty()) {
+                        SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
+                        SetWindowTextW(modelNameEdit_,Widen(models[0]).c_str());
+                    }
+                    modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
+                    statusText_=L"Model list loaded";
+                    recovered=true;
+                } catch(...) {}
+            }
+            if(!recovered) {
+                modelStatus_=L"Browse failed: "+Widen(e.what());
+                if(!launcherFailure.empty()) modelStatus_+=L" | "+launcherFailure;
+                statusText_=L"Model discovery failed";
+            }
         }
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
@@ -1750,7 +2190,8 @@ private:
             return;
         }
         try {
-            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(Narrow(we),Narrow(wm));
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                Narrow(we),Narrow(wm),{},simSettings_.temperature,simSettings_.maxTokens);
             sentinel::simulation::ModelContext testContext;
             testContext.scenario="Sentinel local model connection test";
             testContext.personaSummary="Synthetic test only.";
@@ -2308,6 +2749,79 @@ private:
         }
     }
 
+    void RunAiDiagnostics() {
+        std::wstringstream report;
+        report << L"Configured endpoint: " << Widen(simSettings_.endpoint) << L"\n";
+        report << L"Configured model: " << Widen(simSettings_.model) << L"\n";
+        report << L"Active adapter: " << Widen(model_?model_->Name():"None") << L"\n";
+
+        const auto aiDir=ExeDir()/L"ai";
+        const std::array<std::filesystem::path,3> runtimeCandidates{
+            aiDir/L"runtime"/L"cuda"/L"llama-server.exe",
+            aiDir/L"runtime"/L"cpu"/L"llama-server.exe",
+            aiDir/L"runtime"/L"llama-server.exe"
+        };
+        bool runtimeFound=false;
+        for(const auto& p:runtimeCandidates) {
+            if(std::filesystem::exists(p)) { runtimeFound=true; break; }
+        }
+        report << L"Bundled llama-server: " << (runtimeFound?L"FOUND":L"MISSING") << L"\n";
+
+        const auto modelDir=aiDir/L"models";
+        bool modelFileFound=false;
+        if(std::filesystem::exists(modelDir)) {
+            for(const auto& entry:std::filesystem::directory_iterator(modelDir)) {
+                if(entry.is_regular_file() && entry.path().extension()==L".gguf") {
+                    modelFileFound=true;
+                    break;
+                }
+            }
+        }
+        report << L"Local GGUF: " << (modelFileFound?L"FOUND":L"MISSING") << L"\n";
+
+        try {
+            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+            report << L"/v1/models: OK (" << models.size() << L" model";
+            if(models.size()!=1) report << L"s";
+            report << L")\n";
+            if(!models.empty()) report << L"First discovered model: " << Widen(models.front()) << L"\n";
+
+            try {
+                auto probe=sentinel::simulation::CreateOpenAICompatibleModel(
+                    simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,64);
+                sentinel::simulation::ModelContext ctx;
+                ctx.scenario="Sentinel AI diagnostic";
+                ctx.personaSummary="Synthetic diagnostic persona.";
+                auto response=probe->GenerateInvestigatorSuggestion(ctx);
+                report << L"Completion probe: OK";
+                if(!response.empty()) report << L" (" << std::min<size_t>(response.size(),120) << L" chars)";
+                report << L"\n";
+            } catch(const std::exception& e) {
+                report << L"Completion probe: FAILED - " << Widen(e.what()) << L"\n";
+            }
+        } catch(const std::exception& first) {
+            report << L"/v1/models: FAILED - " << Widen(first.what()) << L"\n";
+            std::wstring startFailure;
+            if(IsLocalModelEndpoint(simSettings_.endpoint)) {
+                if(StartBundledAiService(&startFailure)) {
+                    try {
+                        auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+                        report << L"Auto-start retry: OK (" << models.size() << L" model(s))\n";
+                    } catch(const std::exception& second) {
+                        report << L"Auto-start retry: FAILED - " << Widen(second.what()) << L"\n";
+                    }
+                } else {
+                    report << L"Bundled service start: FAILED - " << startFailure << L"\n";
+                }
+            }
+        }
+
+        aiDiagnostics_=report.str();
+        statusText_=L"AI diagnostics complete";
+        MessageBoxW(hwnd_,aiDiagnostics_.c_str(),L"Sentinel AI Diagnostics",MB_OK|MB_ICONINFORMATION);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void DrawSettings(float w,float h) {
         PageTitle(L"Settings",L"Secure storage, application information, and update status");
         const float x=kSidebar+28.0f;
@@ -2343,8 +2857,11 @@ private:
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,170,38,false);
-        TextLine(updateStatus_,rx+20,y+190,rightW-40,26,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,150,38,false);
+        AddButton(L"ai_diagnostics",L"AI Diagnostics",rx+180,y+146,140,38,true);
+        TextLine(updateStatus_,rx+20,y+190,rightW-40,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(modelStatus_,rx+20,y+208,rightW-40,18,tinyFmt_.Get(),
+            modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
 
         Rounded(x,y+246,contentW,294,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Release Security",x+18,y+258,260,30,h1Fmt_.Get(),brush_.text.Get());
@@ -2486,8 +3003,23 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
-        case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
-        case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONDOWN:
+            if(g_app) g_app->BeginTextSelection((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_MOUSEMOVE:
+            if(g_app && (wp&MK_LBUTTON))
+                g_app->UpdateTextSelection((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_RBUTTONUP:
+            if(g_app && g_app->CopySelectedTextAt((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp))) return 0;
+            if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_LBUTTONUP:
+            if(g_app) {
+                const float mx=(float)GET_X_LPARAM(lp), my=(float)GET_Y_LPARAM(lp);
+                if(!g_app->EndTextSelection(mx,my)) g_app->Click(mx,my);
+            }
+            return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);

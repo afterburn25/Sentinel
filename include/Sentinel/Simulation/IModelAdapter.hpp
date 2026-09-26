@@ -46,7 +46,9 @@ std::unique_ptr<IModelAdapter> CreateRuleBasedTestModel();
 std::unique_ptr<IModelAdapter> CreateOpenAICompatibleModel(
     std::string endpoint,
     std::string model,
-    std::string apiKey = {});
+    std::string apiKey = {},
+    double temperature = 0.65,
+    int maxTokens = 220);
 
 std::vector<std::string> DiscoverOpenAICompatibleModels(
     std::string endpoint,
