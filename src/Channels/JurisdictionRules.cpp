@@ -227,8 +227,11 @@ void JurisdictionRuleStore::SelectForOperation(
         "selected_by=excluded.selected_by,selected_utc=CURRENT_TIMESTAMP";
     if(sqlite3_prepare_v2(db_.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
         throw std::runtime_error("prepare operation jurisdiction failed");
-    Bind(s,1,operationKey);Bind(s,2,country);Bind(s,3,region);Bind(s,4,federalProfileId);
-    Bind(s,5,stateProfileId);Bind(s,6,agencyProfileId);Bind(s,7,selectedBy);
+    Bind(s,1,operationKey);Bind(s,2,country);Bind(s,3,region);
+    if(federalProfileId.empty()) sqlite3_bind_null(s,4); else Bind(s,4,federalProfileId);
+    if(stateProfileId.empty()) sqlite3_bind_null(s,5); else Bind(s,5,stateProfileId);
+    if(agencyProfileId.empty()) sqlite3_bind_null(s,6); else Bind(s,6,agencyProfileId);
+    Bind(s,7,selectedBy);
     if(sqlite3_step(s)!=SQLITE_DONE){sqlite3_finalize(s);throw std::runtime_error("save operation jurisdiction failed");}
     sqlite3_finalize(s);
 }
