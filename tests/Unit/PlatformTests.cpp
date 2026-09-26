@@ -80,6 +80,7 @@ int main() {
     {
         auto dbPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.db";
         std::filesystem::remove(dbPath);
+        std::cout<<"training review: open db\n";
         SqliteDatabase db;
         db.Open(dbPath);
         db.Execute(
@@ -104,19 +105,23 @@ int main() {
             "'log-1','conversation-1','Casey','test-model','reactive_reply','hi','hey :)',"
             "'Casey persona','likes movies','{}',500,900,'allowed');");
 
+        std::cout<<"training review: stage\n";
         simulation::TrainingReviewStore reviews(db);
         auto staged=reviews.StageLatestReply("conversation-1");
         Require(staged.has_value(),"latest persona reply should stage for review");
         Require(staged->status==simulation::TrainingReviewStatus::Pending,
             "new training review item should start pending");
+        std::cout<<"training review: approve\n";
         Require(reviews.Review(staged->id,simulation::TrainingReviewStatus::Approved,"tester","good example"),
             "training review approval failed");
 
+        std::cout<<"training review: counts\n";
         auto counts=reviews.Counts();
         Require(counts.approved==1 && counts.pending==0,
             "training review counts are incorrect after approval");
 
         auto datasetPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.jsonl";
+        std::cout<<"training review: export\n";
         const auto exported=reviews.ExportApprovedJsonl(datasetPath);
         Require(exported==1,"approved dataset export count incorrect");
         std::ifstream dataset(datasetPath);
@@ -126,6 +131,7 @@ int main() {
             "dataset export lost source-log provenance");
         Require(jsonl.find("\"input\":\"hi\"")!=std::string::npos,
             "dataset export lost input text");
+        std::cout<<"training review: cleanup\n";
         db.Close();
         std::filesystem::remove(datasetPath);
         std::filesystem::remove(dbPath);
