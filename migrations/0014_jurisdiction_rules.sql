@@ -25,9 +25,7 @@ CREATE TABLE IF NOT EXISTS jurisdiction_rule_sources (
     source_url TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     checked_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(federal_profile_id) REFERENCES jurisdiction_rule_profiles(id),
-    FOREIGN KEY(state_profile_id) REFERENCES jurisdiction_rule_profiles(id),
-    FOREIGN KEY(agency_profile_id) REFERENCES jurisdiction_rule_profiles(id)
+    FOREIGN KEY(profile_id) REFERENCES jurisdiction_rule_profiles(id)
 );
 
 CREATE TABLE IF NOT EXISTS operation_jurisdiction (
@@ -39,7 +37,9 @@ CREATE TABLE IF NOT EXISTS operation_jurisdiction (
     agency_profile_id TEXT,
     selected_by TEXT NOT NULL DEFAULT '',
     selected_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(profile_id) REFERENCES jurisdiction_rule_profiles(id)
+    FOREIGN KEY(federal_profile_id) REFERENCES jurisdiction_rule_profiles(id),
+    FOREIGN KEY(state_profile_id) REFERENCES jurisdiction_rule_profiles(id),
+    FOREIGN KEY(agency_profile_id) REFERENCES jurisdiction_rule_profiles(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_jurisdiction_profiles_region
