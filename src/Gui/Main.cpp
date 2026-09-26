@@ -16,6 +16,9 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
+#include "Sentinel/Channels/ChannelCore.hpp"
+#include "Sentinel/Channels/AutomationEngine.hpp"
+#include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 #include "Sentinel/Update/UpdateService.hpp"
 
@@ -228,6 +231,9 @@ struct Runtime {
     sentinel::WindowsAesGcmCipher cipher;
     sentinel::WindowsDpapiSecretProtector dpapi;
     sentinel::MigrationService migrations;
+    sentinel::channels::ChannelCoreStore channelCore;
+    sentinel::channels::AutomationEngine automationEngine;
+    sentinel::channels::ChannelAdapterRegistry channelAdapters;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
@@ -238,6 +244,7 @@ struct Runtime {
         : root(AppDataRoot()),
           cipher(random),
           migrations(db),
+          channelCore(db),
           conversationMemory(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
