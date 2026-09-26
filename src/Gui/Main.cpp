@@ -775,6 +775,7 @@ public:
             else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
             else if (b.id==L"sim_browse_models") BrowseModels();
+            else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"model_register") RegisterCurrentModel();
@@ -1653,7 +1654,8 @@ private:
         TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
         AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
-        TextLine(L"Available model",rx+158,y+180,110,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_install_ai",L"Install / Repair AI",rx+154,y+182,132,34,true);
+        TextLine(L"Available model",rx+296,y+180,76,20,tinyFmt_.Get(),brush_.muted.Get());
 
         TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
@@ -1736,7 +1738,7 @@ private:
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
 
             MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
-            MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
+            MoveControl(modelCombo_,(int)(rx+296),(int)(y+201),(int)(sideW-314),150,TRUE);
             MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
         }
 
@@ -2078,6 +2080,26 @@ private:
             if(mem) GlobalFree(mem);
         }
         CloseClipboard();
+    }
+
+    void InstallOrRepairLocalAi() {
+        const auto setup=ExeDir()/L"Setup-Sentinel-AI.cmd";
+        if(!std::filesystem::exists(setup)) {
+            modelStatus_=L"AI installer is missing: "+setup.wstring();
+            statusText_=L"Local AI installer missing";
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            return;
+        }
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",setup.c_str(),nullptr,ExeDir().c_str(),SW_SHOWNORMAL);
+        if(rc<=32) {
+            modelStatus_=L"Could not launch AI installer. ShellExecute error "+std::to_wstring(rc)+L".";
+            statusText_=L"Local AI installer failed to launch";
+        } else {
+            modelStatus_=L"AI installer launched. Complete setup, then click Browse Models.";
+            statusText_=L"Local AI installation / repair started";
+        }
+        InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
     void BrowseModels() {
