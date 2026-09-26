@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS persona_profiles (
     vocabulary_level TEXT NOT NULL DEFAULT 'Age-appropriate',
     capitalization_style TEXT NOT NULL DEFAULT 'Casual',
     message_length TEXT NOT NULL DEFAULT 'Short to medium',
+    response_start_min_ms INTEGER NOT NULL DEFAULT 1400,
+    response_start_max_ms INTEGER NOT NULL DEFAULT 5200,
+    typing_ms_per_char_min INTEGER NOT NULL DEFAULT 28,
+    typing_ms_per_char_max INTEGER NOT NULL DEFAULT 52,
     created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
