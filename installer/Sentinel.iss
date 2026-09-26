@@ -63,11 +63,13 @@ var
   ModelAlreadyValid: Boolean;
   RuntimeAlreadyValid: Boolean;
   GPUName: String;
+  LastDownloadItem: String;
 
 procedure SetStatus(const S: String);
 begin
   WizardForm.StatusLabel.Caption := S;
-  WizardForm.StatusLabel.Update;
+  if ProgressPage <> nil then
+    ProgressPage.SetText(S, '');
   Log(S);
 end;
 
@@ -188,10 +190,14 @@ var
   Item: String;
 begin
   Item := ExtractFileName(FileName);
-  if CompareText(Item, ModelFileName) = 0 then
-    SetStatus('Downloading Sentinel local model (~5.68 GB)...')
-  else
-    SetStatus('Downloading AI runtime: ' + Item);
+  if CompareText(Item, LastDownloadItem) <> 0 then
+  begin
+    LastDownloadItem := Item;
+    if CompareText(Item, ModelFileName) = 0 then
+      Log('Downloading Sentinel local model (~5.68 GB)...')
+    else
+      Log('Downloading AI runtime: ' + Item);
+  end;
   Result := True;
 end;
 
@@ -331,6 +337,7 @@ begin
     'Installing Sentinel local AI',
     'Sentinel Setup downloads only the components this computer still needs.',
     @OnDownloadProgress);
+  DownloadPage.ShowBaseNameInsteadOfUrl := True;
   ProgressPage := CreateOutputProgressPage(
     'Installing Sentinel',
     'Installing application files and preparing the local AI model.');
