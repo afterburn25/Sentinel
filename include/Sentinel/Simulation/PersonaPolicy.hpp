@@ -37,6 +37,10 @@ struct PersonaProfile {
     std::string vocabularyLevel{"Age-appropriate"};
     std::string capitalizationStyle{"Casual"};
     std::string messageLength{"Short to medium"};
+    int responseStartMinMs{1400};
+    int responseStartMaxMs{5200};
+    int typingMsPerCharMin{28};
+    int typingMsPerCharMax{52};
     std::vector<std::string> lockedFacts;
 };
 
