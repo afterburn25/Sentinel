@@ -3,6 +3,8 @@
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/TrainingReviewStore.hpp"
+#include "Sentinel/Storage/SqliteDatabase.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Channels/AutomationEngine.hpp"
@@ -14,6 +16,7 @@
 
 #include <filesystem>
 #include <iostream>
+#include <fstream>
 #include <stdexcept>
 
 static void Require(bool v,const char* msg) {
@@ -73,6 +76,60 @@ int main() {
     Require(simulation::LoadSession(sessionPath,loadedSession),"session load failed");
     Require(loadedSession.history.size()==1,"session turn did not persist");
     std::filesystem::remove(sessionPath);
+
+    {
+        auto dbPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.db";
+        std::filesystem::remove(dbPath);
+        SqliteDatabase db;
+        db.Open(dbPath);
+        db.Execute(
+            "CREATE TABLE persona_conversation_logs ("
+            "id TEXT PRIMARY KEY,conversation_id TEXT NOT NULL,persona_name TEXT NOT NULL,"
+            "model_name TEXT NOT NULL,event_kind TEXT NOT NULL,input_text TEXT NOT NULL,"
+            "output_text TEXT NOT NULL,persona_summary TEXT NOT NULL,recalled_memory TEXT NOT NULL,"
+            "context_json TEXT NOT NULL,start_delay_ms INTEGER NOT NULL,typing_delay_ms INTEGER NOT NULL,"
+            "policy_status TEXT NOT NULL,created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);"
+            "CREATE TABLE training_review_items ("
+            "id TEXT PRIMARY KEY,source_log_id TEXT NOT NULL UNIQUE,conversation_id TEXT NOT NULL DEFAULT '',"
+            "persona_name TEXT NOT NULL DEFAULT '',model_name TEXT NOT NULL DEFAULT '',"
+            "input_text TEXT NOT NULL DEFAULT '',output_text TEXT NOT NULL DEFAULT '',"
+            "persona_summary TEXT NOT NULL DEFAULT '',recalled_memory TEXT NOT NULL DEFAULT '',"
+            "context_json TEXT NOT NULL DEFAULT '{}',status INTEGER NOT NULL DEFAULT 0,"
+            "reviewer TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',"
+            "created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,reviewed_utc TEXT NOT NULL DEFAULT '');"
+            "INSERT INTO persona_conversation_logs("
+            "id,conversation_id,persona_name,model_name,event_kind,input_text,output_text,"
+            "persona_summary,recalled_memory,context_json,start_delay_ms,typing_delay_ms,policy_status"
+            ") VALUES("
+            "'log-1','conversation-1','Casey','test-model','reactive_reply','hi','hey :)',"
+            "'Casey persona','likes movies','{}',500,900,'allowed');");
+
+        simulation::TrainingReviewStore reviews(db);
+        auto staged=reviews.StageLatestReply("conversation-1");
+        Require(staged.has_value(),"latest persona reply should stage for review");
+        Require(staged->status==simulation::TrainingReviewStatus::Pending,
+            "new training review item should start pending");
+        Require(reviews.Review(staged->id,simulation::TrainingReviewStatus::Approved,"tester","good example"),
+            "training review approval failed");
+
+        auto counts=reviews.Counts();
+        Require(counts.approved==1 && counts.pending==0,
+            "training review counts are incorrect after approval");
+
+        auto datasetPath=std::filesystem::temp_directory_path()/"sentinel-training-review-test.jsonl";
+        const auto exported=reviews.ExportApprovedJsonl(datasetPath);
+        Require(exported==1,"approved dataset export count incorrect");
+        std::ifstream dataset(datasetPath);
+        std::string jsonl;
+        std::getline(dataset,jsonl);
+        Require(jsonl.find("\"source_log_id\":\"log-1\"")!=std::string::npos,
+            "dataset export lost source-log provenance");
+        Require(jsonl.find("\"input\":\"hi\"")!=std::string::npos,
+            "dataset export lost input text");
+        db.Close();
+        std::filesystem::remove(datasetPath);
+        std::filesystem::remove(dbPath);
+    }
 
     auto adapter=operations::CreateInMemoryMessageAdapter();
     Require(adapter->Connected(),"local messaging adapter should be connected");
