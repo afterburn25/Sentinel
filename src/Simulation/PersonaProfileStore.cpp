@@ -14,16 +14,16 @@ void PersonaProfileStore::Save(const PersonaProfile& p) {
     const char* sql=
         "INSERT INTO persona_profiles("
         "name,age,location,gender,pronouns,occupation,education,relationship_status,family_context,"
-        "personality,social_style,confidence_level,background,interests,writing_style,communication_level,"
+        "personality,social_style,confidence_level,background,interests,writing_style,communication_level,cognitive_level,"
         "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length,"
         "response_start_min_ms,response_start_max_ms,typing_ms_per_char_min,typing_ms_per_char_max) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(name) DO UPDATE SET "
         "age=excluded.age,location=excluded.location,gender=excluded.gender,pronouns=excluded.pronouns,"
         "occupation=excluded.occupation,education=excluded.education,relationship_status=excluded.relationship_status,"
         "family_context=excluded.family_context,personality=excluded.personality,social_style=excluded.social_style,"
         "confidence_level=excluded.confidence_level,background=excluded.background,interests=excluded.interests,"
-        "writing_style=excluded.writing_style,communication_level=excluded.communication_level,"
+        "writing_style=excluded.writing_style,communication_level=excluded.communication_level,cognitive_level=excluded.cognitive_level,"
         "slang_level=excluded.slang_level,grammar_quality=excluded.grammar_quality,"
         "typo_frequency=excluded.typo_frequency,emoji_level=excluded.emoji_level,"
         "vocabulary_level=excluded.vocabulary_level,capitalization_style=excluded.capitalization_style,"
@@ -37,7 +37,7 @@ void PersonaProfileStore::Save(const PersonaProfile& p) {
     Bind(s,i++,p.pronouns); Bind(s,i++,p.occupation); Bind(s,i++,p.education); Bind(s,i++,p.relationshipStatus);
     Bind(s,i++,p.familyContext); Bind(s,i++,p.personality); Bind(s,i++,p.socialStyle); Bind(s,i++,p.confidenceLevel);
     Bind(s,i++,p.background); Bind(s,i++,p.interests); Bind(s,i++,p.writingStyle); Bind(s,i++,p.communicationLevel);
-    Bind(s,i++,p.slangLevel); Bind(s,i++,p.grammarQuality); Bind(s,i++,p.typoFrequency); Bind(s,i++,p.emojiLevel);
+    Bind(s,i++,p.cognitiveLevel); Bind(s,i++,p.slangLevel); Bind(s,i++,p.grammarQuality); Bind(s,i++,p.typoFrequency); Bind(s,i++,p.emojiLevel);
     Bind(s,i++,p.vocabularyLevel); Bind(s,i++,p.capitalizationStyle); Bind(s,i++,p.messageLength);
     sqlite3_bind_int(s,i++,p.responseStartMinMs); sqlite3_bind_int(s,i++,p.responseStartMaxMs);
     sqlite3_bind_int(s,i++,p.typingMsPerCharMin); sqlite3_bind_int(s,i++,p.typingMsPerCharMax);
@@ -52,7 +52,7 @@ std::optional<PersonaProfile> PersonaProfileStore::Load(std::string_view name) c
     sqlite3_stmt* s{};
     const char* sql=
         "SELECT name,age,location,gender,pronouns,occupation,education,relationship_status,family_context,"
-        "personality,social_style,confidence_level,background,interests,writing_style,communication_level,"
+        "personality,social_style,confidence_level,background,interests,writing_style,communication_level,cognitive_level,"
         "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length,"
         "response_start_min_ms,response_start_max_ms,typing_ms_per_char_min,typing_ms_per_char_max "
         "FROM persona_profiles WHERE name=?";
@@ -65,7 +65,7 @@ std::optional<PersonaProfile> PersonaProfileStore::Load(std::string_view name) c
     p.pronouns=Col(s,i++);p.occupation=Col(s,i++);p.education=Col(s,i++);p.relationshipStatus=Col(s,i++);
     p.familyContext=Col(s,i++);p.personality=Col(s,i++);p.socialStyle=Col(s,i++);p.confidenceLevel=Col(s,i++);
     p.background=Col(s,i++);p.interests=Col(s,i++);p.writingStyle=Col(s,i++);p.communicationLevel=Col(s,i++);
-    p.slangLevel=Col(s,i++);p.grammarQuality=Col(s,i++);p.typoFrequency=Col(s,i++);p.emojiLevel=Col(s,i++);
+    p.cognitiveLevel=Col(s,i++);p.slangLevel=Col(s,i++);p.grammarQuality=Col(s,i++);p.typoFrequency=Col(s,i++);p.emojiLevel=Col(s,i++);
     p.vocabularyLevel=Col(s,i++);p.capitalizationStyle=Col(s,i++);p.messageLength=Col(s,i++);
     p.responseStartMinMs=sqlite3_column_int(s,i++);p.responseStartMaxMs=sqlite3_column_int(s,i++);
     p.typingMsPerCharMin=sqlite3_column_int(s,i++);p.typingMsPerCharMax=sqlite3_column_int(s,i++);
