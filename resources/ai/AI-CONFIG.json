@@ -1,0 +1,17 @@
+{
+  "runtime": "llama.cpp",
+  "llama_build": "b10977",
+  "host": "127.0.0.1",
+  "port": 1234,
+  "endpoint": "http://127.0.0.1:1234/v1/chat/completions",
+  "model_alias": "sentinel-chat",
+  "context_tokens": 4096,
+  "gpu_layers": 999,
+  "model": {
+    "repository": "llmware/qwen3.5-9b-gguf",
+    "quantization": "Q4_K_M",
+    "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+    "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+    "size_gb": 5.68
+  }
+}
