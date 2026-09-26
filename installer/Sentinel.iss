@@ -89,6 +89,25 @@ begin
   end;
 end;
 
+
+procedure StopSentinelApp;
+var
+  ResultCode: Integer;
+begin
+  SetStatus('Closing Sentinel before upgrade...');
+
+  { Ask Windows to close any running Sentinel instance first. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM Sentinel.exe',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  { Give Sentinel a moment to finish its shutdown path and release files. }
+  Sleep(1200);
+
+  { If an instance is still running, force it closed so the upgrade can continue. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Sentinel.exe',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure StopSentinelAI;
 var
   ResultCode: Integer;
@@ -346,6 +365,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  StopSentinelApp;
   StopSentinelAI;
 end;
 
