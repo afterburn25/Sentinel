@@ -479,7 +479,7 @@ public:
         if(!simSettings_.endpoint.empty() && !simSettings_.model.empty()) {
             auto connectConfiguredModel=[&]() {
                 auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
-                    simSettings_.endpoint,simSettings_.model);
+                    simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,simSettings_.maxTokens);
                 sentinel::simulation::ModelContext testContext;
                 testContext.scenario="Sentinel local model startup connection test";
                 testContext.personaSummary="Synthetic test only.";
@@ -1894,7 +1894,8 @@ private:
             return;
         }
         try {
-            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(Narrow(we),Narrow(wm));
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                Narrow(we),Narrow(wm),{},simSettings_.temperature,simSettings_.maxTokens);
             sentinel::simulation::ModelContext testContext;
             testContext.scenario="Sentinel local model connection test";
             testContext.personaSummary="Synthetic test only.";
