@@ -17,9 +17,18 @@ struct PersonaProfile {
     std::string name{"Alex"};
     int age{21};
     std::string location{"Synthetic test environment"};
+    std::string gender{"Unspecified"};
+    std::string pronouns{"Unspecified"};
+    std::string occupation{"Unspecified"};
+    std::string education{"Unspecified"};
+    std::string relationshipStatus{"Unspecified"};
+    std::string familyContext{"Unspecified"};
+    std::string personality{"Balanced"};
+    std::string socialStyle{"Balanced"};
+    std::string confidenceLevel{"Medium"};
     std::string background{"Fictional synthetic test persona"};
     std::string interests{"music, movies, casual conversation"};
-    std::string writingStyle{"casual, concise"};
+    std::string writingStyle{"Casual"};
     std::vector<std::string> lockedFacts;
 };
 
