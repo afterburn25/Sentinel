@@ -19,6 +19,7 @@
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/AutomationEngine.hpp"
 #include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 #include "Sentinel/Update/UpdateService.hpp"
 
@@ -234,6 +235,7 @@ struct Runtime {
     sentinel::channels::ChannelCoreStore channelCore;
     sentinel::channels::AutomationEngine automationEngine;
     sentinel::channels::ChannelAdapterRegistry channelAdapters;
+    sentinel::channels::JurisdictionRuleStore jurisdictionRules;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
@@ -245,6 +247,7 @@ struct Runtime {
           cipher(random),
           migrations(db),
           channelCore(db),
+          jurisdictionRules(db),
           conversationMemory(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
@@ -253,6 +256,7 @@ struct Runtime {
         std::filesystem::create_directories(root);
         db.Open(root/"sentinel.db");
         migrations.ApplyDirectory(MigrationsDir());
+        jurisdictionRules.EnsureBuiltInBaselines();
         keys.Initialize();
     }
 
