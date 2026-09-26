@@ -50,7 +50,7 @@ constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 constexpr UINT_PTR kSimReplyTimer = 4101;
-constexpr int kSimVisibleRows = 6;
+constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
@@ -525,6 +525,21 @@ private:
         target_->DrawTextW(s.c_str(),(UINT32)s.size(),fmt,D2D1::RectF(x,y,x+w,y+h),br);
     }
 
+    void TextLine(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br,
+                  DWRITE_TEXT_ALIGNMENT align=DWRITE_TEXT_ALIGNMENT_LEADING) {
+        if(w<=1 || h<=1) return;
+        ComPtr<IDWriteTextLayout> layout;
+        if(FAILED(writeFactory_->CreateTextLayout(s.c_str(),(UINT32)s.size(),fmt,w,h,&layout)) || !layout) return;
+        layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        layout->SetTextAlignment(align);
+        layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};
+        ComPtr<IDWriteInlineObject> sign;
+        if(SUCCEEDED(writeFactory_->CreateEllipsisTrimmingSign(fmt,&sign)))
+            layout->SetTrimming(&trim,sign.Get());
+        target_->DrawTextLayout(D2D1::Point2F(x,y),layout.Get(),br,D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    }
+
     void Rounded(float x,float y,float w,float h,ID2D1Brush* fill,ID2D1Brush* stroke=nullptr,float radius=8) {
         auto rr=D2D1::RoundedRect(D2D1::RectF(x,y,x+w,y+h),radius,radius);
         target_->FillRoundedRectangle(rr,fill);
@@ -533,12 +548,12 @@ private:
 
     void Badge(const std::wstring& s,float x,float y,ID2D1Brush* color,float width=76) {
         Rounded(x,y,width,24,brush_.panel2.Get(),color,12);
-        Text(s,x+10,y+3,width-18,20,smallFmt_.Get(),color);
+        TextLine(s,x+8,y+2,width-16,20,smallFmt_.Get(),color,DWRITE_TEXT_ALIGNMENT_CENTER);
     }
 
     void AddButton(const std::wstring& id,const std::wstring& label,float x,float y,float w,float h,bool primary=false) {
         Rounded(x,y,w,h,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),7);
-        Text(label,x+12,y+(h-22)/2,w-24,24,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(label,x+10,y+1,w-20,h-2,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         buttons_.push_back({{x,y,x+w,y+h},id});
     }
 
@@ -675,7 +690,7 @@ private:
                 Rounded(20,y,36,32,brush_.sidebar.Get(),brush_.border.Get(),8);
             }
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
-            Text(names[i],66,y+6,145,24,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
+            TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
         Text(L"Sentinel v1.0.1",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
@@ -702,8 +717,8 @@ private:
     }
 
     void PageTitle(const std::wstring& title,const std::wstring& sub) {
-        Text(title,kSidebar+28,kHeader+22,360,40,titleFmt_.Get(),brush_.text.Get());
-        Text(sub,kSidebar+30,kHeader+57,650,22,bodyFmt_.Get(),brush_.muted.Get());
+        TextLine(title,kSidebar+28,kHeader+18,440,42,titleFmt_.Get(),brush_.text.Get());
+        TextLine(sub,kSidebar+30,kHeader+56,760,24,bodyFmt_.Get(),brush_.muted.Get());
     }
 
     void Metric(float x,float y,float w,const std::wstring& label,const std::wstring& value,const std::wstring& sub,ID2D1Brush* accent,IconKind icon) {
