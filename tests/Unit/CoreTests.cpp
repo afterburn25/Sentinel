@@ -6,6 +6,7 @@
 #include "Sentinel/Storage/SqliteDatabase.hpp"
 #include "Sentinel/Storage/MigrationService.hpp"
 #include "Sentinel/Core/CaseRepository.hpp"
+#include "Sentinel/Channels/ChannelCore.hpp"
 
 #include <array>
 #include <cassert>
@@ -148,6 +149,89 @@ void TestWindowsCryptoAndSev()
 }
 #endif
 
+#ifdef _WIN32
+void TestUnifiedChannelCore()
+{
+    const auto root = std::filesystem::temp_directory_path() / ("sentinel-channel-test-" + sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"sentinel.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::channels::ChannelCoreStore store(db);
+    const auto subject=store.CreateSubject("case-test","Cross-channel subject");
+    const auto identity=store.AddSubjectIdentity(
+        subject,"phone","twilio","+13375550199","+1 337-555-0199",
+        sentinel::channels::IdentityLinkState::Candidate,0.75);
+    assert(store.ConfirmSubjectIdentity(identity,"unit-test"));
+
+    sentinel::channels::ChannelAccount account;
+    account.type=sentinel::channels::ChannelType::Sms;
+    account.provider="twilio";
+    account.externalAccountId="acct-test";
+    account.displayName="Sentinel SMS";
+    account.address="+13375550100";
+    account.capabilities.Set(sentinel::channels::ReceiveText);
+    account.capabilities.Set(sentinel::channels::SendText);
+    account.capabilities.Set(sentinel::channels::DeliveryReceipts);
+    const auto accountId=store.UpsertChannelAccount(account);
+
+    sentinel::channels::ChannelConversation conversation;
+    conversation.subjectId=subject;
+    conversation.personaName="Casey";
+    conversation.channelAccountId=accountId;
+    conversation.type=sentinel::channels::ChannelType::Sms;
+    conversation.provider="twilio";
+    conversation.providerConversationId="sms:+13375550199";
+    conversation.externalPeerId="+13375550199";
+    const auto conversationId=store.OpenConversation(conversation);
+
+    sentinel::channels::RawChannelEvent event;
+    event.id=sentinel::Uuid::Random().ToString();
+    event.channelConversationId=conversationId;
+    event.provider="twilio";
+    event.type=sentinel::channels::ChannelType::Sms;
+    event.providerAccountId="acct-test";
+    event.providerConversationId="sms:+13375550199";
+    event.providerMessageId="SM-unit-1";
+    event.eventType="message.received";
+    event.direction=sentinel::channels::Direction::Inbound;
+    event.senderExternalId="+13375550199";
+    event.recipientExternalId="+13375550100";
+    event.rawPayload="{\"Body\":\"hello\"}";
+    event.payloadSha256=std::string(64,'a');
+    store.RecordRawEvent(event);
+
+    sentinel::channels::NormalizedMessage message;
+    message.id=sentinel::Uuid::Random().ToString();
+    message.eventId=event.id;
+    message.channelConversationId=conversationId;
+    message.subjectId=subject;
+    message.personaName="Casey";
+    message.direction=sentinel::channels::Direction::Inbound;
+    message.senderExternalId=event.senderExternalId;
+    message.recipientExternalId=event.recipientExternalId;
+    message.body="hello";
+    message.automationMode=sentinel::channels::AutomationMode::ApprovalRequired;
+    message.providerMessageId=event.providerMessageId;
+    store.RecordMessage(message);
+
+    auto found=store.FindConversation("twilio",accountId,"sms:+13375550199");
+    assert(found.has_value());
+    assert(found->subjectId==subject);
+
+    auto recent=store.RecentMessages(conversationId,10);
+    assert(recent.size()==1);
+    assert(recent[0].body=="hello");
+    assert(recent[0].subjectId==subject);
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+#endif
+
 }
 
 int main()
@@ -155,6 +239,7 @@ int main()
     TestIdsAndHashes();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
+    TestUnifiedChannelCore();
 #endif
     std::cout << "SentinelCoreTests passed\n";
 }
