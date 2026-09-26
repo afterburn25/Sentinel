@@ -233,7 +233,17 @@ public:
         scenarioSeedEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1017,GetModuleHandleW(nullptr),nullptr);
         minDelayEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1018,GetModuleHandleW(nullptr),nullptr);
         maxDelayEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1019,GetModuleHandleW(nullptr),nullptr);
-        ageStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1020,GetModuleHandleW(nullptr),nullptr);
+        ageStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1020,GetModuleHandleW(nullptr),nullptr);
+        personaGenderCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1023,GetModuleHandleW(nullptr),nullptr);
+        personaPronounsCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1024,GetModuleHandleW(nullptr),nullptr);
+        personaRelationshipCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1025,GetModuleHandleW(nullptr),nullptr);
+        personaPersonalityCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1026,GetModuleHandleW(nullptr),nullptr);
+        personaSocialCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1027,GetModuleHandleW(nullptr),nullptr);
+        personaConfidenceCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED,0,0,0,0,hwnd_,(HMENU)1028,GetModuleHandleW(nullptr),nullptr);
+        personaOccupationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1029,GetModuleHandleW(nullptr),nullptr);
+        personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
+        personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
+        personaBackgroundEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -243,14 +253,21 @@ public:
         SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
-        SendMessageW(ageStateCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        SetWindowTheme(ageStateCombo_,L"DarkMode_Explorer",nullptr);
+        HWND personaCombos[]={ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
+            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_};
+        for(HWND combo:personaCombos) {
+            SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+            SetWindowTheme(combo,L"",L"");
+            SendMessageW(combo,CB_SETITEMHEIGHT,0,24);
+            SendMessageW(combo,CB_SETITEMHEIGHT,(WPARAM)-1,24);
+        }
         SendMessageW(caseNumberEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseTitleEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseNumberEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"CR-2026-0001");
@@ -271,8 +288,27 @@ public:
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
         SetWindowTextW(modelNameEdit_,Widen(simSettings_.model).c_str());
 
-        const wchar_t* ageItems[]={L"UNKNOWN",L"SELF_REPORTED_MINOR",L"SELF_REPORTED_ADULT",L"DOCUMENTED_MINOR",L"DOCUMENTED_ADULT",L"CONFLICTING"};
-        for(auto* item:ageItems) SendMessageW(ageStateCombo_,CB_ADDSTRING,0,(LPARAM)item);
+        const wchar_t* ageItems[]={
+            L"Unknown / not established",L"Self-reported minor",L"Self-reported adult",
+            L"Documented minor",L"Documented adult",L"Conflicting age information"
+        };
+        const wchar_t* genderItems[]={L"Unspecified",L"Female",L"Male",L"Non-binary",L"Other"};
+        const wchar_t* pronounItems[]={L"Unspecified",L"She / Her",L"He / Him",L"They / Them",L"Other"};
+        const wchar_t* relationshipItems[]={L"Unspecified",L"Single",L"Dating",L"In a relationship",L"Married",L"Separated",L"Divorced",L"Widowed"};
+        const wchar_t* personalityItems[]={L"Reserved",L"Balanced",L"Outgoing",L"Playful",L"Serious",L"Curious",L"Guarded",L"Confident"};
+        const wchar_t* socialItems[]={L"Very reserved",L"Reserved",L"Balanced",L"Social",L"Very social"};
+        const wchar_t* confidenceItems[]={L"Low",L"Medium",L"High"};
+        auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
+            SendMessageW(combo,CB_RESETCONTENT,0,0);
+            for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
+        };
+        fillCombo(ageStateCombo_,ageItems,std::size(ageItems));
+        fillCombo(personaGenderCombo_,genderItems,std::size(genderItems));
+        fillCombo(personaPronounsCombo_,pronounItems,std::size(pronounItems));
+        fillCombo(personaRelationshipCombo_,relationshipItems,std::size(relationshipItems));
+        fillCombo(personaPersonalityCombo_,personalityItems,std::size(personalityItems));
+        fillCombo(personaSocialCombo_,socialItems,std::size(socialItems));
+        fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
@@ -383,6 +419,60 @@ public:
         return brush;
     }
 
+    void MoveControl(HWND control,int x,int y,int w,int h,BOOL repaint=TRUE) {
+        if(!control) return;
+        RECT r{};
+        GetWindowRect(control,&r);
+        POINT tl{r.left,r.top}, br{r.right,r.bottom};
+        ScreenToClient(hwnd_,&tl);
+        ScreenToClient(hwnd_,&br);
+        if(tl.x==x && tl.y==y && (br.x-tl.x)==w && (br.y-tl.y)==h) return;
+        SetWindowPos(control,nullptr,x,y,w,h,SWP_NOZORDER|SWP_NOACTIVATE|(repaint?0:SWP_NOREDRAW));
+    }
+
+    bool DrawOwnerCombo(const DRAWITEMSTRUCT* dis) {
+        if(!dis || dis->CtlType!=ODT_COMBOBOX) return false;
+        HDC dc=dis->hDC;
+        RECT rc=dis->rcItem;
+        const bool selected=(dis->itemState & ODS_SELECTED)!=0;
+        HBRUSH bg=CreateSolidBrush(selected?RGB(18,40,58):RGB(15,32,48));
+        FillRect(dc,&rc,bg);
+        DeleteObject(bg);
+        SetBkMode(dc,TRANSPARENT);
+        SetTextColor(dc,selected?RGB(34,199,255):RGB(238,246,255));
+        if(dis->itemID!=(UINT)-1) {
+            wchar_t buf[512]{};
+            SendMessageW(dis->hwndItem,CB_GETLBTEXT,dis->itemID,(LPARAM)buf);
+            RECT tr=rc;
+            tr.left+=8; tr.right-=8;
+            DrawTextW(dc,buf,-1,&tr,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
+        }
+        if(dis->itemState & ODS_FOCUS) DrawFocusRect(dc,&rc);
+        return true;
+    }
+
+    int FindComboText(HWND combo,const std::string& value) {
+        const auto target=Widen(value);
+        int count=(int)SendMessageW(combo,CB_GETCOUNT,0,0);
+        for(int i=0;i<count;i++) {
+            wchar_t buf[512]{};
+            SendMessageW(combo,CB_GETLBTEXT,i,(LPARAM)buf);
+            if(_wcsicmp(buf,target.c_str())==0) return i;
+        }
+        return 0;
+    }
+
+    std::string ComboText(HWND combo) const {
+        int sel=(int)SendMessageW(combo,CB_GETCURSEL,0,0);
+        if(sel==CB_ERR) return {};
+        int len=(int)SendMessageW(combo,CB_GETLBTEXTLEN,sel,0);
+        if(len<0) return {};
+        std::wstring v((size_t)len+1,L'\0');
+        SendMessageW(combo,CB_GETLBTEXT,sel,(LPARAM)v.data());
+        v.resize((size_t)len);
+        return Narrow(v);
+    }
+
     void HandleSimScroll(WPARAM wp) {
         if(page_!=Page::Simulation) return;
         int maxStart=std::max(0,(int)simContext_.history.size()-kSimVisibleRows);
@@ -449,6 +539,8 @@ private:
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
     HWND personaNameEdit_{},personaAgeEdit_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
+    HWND personaOccupationEdit_{},personaEducationEdit_{},personaFamilyEdit_{},personaBackgroundEdit_{};
+    HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
     std::unique_ptr<Runtime> runtime_;
@@ -845,8 +937,8 @@ private:
         float x=kSidebar+28,y=kHeader+102;
         Text(L"Case Number",x,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Title",x+180,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
-        MoveWindow(caseNumberEdit_,(int)x,(int)y,160,34,TRUE);
-        MoveWindow(caseTitleEdit_,(int)(x+180),(int)y,300,34,TRUE);
+        MoveControl(caseNumberEdit_,(int)x,(int)y,160,34,TRUE);
+        MoveControl(caseTitleEdit_,(int)(x+180),(int)y,300,34,TRUE);
         AddButton(L"new_case",L"+ Create Case",x+500,y,140,34,true);
 
         float tableY=y+54;
@@ -1051,12 +1143,12 @@ private:
             TextLine(L"Synthetic subject is typing...",x+50,transcriptBottom-34,174,26,tinyFmt_.Get(),brush_.muted.Get());
         }
 
-        MoveWindow(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
+        MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
         // Full-size composer with vertically centered native edit.
         Rounded(x+18,y+452,chatW-236,46,brush_.sidebar.Get(),brush_.border.Get(),10);
-        MoveWindow(chatEdit_,(int)(x+30),(int)(y+464),(int)(chatW-260),22,TRUE);
+        MoveControl(chatEdit_,(int)(x+30),(int)(y+464),(int)(chatW-260),22,TRUE);
         buttons_.push_back({{x+18,y+452,x+chatW-218,y+498},L"sim_focus"});
         AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
@@ -1072,14 +1164,14 @@ private:
         TextLine(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+108,y+82,sideW-126,24,smallFmt_.Get(),brush_.cyan.Get());
 
         TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
+        MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
 
         AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
         TextLine(L"Available model",rx+158,y+180,110,20,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
+        MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
 
         TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
+        MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
         AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
 
         StatusDot(rx+24,y+307,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
@@ -1443,30 +1535,30 @@ private:
         Text(L"Persona Profile",x+18,y+15,260,28,h1Fmt_.Get(),brush_.text.Get());
 
         Text(L"Name",x+22,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(personaNameEdit_,(int)(x+135),(int)(y+54),(int)(left-160),32,TRUE);
+        MoveControl(personaNameEdit_,(int)(x+135),(int)(y+54),(int)(left-160),32,TRUE);
         Text(L"Age",x+22,y+106,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(personaAgeEdit_,(int)(x+135),(int)(y+98),110,32,TRUE);
+        MoveControl(personaAgeEdit_,(int)(x+135),(int)(y+98),110,32,TRUE);
         Text(L"Age state",x+270,y+106,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(ageStateCombo_,(int)(x+360),(int)(y+98),(int)(left-385),160,TRUE);
+        MoveControl(ageStateCombo_,(int)(x+360),(int)(y+98),(int)(left-385),160,TRUE);
 
         Text(L"Location",x+22,y+150,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(personaLocationEdit_,(int)(x+135),(int)(y+142),(int)(left-160),32,TRUE);
+        MoveControl(personaLocationEdit_,(int)(x+135),(int)(y+142),(int)(left-160),32,TRUE);
         Text(L"Interests",x+22,y+194,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(personaInterestsEdit_,(int)(x+135),(int)(y+186),(int)(left-160),32,TRUE);
+        MoveControl(personaInterestsEdit_,(int)(x+135),(int)(y+186),(int)(left-160),32,TRUE);
         Text(L"Writing style",x+22,y+238,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(personaStyleEdit_,(int)(x+135),(int)(y+230),(int)(left-160),32,TRUE);
+        MoveControl(personaStyleEdit_,(int)(x+135),(int)(y+230),(int)(left-160),32,TRUE);
 
         Text(L"Scenario",x+22,y+290,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(scenarioNameEdit_,(int)(x+135),(int)(y+282),(int)(left-160),32,TRUE);
+        MoveControl(scenarioNameEdit_,(int)(x+135),(int)(y+282),(int)(left-160),32,TRUE);
         Text(L"Objective",x+22,y+334,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(scenarioObjectiveEdit_,(int)(x+135),(int)(y+326),(int)(left-160),32,TRUE);
+        MoveControl(scenarioObjectiveEdit_,(int)(x+135),(int)(y+326),(int)(left-160),32,TRUE);
         Text(L"Seed",x+22,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(scenarioSeedEdit_,(int)(x+135),(int)(y+370),110,32,TRUE);
+        MoveControl(scenarioSeedEdit_,(int)(x+135),(int)(y+370),110,32,TRUE);
 
         Text(L"Typing delay (ms)",x+270,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(minDelayEdit_,(int)(x+385),(int)(y+370),90,32,TRUE);
+        MoveControl(minDelayEdit_,(int)(x+385),(int)(y+370),90,32,TRUE);
         Text(L"to",x+482,y+378,24,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(maxDelayEdit_,(int)(x+507),(int)(y+370),90,32,TRUE);
+        MoveControl(maxDelayEdit_,(int)(x+507),(int)(y+370),90,32,TRUE);
 
         AddButton(L"persona_save",L"Save Profile & Policy",x+22,y+438,210,42,true);
         Text(L"Settings persist in the local Sentinel secure workspace.",x+250,y+449,left-280,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -1670,9 +1762,9 @@ private:
         Rounded(x,y,w-x-28,220,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Agency Connection",x+18,y+16,280,28,h1Fmt_.Get(),brush_.text.Get());
         Text(L"Server endpoint",x+22,y+66,130,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(agencyEndpointEdit_,(int)(x+160),(int)(y+58),(int)(w-x-220),32,TRUE);
+        MoveControl(agencyEndpointEdit_,(int)(x+160),(int)(y+58),(int)(w-x-220),32,TRUE);
         Text(L"Agency ID",x+22,y+110,130,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveWindow(agencyIdEdit_,(int)(x+160),(int)(y+102),300,32,TRUE);
+        MoveControl(agencyIdEdit_,(int)(x+160),(int)(y+102),300,32,TRUE);
         AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+160,y+154,150,38,true);
         StatusDot(x+334,y+173,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
         Text(agencyConfig_.enabled?L"Configuration enabled":L"Offline/local-only",x+346,y+162,220,22,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
@@ -1843,12 +1935,16 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_PAINT: {
             PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
         }
-        case WM_CTLCOLOREDIT: {
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX: {
             HDC dc=(HDC)wp;
             SetTextColor(dc,RGB(238,246,255));
             SetBkColor(dc,RGB(15,32,48));
             return g_app ? (LRESULT)g_app->EditBrush() : (LRESULT)GetStockObject(BLACK_BRUSH);
         }
+        case WM_DRAWITEM:
+            if(g_app && g_app->DrawOwnerCombo((DRAWITEMSTRUCT*)lp)) return TRUE;
+            break;
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
