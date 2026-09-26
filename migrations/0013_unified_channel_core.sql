@@ -84,7 +84,6 @@ CREATE TABLE IF NOT EXISTS channel_events (
     raw_payload TEXT NOT NULL,
     payload_sha256 TEXT NOT NULL,
     received_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(provider, provider_message_id, event_type),
     FOREIGN KEY(channel_conversation_id) REFERENCES channel_conversations(id)
 );
 
@@ -209,6 +208,9 @@ CREATE TABLE IF NOT EXISTS policy_decisions (
 CREATE INDEX IF NOT EXISTS idx_subject_identities_subject ON subject_identities(subject_id);
 CREATE INDEX IF NOT EXISTS idx_channel_conversations_subject ON channel_conversations(subject_id, updated_utc DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_events_conversation ON channel_events(channel_conversation_id, received_utc);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_events_provider_message_unique
+ON channel_events(provider, provider_message_id, event_type)
+WHERE provider_message_id <> '';
 CREATE INDEX IF NOT EXISTS idx_normalized_messages_conversation ON normalized_messages(channel_conversation_id, created_utc);
 CREATE INDEX IF NOT EXISTS idx_memory_facts_subject ON memory_facts(subject_id, active, updated_utc DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_migrations_subject ON channel_migrations(subject_id, detected_utc DESC);
