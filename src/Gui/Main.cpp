@@ -14,6 +14,7 @@
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/PersonaProfileStore.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
@@ -289,6 +290,7 @@ struct Runtime {
     sentinel::channels::ChannelAdapterRegistry channelAdapters;
     sentinel::channels::JurisdictionRuleStore jurisdictionRules;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
+    sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -301,6 +303,7 @@ struct Runtime {
           channelCore(db),
           jurisdictionRules(db),
           conversationMemory(db),
+          personaProfiles(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
