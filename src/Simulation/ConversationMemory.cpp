@@ -279,4 +279,68 @@ std::string ConversationMemoryStore::RecallRelevant(
     return out.str();
 }
 
+
+std::string ConversationMemoryStore::RecallParticipantFacts(
+    std::string_view currentConversationId,
+    size_t maxMessages) const
+{
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT m.body,c.updated_utc "
+        "FROM simulation_messages m "
+        "JOIN simulation_conversations c ON c.id=m.conversation_id "
+        "WHERE m.conversation_id<>? AND m.speaker=? "
+        "ORDER BY m.row_id DESC LIMIT 300",
+        -1,&s,nullptr),db,"prepare participant fact recall");
+    sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,2,(int)ChatTurn::Speaker::Investigator);
+
+    std::vector<std::pair<std::string,std::string>> facts;
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        const auto body=ColumnText(s,0);
+        const auto lower=Lower(body);
+
+        // Prefer statements that are likely to contain stable personal facts or
+        // answers. This is deliberately heuristic and does not infer facts that
+        // were never actually said.
+        const bool likelyFact =
+            lower.find("i am ")!=std::string::npos ||
+            lower.find("i'm ")!=std::string::npos ||
+            lower.find("im ")!=std::string::npos ||
+            lower.find("i live")!=std::string::npos ||
+            lower.find("i work")!=std::string::npos ||
+            lower.find("i like")!=std::string::npos ||
+            lower.find("i love")!=std::string::npos ||
+            lower.find("i hate")!=std::string::npos ||
+            lower.find("my ")!=std::string::npos ||
+            lower.find("i have")!=std::string::npos ||
+            lower.find("i got")!=std::string::npos ||
+            lower.find("i usually")!=std::string::npos ||
+            lower.find("i mostly")!=std::string::npos ||
+            lower.find("yes") == 0 ||
+            lower.find("no") == 0;
+
+        if(!likelyFact) continue;
+
+        bool duplicate=false;
+        for(const auto& existing:facts) {
+            if(Lower(existing.second)==lower) { duplicate=true; break; }
+        }
+        if(!duplicate) facts.push_back({ColumnText(s,1),body});
+        if(facts.size()>=std::min<size_t>(maxMessages,40)) break;
+    }
+    sqlite3_finalize(s);
+
+    if(facts.empty()) return {};
+    std::reverse(facts.begin(),facts.end());
+
+    std::ostringstream out;
+    out<<"Previously stated facts/answers from the other person. Treat them as remembered conversation facts. "
+          "Do not ask for the same information again unless there is a genuine contradiction or reason to clarify:\n";
+    for(const auto& [when,body]:facts)
+        out<<"["<<when<<"] "<<body<<"\n";
+    return out.str();
+}
+
 }
