@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sentinel VERSION 1.0.7 LANGUAGES CXX RC)
+project(Sentinel VERSION 1.0.8 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,7 @@ add_library(sentinel_core
     src/Simulation/ConversationMemory.cpp
     src/Simulation/ModelRegistry.cpp
     src/Simulation/PersonaProfileStore.cpp
+    src/Simulation/TrainingReviewStore.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Channels/ChannelCore.cpp
