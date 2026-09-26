@@ -2608,7 +2608,7 @@ private:
             jurisdictionStatus_=L"No operating jurisdiction selected";
             return;
         }
-        auto profile=runtime_->jurisdictionRules.LatestProfile("US",operatingStateCode_);
+        auto profile=runtime_->jurisdictionRules.LatestProfile(sentinel::channels::RuleLayerType::State,"US",operatingStateCode_);
         if(!profile) {
             jurisdictionStatus_=L"No rules profile installed for "+Widen(operatingStateCode_)+L" — automation locked to review";
             return;
@@ -2628,10 +2628,13 @@ private:
             return;
         }
         operatingStateCode_=state;
-        auto profile=runtime_->jurisdictionRules.LatestProfile("US",state);
-        const std::string profileId=profile?profile->id:"";
+        auto profile=runtime_->jurisdictionRules.LatestProfile(sentinel::channels::RuleLayerType::State,"US",state);
+        const auto federal=runtime_->jurisdictionRules.LatestProfile(
+            sentinel::channels::RuleLayerType::Federal,"US");
+        const std::string federalId=federal?federal->id:"";
+        const std::string stateId=profile?profile->id:"";
         runtime_->jurisdictionRules.SelectForOperation(
-            "local-default","US",state,profileId,"local-investigator");
+            "local-default","US",state,federalId,stateId,{},"local-investigator");
         RefreshJurisdictionStatus();
         if(!profile) {
             statusText_=L"State selected; no rules pack installed, automation remains review-only";
