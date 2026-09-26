@@ -29,6 +29,14 @@ struct PersonaProfile {
     std::string background{"Fictional synthetic test persona"};
     std::string interests{"music, movies, casual conversation"};
     std::string writingStyle{"Casual"};
+    std::string communicationLevel{"Age-appropriate"};
+    std::string slangLevel{"Moderate"};
+    std::string grammarQuality{"Casual"};
+    std::string typoFrequency{"Occasional"};
+    std::string emojiLevel{"Occasional"};
+    std::string vocabularyLevel{"Age-appropriate"};
+    std::string capitalizationStyle{"Casual"};
+    std::string messageLength{"Short to medium"};
     std::vector<std::string> lockedFacts;
 };
 
