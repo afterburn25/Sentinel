@@ -415,6 +415,10 @@ public:
             if (idx>=0&&idx<12) {
                 page_=(Page)idx;
                 ApplyPageControls();
+                if(page_==Page::Simulation && chatEdit_) {
+                    SetFocus(chatEdit_);
+                    SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+                }
                 InvalidateRect(hwnd_,nullptr,FALSE);
                 return;
             }
@@ -1128,6 +1132,7 @@ private:
 
         const float transcriptTop=y+56;
         const float transcriptBottom=y+430;
+        const float messageBottom=simBotTyping_ ? transcriptBottom-54.0f : transcriptBottom;
         const int total=(int)simContext_.history.size();
         const int maxStart=std::max(0,total-kSimVisibleRows);
         simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
@@ -1135,7 +1140,7 @@ private:
         const int visible=std::max(0,end-simFirstVisible_);
         simMessageRects_.clear();
 
-        float yy=transcriptBottom-visible*82.0f;
+        float yy=messageBottom-visible*82.0f;
         for(int i=simFirstVisible_;i<end;++i) {
             const auto& turn=simContext_.history[(size_t)i];
             const bool investigator=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
@@ -1157,9 +1162,10 @@ private:
         }
 
         if(simBotTyping_) {
-            Rounded(x+20,transcriptBottom-36,218,30,brush_.sidebar.Get(),brush_.border.Get(),15);
-            StatusDot(x+38,transcriptBottom-21,3,brush_.green.Get());
-            TextLine(L"Synthetic subject is typing...",x+50,transcriptBottom-34,174,26,tinyFmt_.Get(),brush_.muted.Get());
+            const float typingY=transcriptBottom-38;
+            Rounded(x+20,typingY,218,30,brush_.sidebar.Get(),brush_.border.Get(),15);
+            StatusDot(x+38,typingY+15,3,brush_.green.Get());
+            TextLine(L"Synthetic subject is typing...",x+50,typingY+2,174,26,tinyFmt_.Get(),brush_.muted.Get());
         }
 
         UpdateSimulationScrollbar();
@@ -1453,6 +1459,8 @@ private:
         SetTimer(hwnd_,kSimReplyTimer,(UINT)delay,nullptr);
         statusText_=L"Synthetic subject typing";
         SetFocus(chatEdit_);
+        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+        InvalidateRect(chatEdit_,nullptr,FALSE);
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
