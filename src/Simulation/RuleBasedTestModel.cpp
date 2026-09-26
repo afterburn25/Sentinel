@@ -126,6 +126,14 @@ public:
             return !v.empty() && l!="unspecified" && l!="unknown" && l!="synthetic test environment";
         };
 
+        if (!context.recalledMemory.empty() &&
+            HasAny(m,{"remember","last time","previous","before","we talked","you said","i said"})) {
+            const auto topic=ShortTopic(investigatorMessage);
+            if(!topic.empty())
+                return "Yeah, I remember us talking about "+topic+". I don't remember the exact wording, but I remember the context.";
+            return "Yeah, I remember that conversation. I don't remember every word exactly, but I remember what we were talking about.";
+        }
+
         if (HasAny(m,{"hello","hey"," hi","hi ","good morning","good evening"})) {
             return turn<=1 ? "Hey. Who's this?" : "Hey. What's up?";
         }
@@ -243,7 +251,7 @@ public:
         if (m.find('?')!=std::string::npos) {
             const auto topic=ShortTopic(investigatorMessage);
             if(!topic.empty())
-                return "I'm not completely sure what you mean by ""+topic+"". Can you be a little more specific?";
+                return "I'm not completely sure what you mean by "+topic+". Can you be a little more specific?";
             return "Can you be a little more specific about what you're asking?";
         }
 
