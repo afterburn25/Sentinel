@@ -220,6 +220,15 @@ public:
             if(app) app->SendSimulationMessage();
             return 0;
         }
+        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP) {
+            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+            DWORD start=0,end=0;
+            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
+            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
+            SetCaretPos(std::max(8,(int)(short)LOWORD(pos)),std::max(7,(int)(short)HIWORD(pos)));
+            ShowCaret(hwnd);
+            return result;
+        }
         return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
@@ -379,7 +388,7 @@ public:
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
-        ResetSimulation();
+        ResumeOrCreateConversation();
         ApplyPageControls();
         return S_OK;
     }
@@ -1494,6 +1503,49 @@ private:
         UpdateSimulationScrollbar();
     }
 
+    void ResumeOrCreateConversation() {
+        try {
+            auto conversations=runtime_->conversationMemory.List(50);
+            if(conversations.empty()) {
+                sentinel::simulation::ModelContext legacy=simContext_;
+                if(sentinel::simulation::LoadSession(runtime_->root/"simulation-session.tsv",legacy)
+                    && !legacy.history.empty()) {
+                    const std::string title="Recovered previous conversation";
+                    currentConversationId_=runtime_->conversationMemory.StartConversation(
+                        title,legacy.personaSummary,legacy.scenario);
+                    for(const auto& turn:legacy.history) {
+                        runtime_->conversationMemory.Append(currentConversationId_,turn.speaker,turn.text);
+                    }
+                    simContext_=std::move(legacy);
+                    currentConversationTitle_=Widen(title);
+                    simContext_.recalledMemory.clear();
+                    ScrollSimulationToBottom();
+                    statusText_=L"Recovered previous conversation";
+                    return;
+                }
+                ResetSimulation();
+                return;
+            }
+
+            sentinel::simulation::ModelContext loaded=simContext_;
+            if(runtime_->conversationMemory.Load(conversations.front().id,loaded)) {
+                currentConversationId_=conversations.front().id;
+                currentConversationTitle_=Widen(conversations.front().title);
+                simContext_=std::move(loaded);
+                simContext_.recalledMemory.clear();
+                archiveCursor_=0;
+                simBotTyping_=false;
+                simReplyPending_=false;
+                simPendingMessage_.clear();
+                simPreparedReply_.clear();
+                ScrollSimulationToBottom();
+                statusText_=L"Most recent conversation resumed";
+                return;
+            }
+        } catch(...) {}
+        ResetSimulation();
+    }
+
     void ResetSimulation() {
         simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
         simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
@@ -1519,7 +1571,9 @@ private:
 
         simSuggestion_=L"No suggestion generated yet";
         simBotTyping_=false;
+        simReplyPending_=false;
         simPendingMessage_.clear();
+        simPreparedReply_.clear();
         KillTimer(hwnd_,kSimTypingStartTimer);
         KillTimer(hwnd_,kSimReplyTimer);
         if(chatEdit_) {
@@ -1565,9 +1619,11 @@ private:
             simContext_=std::move(loaded);
             simContext_.recalledMemory.clear();
             simBotTyping_=false;
+            simReplyPending_=false;
             simPendingMessage_.clear();
+            simPreparedReply_.clear();
             KillTimer(hwnd_,kSimTypingStartTimer);
-        KillTimer(hwnd_,kSimReplyTimer);
+            KillTimer(hwnd_,kSimReplyTimer);
             if(chatEdit_) {
                 SetWindowTextW(chatEdit_,L"");
                 SetFocus(chatEdit_);
