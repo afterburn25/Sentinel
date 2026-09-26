@@ -284,7 +284,15 @@ public:
             "Suggest one concise investigator reply that directly responds to the synthetic subject's latest message. "
             "Use the conversation history, preserve all configured persona facts, do not invent facts, "
             "avoid abrupt topic changes, and do not send anything automatically.";
-        return Complete(system,context,{});
+
+        // Qwen 3.5's llama.cpp chat template requires an actual user query.
+        // The old startup probe passed only a system message when history was
+        // empty, which caused: 'No user query found in messages.'
+        const std::string request =
+            context.history.empty()
+                ? "Return a short diagnostic acknowledgement that the model is ready."
+                : "Based on the conversation above, suggest the investigator's next concise reply.";
+        return Complete(system,context,request);
     }
 
 private:
@@ -307,11 +315,26 @@ private:
             json+=role;
             json+="\",\"content\":\""+JsonEscape(turn.text)+"\"}";
         }
+        bool hasUser=false;
+        for(const auto& turn:context.history) {
+            if(turn.speaker==ChatTurn::Speaker::Investigator) {
+                hasUser=true;
+                break;
+            }
+        }
         if(!latestUser.empty()) {
             bool alreadyLast=!context.history.empty() &&
                 context.history.back().speaker==ChatTurn::Speaker::Investigator &&
                 context.history.back().text==latestUser;
-            if(!alreadyLast) json+=",{\"role\":\"user\",\"content\":\""+JsonEscape(latestUser)+"\"}";
+            if(!alreadyLast) {
+                json+=",{\"role\":\"user\",\"content\":\""+JsonEscape(latestUser)+"\"}";
+                hasUser=true;
+            } else {
+                hasUser=true;
+            }
+        }
+        if(!hasUser) {
+            json+=",{\"role\":\"user\",\"content\":\"Provide the requested simulation response.\"}";
         }
         json+="]}";
 
