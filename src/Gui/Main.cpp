@@ -236,7 +236,7 @@ public:
             0,0,0,0,hwnd_,(HMENU)1006,GetModuleHandleW(nullptr),nullptr);
 
         personaNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1010,GetModuleHandleW(nullptr),nullptr);
-        personaAgeEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1011,GetModuleHandleW(nullptr),nullptr);
+        personaAgeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1011,GetModuleHandleW(nullptr),nullptr);
         personaLocationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1012,GetModuleHandleW(nullptr),nullptr);
         personaInterestsEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1013,GetModuleHandleW(nullptr),nullptr);
         personaStyleEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1014,GetModuleHandleW(nullptr),nullptr);
@@ -265,7 +265,7 @@ public:
         SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        HWND advancedEdits[]={personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+        HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
         for(HWND e:advancedEdits) {
@@ -273,7 +273,7 @@ public:
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
-        HWND personaCombos[]={ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
+        HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -331,6 +331,11 @@ public:
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
         };
+        SendMessageW(personaAgeCombo_,CB_RESETCONTENT,0,0);
+        for(int age=13;age<=90;++age) {
+            auto label=std::to_wstring(age);
+            SendMessageW(personaAgeCombo_,CB_ADDSTRING,0,(LPARAM)label.c_str());
+        }
         fillCombo(ageStateCombo_,ageItems,std::size(ageItems));
         fillCombo(personaGenderCombo_,genderItems,std::size(genderItems));
         fillCombo(personaPronounsCombo_,pronounItems,std::size(pronounItems));
@@ -464,7 +469,7 @@ public:
     void RefreshVisibleNativeControls() {
         HWND controls[]={
             caseNumberEdit_,caseTitleEdit_,chatEdit_,modelEndpointEdit_,modelNameEdit_,modelCombo_,simScroll_,
-            personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,
             personaSocialCombo_,personaConfidenceCombo_,scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,
@@ -567,7 +572,7 @@ private:
     struct Button { RectF rect; std::wstring id; };
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
-    HWND personaNameEdit_{},personaAgeEdit_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
+    HWND personaNameEdit_{},personaAgeCombo_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
     HWND personaOccupationEdit_{},personaEducationEdit_{},personaFamilyEdit_{},personaBackgroundEdit_{};
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
@@ -1232,7 +1237,7 @@ private:
 
     void ShowPersonaEditors(bool show) {
         HWND controls[]={
-            personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_
@@ -1263,7 +1268,7 @@ private:
 
     void LoadProfileEditors() {
         SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
-        SetWindowTextW(personaAgeEdit_,std::to_wstring(simSettings_.persona.age).c_str());
+        SendMessageW(personaAgeCombo_,CB_SETCURSEL,(WPARAM)std::clamp(simSettings_.persona.age-13,0,77),0);
         SetWindowTextW(personaLocationEdit_,Widen(simSettings_.persona.location).c_str());
         SetWindowTextW(personaOccupationEdit_,Widen(simSettings_.persona.occupation).c_str());
         SetWindowTextW(personaEducationEdit_,Widen(simSettings_.persona.education).c_str());
@@ -1289,7 +1294,10 @@ private:
     void SaveProfileEditors() {
         try {
             simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
-            simSettings_.persona.age=std::max(1,std::stoi(EditText(personaAgeEdit_)));
+            {
+                int ageSel=(int)SendMessageW(personaAgeCombo_,CB_GETCURSEL,0,0);
+                simSettings_.persona.age=(ageSel==CB_ERR)?18:(13+ageSel);
+            }
             simSettings_.persona.location=Narrow(EditText(personaLocationEdit_));
             simSettings_.persona.gender=ComboText(personaGenderCombo_);
             simSettings_.persona.pronouns=ComboText(personaPronounsCombo_);
@@ -1617,7 +1625,7 @@ private:
         row+=42;
 
         TextLine(L"Age",lx,row,46,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaAgeEdit_,(int)(lx+50),(int)row,72,32);
+        MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
         TextLine(L"Age state",lx+136,row,72,30,tinyFmt_.Get(),brush_.muted.Get());
         MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170);
         row+=42;
