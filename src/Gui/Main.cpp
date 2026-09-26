@@ -237,7 +237,16 @@ struct Runtime {
 };
 
 struct BrushSet {
-    ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red;
+    ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red, selection;
+};
+
+struct SelectableTextRun {
+    std::wstring text;
+    RectF rect;
+    IDWriteTextFormat* format{};
+    DWRITE_TEXT_ALIGNMENT align{DWRITE_TEXT_ALIGNMENT_LEADING};
+    bool noWrap{false};
+    bool paragraphCenter{false};
 };
 
 class App {
@@ -370,6 +379,86 @@ public:
             PositionVisibleChatCaret(hwnd);
         }
         return result;
+    }
+
+    void BeginTextSelection(float x,float y) {
+        selectionDragging_=false;
+        selectionMouseDown_=true;
+        selectionStartPoint_={x,y};
+        const int run=FindSelectableRun(x,y);
+        if(run<0) {
+            selectedTextRun_=-1;
+            selectionAnchor_=selectionActive_=0;
+            return;
+        }
+        selectedTextRun_=run;
+        selectionAnchor_=selectionActive_=HitTestTextPosition(textRuns_[(size_t)run],x,y);
+        SetCapture(hwnd_);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    bool UpdateTextSelection(float x,float y) {
+        if(!selectionMouseDown_ || selectedTextRun_<0 || selectedTextRun_>=(int)textRuns_.size()) return false;
+        if(std::abs(x-selectionStartPoint_.x)>3.0f || std::abs(y-selectionStartPoint_.y)>3.0f)
+            selectionDragging_=true;
+        selectionActive_=HitTestTextPosition(textRuns_[(size_t)selectedTextRun_],x,y);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return true;
+    }
+
+    bool EndTextSelection(float x,float y) {
+        if(!selectionMouseDown_) return false;
+        if(selectedTextRun_>=0 && selectedTextRun_<(int)textRuns_.size())
+            selectionActive_=HitTestTextPosition(textRuns_[(size_t)selectedTextRun_],x,y);
+        const bool consumed=selectionDragging_;
+        selectionMouseDown_=false;
+        if(GetCapture()==hwnd_) ReleaseCapture();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return consumed;
+    }
+
+    bool CopySelectedTextAt(float x,float y) {
+        if(selectedTextRun_<0 || selectedTextRun_>=(int)textRuns_.size()) return false;
+        const auto& run=textRuns_[(size_t)selectedTextRun_];
+        const size_t a=std::min(selectionAnchor_,selectionActive_);
+        const size_t b=std::max(selectionAnchor_,selectionActive_);
+        if(a>=b || a>=run.text.size()) return false;
+        const auto selected=run.text.substr(a,std::min(b,run.text.size())-a);
+
+        HMENU menu=CreatePopupMenu();
+        if(!menu) return false;
+        AppendMenuW(menu,MF_STRING,1,L"Copy");
+        AppendMenuW(menu,MF_STRING,2,L"Select All");
+        POINT pt{(LONG)x,(LONG)y};
+        ClientToScreen(hwnd_,&pt);
+        const int cmd=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,pt.x,pt.y,0,hwnd_,nullptr);
+        DestroyMenu(menu);
+        if(cmd==2) {
+            selectionAnchor_=0;
+            selectionActive_=run.text.size();
+            InvalidateRect(hwnd_,nullptr,FALSE);
+            return true;
+        }
+        if(cmd!=1) return true;
+
+        if(!OpenClipboard(hwnd_)) return true;
+        EmptyClipboard();
+        const SIZE_T bytes=(selected.size()+1)*sizeof(wchar_t);
+        HGLOBAL mem=GlobalAlloc(GMEM_MOVEABLE,bytes);
+        if(mem) {
+            void* ptr=GlobalLock(mem);
+            if(ptr) {
+                memcpy(ptr,selected.c_str(),bytes);
+                GlobalUnlock(mem);
+                SetClipboardData(CF_UNICODETEXT,mem);
+                mem=nullptr;
+            }
+            if(mem) GlobalFree(mem);
+        }
+        CloseClipboard();
+        statusText_=L"Selected text copied";
+        InvalidateRect(hwnd_,nullptr,FALSE);
+        return true;
     }
 
     App() : runtime_(std::make_unique<Runtime>()) {}
@@ -589,6 +678,7 @@ public:
         target_->FillRectangle(D2D1::RectF((float)kSidebar,0,w,(float)kHeader),brush_.panel.Get());
         target_->DrawLine(D2D1::Point2F((float)kSidebar,(float)kHeader),D2D1::Point2F(w,(float)kHeader),brush_.border.Get(),1);
 
+        textRuns_.clear();
         DrawBrand();
         DrawSidebar();
         DrawHeader(w);
@@ -857,6 +947,13 @@ private:
     BrushSet brush_;
     bool brushesReady_{false};
     std::vector<Button> buttons_;
+    std::vector<SelectableTextRun> textRuns_;
+    int selectedTextRun_{-1};
+    size_t selectionAnchor_{0};
+    size_t selectionActive_{0};
+    bool selectionMouseDown_{false};
+    bool selectionDragging_{false};
+    D2D1_POINT_2F selectionStartPoint_{0,0};
 
     void CreateResources() {
         if (!target_) {
@@ -880,6 +977,7 @@ private:
             brush_.panel2=mk(0x12283A); brush_.border=mk(0x24445C); brush_.text=mk(0xEEF6FF);
             brush_.muted=mk(0x93A9BC); brush_.blue=mk(0x1597F6); brush_.cyan=mk(0x22C7FF);
             brush_.green=mk(0x38E89A); brush_.yellow=mk(0xF6C84A); brush_.red=mk(0xFF5B66);
+            brush_.selection=mk(0x2D7FF9,0.55f);
             brushesReady_=true;
         }
     }
@@ -894,22 +992,88 @@ private:
         if (selectedEvidence_>=evidence_.size()) selectedEvidence_=0;
     }
 
+    ComPtr<IDWriteTextLayout> CreateSelectableLayout(const SelectableTextRun& run) const {
+        ComPtr<IDWriteTextLayout> layout;
+        if(FAILED(writeFactory_->CreateTextLayout(
+                run.text.c_str(),(UINT32)run.text.size(),run.format,
+                std::max(1.0f,run.rect.r-run.rect.l),
+                std::max(1.0f,run.rect.b-run.rect.t),&layout)) || !layout)
+            return {};
+        if(run.noWrap) layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+        layout->SetTextAlignment(run.align);
+        if(run.paragraphCenter) layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        return layout;
+    }
+
+    int RegisterSelectableText(
+        const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,
+        DWRITE_TEXT_ALIGNMENT align,bool noWrap,bool paragraphCenter)
+    {
+        textRuns_.push_back({s,{x,y,x+w,y+h},fmt,align,noWrap,paragraphCenter});
+        return (int)textRuns_.size()-1;
+    }
+
+    void DrawSelectionForRun(int runIndex,IDWriteTextLayout* layout,float x,float y) {
+        if(runIndex!=selectedTextRun_ || !layout) return;
+        const size_t a=std::min(selectionAnchor_,selectionActive_);
+        const size_t b=std::max(selectionAnchor_,selectionActive_);
+        if(a>=b) return;
+
+        UINT32 actual=0;
+        layout->HitTestTextRange(
+            (UINT32)std::min(a,(size_t)UINT32_MAX),
+            (UINT32)std::min(b-a,(size_t)UINT32_MAX),
+            x,y,nullptr,0,&actual);
+        if(!actual) return;
+        std::vector<DWRITE_HIT_TEST_METRICS> metrics(actual);
+        if(FAILED(layout->HitTestTextRange(
+                (UINT32)a,(UINT32)(b-a),x,y,metrics.data(),actual,&actual))) return;
+        for(UINT32 i=0;i<actual;i++) {
+            const auto& m=metrics[i];
+            target_->FillRectangle(
+                D2D1::RectF(m.left,m.top,m.left+m.width,m.top+m.height),
+                brush_.selection.Get());
+        }
+    }
+
+    int FindSelectableRun(float x,float y) const {
+        for(int i=(int)textRuns_.size()-1;i>=0;--i)
+            if(textRuns_[(size_t)i].rect.Contains(x,y) && !textRuns_[(size_t)i].text.empty()) return i;
+        return -1;
+    }
+
+    size_t HitTestTextPosition(const SelectableTextRun& run,float x,float y) const {
+        auto layout=CreateSelectableLayout(run);
+        if(!layout) return 0;
+        BOOL trailing=FALSE,inside=FALSE;
+        DWRITE_HIT_TEST_METRICS metrics{};
+        const float localX=x-run.rect.l;
+        const float localY=y-run.rect.t;
+        if(FAILED(layout->HitTestPoint(localX,localY,&trailing,&inside,&metrics))) return 0;
+        size_t pos=(size_t)metrics.textPosition + (trailing?metrics.length:0);
+        return std::min(pos,run.text.size());
+    }
+
     void Text(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br) {
-        target_->DrawTextW(s.c_str(),(UINT32)s.size(),fmt,D2D1::RectF(x,y,x+w,y+h),br);
+        if(w<=1 || h<=1) return;
+        const int runIndex=RegisterSelectableText(s,x,y,w,h,fmt,DWRITE_TEXT_ALIGNMENT_LEADING,false,false);
+        auto layout=CreateSelectableLayout(textRuns_[(size_t)runIndex]);
+        if(!layout) return;
+        DrawSelectionForRun(runIndex,layout.Get(),x,y);
+        target_->DrawTextLayout(D2D1::Point2F(x,y),layout.Get(),br,D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
     void TextLine(const std::wstring& s,float x,float y,float w,float h,IDWriteTextFormat* fmt,ID2D1Brush* br,
                   DWRITE_TEXT_ALIGNMENT align=DWRITE_TEXT_ALIGNMENT_LEADING) {
         if(w<=1 || h<=1) return;
-        ComPtr<IDWriteTextLayout> layout;
-        if(FAILED(writeFactory_->CreateTextLayout(s.c_str(),(UINT32)s.size(),fmt,w,h,&layout)) || !layout) return;
-        layout->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-        layout->SetTextAlignment(align);
-        layout->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        const int runIndex=RegisterSelectableText(s,x,y,w,h,fmt,align,true,true);
+        auto layout=CreateSelectableLayout(textRuns_[(size_t)runIndex]);
+        if(!layout) return;
         DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER,0,0};
         ComPtr<IDWriteInlineObject> sign;
         if(SUCCEEDED(writeFactory_->CreateEllipsisTrimmingSign(fmt,&sign)))
             layout->SetTrimming(&trim,sign.Get());
+        DrawSelectionForRun(runIndex,layout.Get(),x,y);
         target_->DrawTextLayout(D2D1::Point2F(x,y),layout.Get(),br,D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
@@ -2763,8 +2927,23 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
-        case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
-        case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONDOWN:
+            if(g_app) g_app->BeginTextSelection((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_MOUSEMOVE:
+            if(g_app && (wp&MK_LBUTTON))
+                g_app->UpdateTextSelection((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_RBUTTONUP:
+            if(g_app && g_app->CopySelectedTextAt((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp))) return 0;
+            if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            return 0;
+        case WM_LBUTTONUP:
+            if(g_app) {
+                const float mx=(float)GET_X_LPARAM(lp), my=(float)GET_Y_LPARAM(lp);
+                if(!g_app->EndTextSelection(mx,my)) g_app->Click(mx,my);
+            }
+            return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
