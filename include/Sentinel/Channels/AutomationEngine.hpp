@@ -21,6 +21,9 @@ struct AutomationRequest {
     bool providerSupportsAutomation{false};
     bool policyAllowed{true};
     bool policyRequiresSupervisor{false};
+    bool jurisdictionProfileActive{false};
+    bool jurisdictionAllowsAutomation{false};
+    bool jurisdictionRequiresReview{true};
 };
 
 struct AutomationOutcome {
