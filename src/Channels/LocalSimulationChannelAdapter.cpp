@@ -4,10 +4,10 @@ namespace sentinel::channels {
 
 ChannelCapabilities LocalSimulationChannelAdapter::Capabilities() const {
     ChannelCapabilities c;
-    c.Set(ReceiveText);
-    c.Set(SendText);
-    c.Set(SendImage);
-    c.Set(AutomatedSending);
+    c.Set(Capability::ReceiveText);
+    c.Set(Capability::SendText);
+    c.Set(Capability::SendImage);
+    c.Set(Capability::AutomatedSending);
     return c;
 }
 
