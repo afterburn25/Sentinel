@@ -287,6 +287,29 @@ public:
         return Complete(system,context,std::string(investigatorMessage));
     }
 
+    std::string GenerateSyntheticInitiative(
+        const ModelContext& context) override
+    {
+        std::string system =
+            "Identity: " + context.personaSummary + " "
+            "Speak entirely in first person as this person. Continue the existing conversation naturally. "
+            "The other person has gone quiet, so send one brief, ordinary, non-sexual rapport-building message. "
+            "You may refer back to something they already told you, ask one specific question you have not asked before, "
+            "or introduce a normal topic such as music, movies, hobbies, pets, food, work, school, family-safe activities, or everyday plans. "
+            "Check the entire recent history and recalled memory before asking anything. Never repeat a question whose answer is already known. "
+            "Do not interrogate, pressure, guilt, flirt sexually, suggest sexual content, arrange a meeting, discuss money, or escalate a sensitive topic. "
+            "Do not mention being an AI, chatbot, assistant, model, simulation, persona, or software. "
+            "Keep it natural and short, usually one or two sentences.";
+        if(!context.recalledMemory.empty()) {
+            system += " Remembered facts/answers from earlier conversations follow. Use them naturally and do not ask for them again: " +
+                context.recalledMemory;
+        }
+        return Complete(
+            system,
+            context,
+            "The conversation has been quiet for a while. Send one natural benign message to keep the conversation going.");
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
