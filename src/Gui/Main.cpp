@@ -244,36 +244,78 @@ class App {
 public:
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
-        if(msg==WM_SETFOCUS) {
-            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
-            CreateCaret(hwnd,nullptr,2,22);
-            DWORD start=0,end=0;
-            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
-            int x=(short)LOWORD(pos);
-            int y=(short)HIWORD(pos);
-            SetCaretPos(std::max(8,x),std::max(7,y));
-            ShowCaret(hwnd);
-            return result;
-        }
-        if(msg==WM_KILLFOCUS) {
-            HideCaret(hwnd);
-            DestroyCaret();
-            return DefSubclassProc(hwnd,msg,wp,lp);
-        }
+
+        // Preserve the native EDIT control caret and selection behavior. The old
+        // subclass created and positioned its own caret, which left the visible
+        // cursor pinned near the beginning instead of following the insertion point.
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
             return 0;
         }
-        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP) {
-            LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
-            DWORD start=0,end=0;
-            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-            LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
-            SetCaretPos(std::max(8,(int)(short)LOWORD(pos)),std::max(7,(int)(short)HIWORD(pos)));
-            ShowCaret(hwnd);
-            return result;
+
+        // Standard keyboard editing shortcuts.
+        if(msg==WM_KEYDOWN && (GetKeyState(VK_CONTROL)&0x8000)) {
+            switch(wp) {
+                case 'A':
+                    SendMessageW(hwnd,EM_SETSEL,0,-1);
+                    return 0;
+                case 'C':
+                    SendMessageW(hwnd,WM_COPY,0,0);
+                    return 0;
+                case 'X':
+                    SendMessageW(hwnd,WM_CUT,0,0);
+                    return 0;
+                case 'V':
+                    SendMessageW(hwnd,WM_PASTE,0,0);
+                    return 0;
+                case 'Z':
+                    SendMessageW(hwnd,WM_UNDO,0,0);
+                    return 0;
+            }
         }
+
+        // Give the chat composer an explicit native-style context menu so users can
+        // select text and right-click Cut/Copy/Paste/Delete/Select All.
+        if(msg==WM_CONTEXTMENU) {
+            DWORD selStart=0,selEnd=0;
+            SendMessageW(hwnd,EM_GETSEL,(WPARAM)&selStart,(LPARAM)&selEnd);
+            const bool hasSelection=selStart!=selEnd;
+            const bool canPaste=IsClipboardFormatAvailable(CF_UNICODETEXT)!=FALSE;
+            const bool canUndo=SendMessageW(hwnd,EM_CANUNDO,0,0)!=0;
+
+            HMENU menu=CreatePopupMenu();
+            if(!menu) return 0;
+            AppendMenuW(menu,MF_STRING|(canUndo?0:MF_GRAYED),1,L"Undo");
+            AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),2,L"Cut");
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),3,L"Copy");
+            AppendMenuW(menu,MF_STRING|(canPaste?0:MF_GRAYED),4,L"Paste");
+            AppendMenuW(menu,MF_STRING|(hasSelection?0:MF_GRAYED),5,L"Delete");
+            AppendMenuW(menu,MF_SEPARATOR,0,nullptr);
+            AppendMenuW(menu,MF_STRING,6,L"Select All");
+
+            POINT pt{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)};
+            if(pt.x==-1 && pt.y==-1) {
+                RECT rc{};
+                GetWindowRect(hwnd,&rc);
+                pt.x=rc.left+12;
+                pt.y=rc.top+12;
+            }
+            const int cmd=TrackPopupMenu(
+                menu,TPM_RETURNCMD|TPM_RIGHTBUTTON,pt.x,pt.y,0,hwnd,nullptr);
+            DestroyMenu(menu);
+
+            switch(cmd) {
+                case 1: SendMessageW(hwnd,WM_UNDO,0,0); break;
+                case 2: SendMessageW(hwnd,WM_CUT,0,0); break;
+                case 3: SendMessageW(hwnd,WM_COPY,0,0); break;
+                case 4: SendMessageW(hwnd,WM_PASTE,0,0); break;
+                case 5: SendMessageW(hwnd,WM_CLEAR,0,0); break;
+                case 6: SendMessageW(hwnd,EM_SETSEL,0,-1); break;
+            }
+            return 0;
+        }
+
         return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
