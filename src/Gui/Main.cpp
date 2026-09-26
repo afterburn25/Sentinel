@@ -1273,12 +1273,18 @@ private:
             const float lx=x+20, lf=x+132, lw=colW-152;
             float row=y+54;
             MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
-                MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170); row+=42;
-                MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160); row+=42;
+
+            MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
+            MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170); row+=42;
+
+            MoveControl(personaGenderCombo_,(int)(lx+64),(int)row,132,160);
+            MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160); row+=42;
+
             MoveControl(personaLocationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
             MoveControl(personaOccupationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
             MoveControl(personaEducationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
-    
+            MoveControl(personaRelationshipCombo_,(int)lf,(int)row,(int)lw,180);
+
             const float rx=rightX+20, rf=rightX+132, rw=colW-152;
             row=y+54;
             MoveControl(personaPersonalityCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
@@ -1287,15 +1293,23 @@ private:
             MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
             MoveControl(personaStyleEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
             MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
-    
+            MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,32);
+
             const float sy=y+396;
-                            }
+            MoveControl(scenarioNameEdit_,(int)(x+92),(int)(sy+50),210,32);
+            MoveControl(scenarioObjectiveEdit_,(int)(x+390),(int)(sy+50),(int)std::max(220.0f,contentW-690),32);
+            MoveControl(scenarioSeedEdit_,(int)(x+72),(int)(sy+92),74,32);
+            MoveControl(minDelayEdit_,(int)(x+250),(int)(sy+92),86,32);
+            MoveControl(maxDelayEdit_,(int)(x+370),(int)(sy+92),86,32);
+        }
 
         if(page_==Page::Agency) {
             const float x=kSidebar+28.0f, y=kHeader+104.0f, gap=14.0f;
             const float contentW=w-x-28.0f;
             const float leftW=(contentW-gap)*0.58f;
-                }
+            MoveControl(agencyEndpointEdit_,(int)(x+142),(int)(y+62),(int)(leftW-164),32);
+            MoveControl(agencyIdEdit_,(int)(x+142),(int)(y+108),(int)(leftW-164),32);
+        }
     }
 
     std::wstring EditText(HWND h) const {
@@ -1664,12 +1678,10 @@ private:
         row+=42;
 
         TextLine(L"Age",lx,row,46,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
         TextLine(L"Age state",lx+136,row,72,30,tinyFmt_.Get(),brush_.muted.Get());
         row+=42;
 
         TextLine(L"Gender",lx,row,58,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaGenderCombo_,(int)(lx+64),(int)row,132,160);
         TextLine(L"Pronouns",lx+210,row,62,30,tinyFmt_.Get(),brush_.muted.Get());
         row+=42;
 
@@ -1683,7 +1695,6 @@ private:
         row+=42;
 
         TextLine(L"Relationship",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaRelationshipCombo_,(int)lf,(int)row,(int)lw,180);
 
         // Behavior & context
         Rounded(rightX,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
@@ -1711,7 +1722,6 @@ private:
         row+=42;
 
         TextLine(L"Background",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,32);
 
         // Scenario & pacing
         const float sy=y+396;
@@ -1719,18 +1729,13 @@ private:
         TextLine(L"Scenario, Policy & Pacing",x+18,sy+10,300,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Scenario",x+20,sy+50,68,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioNameEdit_,(int)(x+92),(int)(sy+50),210,32);
 
         TextLine(L"Objective",x+316,sy+50,70,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioObjectiveEdit_,(int)(x+390),(int)(sy+50),(int)std::max(220.0f,contentW-690),32);
 
         TextLine(L"Seed",x+20,sy+92,48,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioSeedEdit_,(int)(x+72),(int)(sy+92),74,32);
 
         TextLine(L"Typing delay",x+164,sy+92,82,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(minDelayEdit_,(int)(x+250),(int)(sy+92),86,32);
         TextLine(L"to",x+342,sy+92,24,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(maxDelayEdit_,(int)(x+370),(int)(sy+92),86,32);
 
         AddButton(L"persona_save",L"Save Persona & Policy",x+contentW-210,sy+88,190,38,true);
 
@@ -2027,10 +2032,8 @@ private:
         TextLine(L"Agency Connection",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Server endpoint",x+20,y+62,116,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(agencyEndpointEdit_,(int)(x+142),(int)(y+62),(int)(leftW-164),32);
 
         TextLine(L"Agency ID",x+20,y+108,116,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(agencyIdEdit_,(int)(x+142),(int)(y+108),(int)(leftW-164),32);
 
         AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+20,y+162,150,38,true);
         StatusDot(x+194,y+181,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
