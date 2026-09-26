@@ -296,6 +296,16 @@ struct SelectableTextRun {
     bool paragraphCenter{false};
 };
 
+struct PersonaMediaItem {
+    std::string id;
+    std::string personaName;
+    std::string originalName;
+    std::string storedPath;
+    std::string sha256;
+    std::string tags;
+    bool approved{false};
+};
+
 class App {
 public:
     static void PositionVisibleChatCaret(HWND hwnd) {
@@ -657,6 +667,7 @@ public:
         fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
+        LoadPersonaMedia();
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
@@ -780,6 +791,13 @@ public:
             else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"persona_save") SaveProfileEditors();
+            else if (b.id==L"media_import") ImportPersonaMedia();
+            else if (b.id==L"media_approve") TogglePersonaMediaApproval();
+            else if (b.id==L"media_delete") DeletePersonaMedia();
+            else if (b.id.rfind(L"media:",0)==0) {
+                selectedPersonaMedia_=(int)std::stol(b.id.substr(6));
+                statusText_=L"Persona media selected";
+            }
             else if (b.id==L"model_register") RegisterCurrentModel();
             else if (b.id==L"model_eval") EvaluateSelectedRegistryModel();
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
@@ -986,6 +1004,8 @@ private:
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
     std::wstring aiDiagnostics_=L"Not run";
+    std::vector<PersonaMediaItem> personaMedia_;
+    int selectedPersonaMedia_{-1};
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -1869,12 +1889,204 @@ private:
                 ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
                 ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
                 ", writing style "+simSettings_.persona.writingStyle+".";
+            LoadPersonaMedia();
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
             statusText_=L"Persona, policy, scenario, and delay settings saved";
         } catch(const std::exception& e) {
             statusText_=L"Profile save failed";
             MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Save Profile Failed",MB_OK|MB_ICONERROR);
         }
+    }
+
+    void LoadPersonaMedia() {
+        personaMedia_.clear();
+        selectedPersonaMedia_=-1;
+        sqlite3_stmt* stmt{};
+        const char* sql=
+            "SELECT id,persona_name,original_name,stored_path,sha256,tags,approved "
+            "FROM persona_media WHERE persona_name=? ORDER BY created_utc DESC";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&stmt,nullptr)!=SQLITE_OK) return;
+        sqlite3_bind_text(stmt,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        while(sqlite3_step(stmt)==SQLITE_ROW) {
+            PersonaMediaItem item;
+            auto col=[&](int i)->std::string{
+                const auto* p=(const char*)sqlite3_column_text(stmt,i);
+                return p?p:"";
+            };
+            item.id=col(0);
+            item.personaName=col(1);
+            item.originalName=col(2);
+            item.storedPath=col(3);
+            item.sha256=col(4);
+            item.tags=col(5);
+            item.approved=sqlite3_column_int(stmt,6)!=0;
+            personaMedia_.push_back(std::move(item));
+        }
+        sqlite3_finalize(stmt);
+        if(!personaMedia_.empty()) selectedPersonaMedia_=0;
+    }
+
+    std::optional<std::filesystem::path> PickPersonaMediaFile() {
+        wchar_t file[32768]{};
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=32768;
+        ofn.lpstrFilter=
+            L"Image Files (*.jpg;*.jpeg;*.png;*.webp;*.bmp)\0*.jpg;*.jpeg;*.png;*.webp;*.bmp\0"
+            L"All Files\0*.*\0\0";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(GetOpenFileNameW(&ofn)) return std::filesystem::path(file);
+        return std::nullopt;
+    }
+
+    static bool IsAllowedPersonaMediaExtension(const std::filesystem::path& path) {
+        auto ext=path.extension().wstring();
+        std::transform(ext.begin(),ext.end(),ext.begin(),::towlower);
+        return ext==L".jpg" || ext==L".jpeg" || ext==L".png" || ext==L".webp" || ext==L".bmp";
+    }
+
+    void ImportPersonaMedia() {
+        auto file=PickPersonaMediaFile();
+        if(!file) return;
+        if(!IsAllowedPersonaMediaExtension(*file)) {
+            MessageBoxW(hwnd_,L"Choose a JPG, JPEG, PNG, WEBP, or BMP image.",L"Persona Media",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        if(simSettings_.persona.name.empty()) {
+            MessageBoxW(hwnd_,L"Save the persona name before importing media.",L"Persona Media",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+
+        try {
+            const auto hash=runtime_->hash.Sha256File(*file).ToHex();
+            const auto stamp=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            const std::string id="media-"+hash.substr(0,12)+"-"+std::to_string(stamp);
+
+            auto mediaDir=runtime_->root/"persona-media";
+            std::filesystem::create_directories(mediaDir);
+            auto stored=mediaDir/(Widen(id)+file->extension().wstring());
+            std::filesystem::copy_file(*file,stored,std::filesystem::copy_options::overwrite_existing);
+
+            sqlite3_stmt* stmt{};
+            const char* sql=
+                "INSERT INTO persona_media(id,persona_name,original_name,stored_path,sha256,tags,approved) "
+                "VALUES(?,?,?,?,?,?,0)";
+            if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&stmt,nullptr)!=SQLITE_OK)
+                throw std::runtime_error("could not prepare persona media insert");
+            sqlite3_bind_text(stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            const auto original=Narrow(file->filename().wstring());
+            const auto storedUtf8=Narrow(stored.wstring());
+            sqlite3_bind_text(stmt,3,original.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt,4,storedUtf8.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt,5,hash.c_str(),-1,SQLITE_TRANSIENT);
+            const std::string tags="casual,selfie,benign";
+            sqlite3_bind_text(stmt,6,tags.c_str(),-1,SQLITE_TRANSIENT);
+            if(sqlite3_step(stmt)!=SQLITE_DONE) {
+                sqlite3_finalize(stmt);
+                throw std::runtime_error("could not save persona media");
+            }
+            sqlite3_finalize(stmt);
+            LoadPersonaMedia();
+            statusText_=L"Persona image imported as UNAPPROVED";
+            MessageBoxW(
+                hwnd_,
+                L"Image imported as UNAPPROVED.\n\nApprove only benign, non-sexual synthetic-persona media suitable for ordinary conversation.",
+                L"Persona Media",
+                MB_OK|MB_ICONINFORMATION);
+        } catch(const std::exception& e) {
+            statusText_=L"Persona media import failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Persona Media Import Failed",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void TogglePersonaMediaApproval() {
+        if(selectedPersonaMedia_<0 || selectedPersonaMedia_>=(int)personaMedia_.size()) {
+            statusText_=L"Select a persona image first";
+            return;
+        }
+        auto& item=personaMedia_[(size_t)selectedPersonaMedia_];
+        const bool next=!item.approved;
+        if(next) {
+            const int answer=MessageBoxW(
+                hwnd_,
+                L"Approve this image for ordinary persona use?\n\nOnly approve benign, non-sexual synthetic-persona media. Do not approve nudity, underwear/lingerie, sexualized poses, or explicit content involving a minor persona.",
+                L"Approve Persona Media",
+                MB_YESNO|MB_ICONWARNING);
+            if(answer!=IDYES) return;
+        }
+        sqlite3_stmt* stmt{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),"UPDATE persona_media SET approved=? WHERE id=?",-1,&stmt,nullptr)!=SQLITE_OK) return;
+        sqlite3_bind_int(stmt,1,next?1:0);
+        sqlite3_bind_text(stmt,2,item.id.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        item.approved=next;
+        statusText_=next?L"Persona image approved for benign use":L"Persona image approval removed";
+    }
+
+    void DeletePersonaMedia() {
+        if(selectedPersonaMedia_<0 || selectedPersonaMedia_>=(int)personaMedia_.size()) {
+            statusText_=L"Select a persona image first";
+            return;
+        }
+        const auto item=personaMedia_[(size_t)selectedPersonaMedia_];
+        if(MessageBoxW(hwnd_,L"Delete this persona image from Sentinel?",L"Delete Persona Media",MB_YESNO|MB_ICONQUESTION)!=IDYES)
+            return;
+        sqlite3_stmt* stmt{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),"DELETE FROM persona_media WHERE id=?",-1,&stmt,nullptr)==SQLITE_OK) {
+            sqlite3_bind_text(stmt,1,item.id.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+        sqlite3_finalize(stmt);
+        std::error_code ec;
+        std::filesystem::remove(std::filesystem::path(Widen(item.storedPath)),ec);
+        LoadPersonaMedia();
+        statusText_=L"Persona image deleted";
+    }
+
+    int FindApprovedPersonaMedia() const {
+        if(selectedPersonaMedia_>=0 && selectedPersonaMedia_<(int)personaMedia_.size() &&
+           personaMedia_[(size_t)selectedPersonaMedia_].approved)
+            return selectedPersonaMedia_;
+        for(size_t i=0;i<personaMedia_.size();++i)
+            if(personaMedia_[i].approved) return (int)i;
+        return -1;
+    }
+
+    static bool LooksLikeBenignPictureRequest(const std::string& text) {
+        std::string lower=text;
+        std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return (char)std::tolower(c);});
+        const bool wantsImage=
+            lower.find("send a pic")!=std::string::npos ||
+            lower.find("send me a pic")!=std::string::npos ||
+            lower.find("send a picture")!=std::string::npos ||
+            lower.find("send me a picture")!=std::string::npos ||
+            lower.find("send a photo")!=std::string::npos ||
+            lower.find("send me a photo")!=std::string::npos ||
+            lower.find("selfie")!=std::string::npos;
+        if(!wantsImage) return false;
+
+        const char* blocked[]={"nude","naked","underwear","panties","bra ","lingerie","sexy pic","explicit","boob","breast","vagina","penis","dick"};
+        for(auto* term:blocked) if(lower.find(term)!=std::string::npos) return false;
+        return true;
+    }
+
+    void StageApprovedPersonaMedia(const std::string& triggerText) {
+        if(!LooksLikeBenignPictureRequest(triggerText)) return;
+        const int idx=FindApprovedPersonaMedia();
+        if(idx<0) {
+            statusText_=L"Picture requested, but no approved benign persona image is available";
+            return;
+        }
+        const auto& item=personaMedia_[(size_t)idx];
+        const std::string caption="Here you go.";
+        const std::string action=
+            "media:local-sim:"+item.id+"|"+item.sha256+"|"+item.storedPath+"|"+caption;
+        approvals_.push_back(sentinel::operations::CreateApprovalRequest(action,"local-investigator"));
+        statusText_=L"Benign persona image staged for supervisor approval";
     }
 
     void UpdateSimulationScrollbar() {
@@ -2045,6 +2257,7 @@ private:
             currentConversationId_,
             sentinel::simulation::ChatTurn::Speaker::Investigator,
             utf8);
+        StageApprovedPersonaMedia(utf8);
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         SetWindowTextW(chatEdit_,L"");
         simSuggestion_=L"No suggestion generated yet";
@@ -2288,10 +2501,33 @@ private:
             if(a.status==sentinel::operations::ApprovalStatus::Pending) {
                 sentinel::operations::Approve(a,"local-supervisor","Approved in Sentinel supervisor console");
                 const std::string prefix="message:local-sim:";
+                const std::string mediaPrefix="media:local-sim:";
                 if(a.action.rfind(prefix,0)==0 && messagingAdapter_) {
                     messagingAdapter_->QueueOperatorApproved("local-sim",a.action.substr(prefix.size()));
+                    statusText_=L"Supervisor approval recorded and message queued";
+                } else if(a.action.rfind(mediaPrefix,0)==0 && messagingAdapter_) {
+                    const auto payload=a.action.substr(mediaPrefix.size());
+                    const auto p1=payload.find('|');
+                    const auto p2=p1==std::string::npos?std::string::npos:payload.find('|',p1+1);
+                    const auto p3=p2==std::string::npos?std::string::npos:payload.find('|',p2+1);
+                    if(p1!=std::string::npos && p2!=std::string::npos && p3!=std::string::npos) {
+                        const auto mediaId=payload.substr(0,p1);
+                        const auto sha=payload.substr(p1+1,p2-p1-1);
+                        const auto path=payload.substr(p2+1,p3-p2-1);
+                        const auto caption=payload.substr(p3+1);
+                        const auto it=std::find_if(personaMedia_.begin(),personaMedia_.end(),[&](const auto& m){
+                            return m.id==mediaId && m.approved && m.sha256==sha && m.storedPath==path;
+                        });
+                        if(it!=personaMedia_.end()) {
+                            messagingAdapter_->QueueOperatorApprovedMedia("local-sim",caption,path,sha);
+                            statusText_=L"Supervisor approved benign persona image; media queued";
+                        } else {
+                            statusText_=L"Media approval rejected: asset missing, changed, or no longer approved";
+                        }
+                    }
+                } else {
+                    statusText_=L"Supervisor approval recorded";
                 }
-                statusText_=L"Supervisor approval recorded and message queued";
                 return;
             }
         }
@@ -2401,6 +2637,37 @@ private:
         // Compact policy status
         TextLine(L"Policy",x+474,sy+92,52,30,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
+
+        // Approved benign persona media library.
+        const float my=sy+158;
+        Rounded(x,my,contentW,170,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Media Library",x+18,my+10,250,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Imported images are unapproved until explicitly reviewed. Benign ordinary-use media only.",
+            x+280,my+10,contentW-300,28,tinyFmt_.Get(),brush_.muted.Get());
+
+        AddButton(L"media_import",L"Import Picture",x+18,my+46,126,32,true);
+        AddButton(L"media_approve",L"Approve / Revoke",x+154,my+46,142,32,false);
+        AddButton(L"media_delete",L"Delete",x+306,my+46,88,32,false);
+
+        float mediaY=my+88;
+        if(personaMedia_.empty()) {
+            TextLine(L"No persona pictures imported.",x+20,mediaY,contentW-40,24,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<personaMedia_.size() && i<3;i++) {
+                const auto& item=personaMedia_[i];
+                const bool selected=(int)i==selectedPersonaMedia_;
+                Rounded(x+18,mediaY,contentW-36,24,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),6);
+                const std::wstring state=item.approved?L"APPROVED":L"UNAPPROVED";
+                TextLine(Widen(item.originalName),x+28,mediaY,300,24,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(state,x+340,mediaY,90,24,tinyFmt_.Get(),item.approved?brush_.green.Get():brush_.yellow.Get());
+                TextLine(Widen(item.sha256.substr(0,16))+L"...",x+440,mediaY,160,24,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(item.tags),x+610,mediaY,contentW-650,24,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+18,mediaY,x+contentW-18,mediaY+24},L"media:"+std::to_wstring(i)});
+                mediaY+=28;
+            }
+        }
     }
 
     void RegisterCurrentModel() {
@@ -2599,7 +2866,9 @@ private:
         } else {
             for(size_t i=0;i<msgs.size() && i<3;i++) {
                 Rounded(qx+18,yy,queueW-36,46,brush_.sidebar.Get(),brush_.border.Get(),8);
-                TextLine(Widen(msgs[i].text),qx+30,yy+4,queueW-60,38,smallFmt_.Get(),brush_.text.Get());
+                std::wstring rowText=Widen(msgs[i].text);
+                if(!msgs[i].mediaPath.empty()) rowText=L"[IMAGE] "+rowText+L" | "+Widen(std::filesystem::path(Widen(msgs[i].mediaPath)).filename().wstring());
+                TextLine(rowText,qx+30,yy+4,queueW-60,38,smallFmt_.Get(),brush_.text.Get());
                 yy+=54;
             }
         }
