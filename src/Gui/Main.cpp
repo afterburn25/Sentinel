@@ -222,7 +222,9 @@ public:
             0,0,0,0,hwnd_,(HMENU)1001,GetModuleHandleW(nullptr),nullptr);
         caseTitleEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,
             0,0,0,0,hwnd_,(HMENU)1002,GetModuleHandleW(nullptr),nullptr);
-        chatEdit_ = CreateWindowExW(0,L"EDIT",L"",WS_CHILD|ES_AUTOHSCROLL,
+        chatEdit_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE,L"EDIT",L"",
+            WS_CHILD|ES_MULTILINE|ES_AUTOVSCROLL|ES_WANTRETURN,
             0,0,0,0,hwnd_,(HMENU)1003,GetModuleHandleW(nullptr),nullptr);
         modelEndpointEdit_ = CreateWindowExW(0,L"EDIT",L"http://127.0.0.1:1234/v1/chat/completions",
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1004,GetModuleHandleW(nullptr),nullptr);
@@ -259,6 +261,7 @@ public:
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(chatEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(chatEdit_,EM_SETLIMITTEXT,4000,0);
         SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -398,7 +401,6 @@ public:
             else if (b.id==L"integrity") VerifyAudit();
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
-            else if (b.id==L"sim_focus") SetFocus(chatEdit_);
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset") ResetSimulation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
@@ -1178,10 +1180,13 @@ private:
         MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
-        // Full-size composer with vertically centered native edit.
-        Rounded(x+18,y+452,chatW-236,46,brush_.sidebar.Get(),brush_.border.Get(),10);
-        MoveControl(chatEdit_,(int)(x+30),(int)(y+464),(int)(chatW-260),22,TRUE);
-        buttons_.push_back({{x+18,y+452,x+chatW-218,y+498},L"sim_focus"});
+        // The EDIT control itself is the full composer.  Its formatting rectangle
+        // vertically centers the caret/text without shrinking the textbox.
+        const int composerW=(int)(chatW-236);
+        const int composerH=46;
+        MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
+        RECT composerTextRect{10,9,std::max(20,composerW-10),composerH-8};
+        SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
         AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
         // Model / scenario card
