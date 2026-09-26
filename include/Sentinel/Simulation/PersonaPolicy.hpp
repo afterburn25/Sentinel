@@ -30,6 +30,7 @@ struct PersonaProfile {
     std::string interests{"music, movies, casual conversation"};
     std::string writingStyle{"Casual"};
     std::string communicationLevel{"Age-appropriate"};
+    std::string cognitiveLevel{"Average"};
     std::string slangLevel{"Moderate"};
     std::string grammarQuality{"Casual"};
     std::string typoFrequency{"Occasional"};
