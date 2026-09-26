@@ -239,8 +239,15 @@ public:
             "if a requested fact is not configured, say naturally that you have not shared or established it yet; "
             "keep tone natural and conversational, usually 1-3 short sentences; ask at most one relevant follow-up question; "
             "avoid repetitive stock phrases and do not sound like a customer-service bot; "
+            "when older conversation memory is provided, remember the meaning and important facts but paraphrase naturally. "
+            "Do not repeat old lines word-for-word unless the investigator explicitly asks for an exact quote. "
+            "Human-style recall can be slightly approximate in wording while remaining faithful to the remembered facts. "
             "do not claim real-world actions occurred outside this simulation.";
 
+        if(!context.recalledMemory.empty()) {
+            system += " Relevant earlier-conversation memory follows. Treat it as private background context, not as text to copy: " +
+                context.recalledMemory;
+        }
         return Complete(system,context,std::string(investigatorMessage));
     }
 
