@@ -305,12 +305,28 @@ public:
             L"Unknown / not established",L"Self-reported minor",L"Self-reported adult",
             L"Documented minor",L"Documented adult",L"Conflicting age information"
         };
-        const wchar_t* genderItems[]={L"Unspecified",L"Female",L"Male",L"Non-binary",L"Other"};
-        const wchar_t* pronounItems[]={L"Unspecified",L"She / Her",L"He / Him",L"They / Them",L"Other"};
-        const wchar_t* relationshipItems[]={L"Unspecified",L"Single",L"Dating",L"In a relationship",L"Married",L"Separated",L"Divorced",L"Widowed"};
-        const wchar_t* personalityItems[]={L"Reserved",L"Balanced",L"Outgoing",L"Playful",L"Serious",L"Curious",L"Guarded",L"Confident"};
-        const wchar_t* socialItems[]={L"Very reserved",L"Reserved",L"Balanced",L"Social",L"Very social"};
-        const wchar_t* confidenceItems[]={L"Low",L"Medium",L"High"};
+        const wchar_t* genderItems[]={
+            L"Unspecified",L"Female",L"Male",L"Non-binary",L"Genderfluid",L"Other"
+        };
+        const wchar_t* pronounItems[]={
+            L"Unspecified",L"She / Her",L"He / Him",L"They / Them",L"She / They",L"He / They",L"Other"
+        };
+        const wchar_t* relationshipItems[]={
+            L"Unspecified",L"Single",L"Casually dating",L"Dating",L"In a relationship",
+            L"Engaged",L"Married",L"Separated",L"Divorced",L"Widowed"
+        };
+        const wchar_t* personalityItems[]={
+            L"Reserved",L"Balanced",L"Outgoing",L"Playful",L"Serious",L"Curious",
+            L"Guarded",L"Confident",L"Warm",L"Analytical",L"Impulsive",L"Sarcastic",
+            L"Easygoing",L"Independent"
+        };
+        const wchar_t* socialItems[]={
+            L"Very reserved",L"Reserved",L"Quiet but responsive",L"Balanced",
+            L"Social",L"Very social",L"Attention-seeking",L"Peer-approval focused"
+        };
+        const wchar_t* confidenceItems[]={
+            L"Very low",L"Low",L"Medium",L"High",L"Very high"
+        };
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
