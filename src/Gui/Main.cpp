@@ -242,12 +242,72 @@ struct BrushSet {
 
 class App {
 public:
+    static void PositionVisibleChatCaret(HWND hwnd) {
+        if(GetFocus()!=hwnd) return;
+
+        DWORD selStart=0,selEnd=0;
+        SendMessageW(hwnd,EM_GETSEL,(WPARAM)&selStart,(LPARAM)&selEnd);
+
+        const int textLen=GetWindowTextLengthW(hwnd);
+        int x=8;
+        int y=7;
+
+        if(selEnd < (DWORD)textLen) {
+            const LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)selEnd,0);
+            if(pos!=-1) {
+                x=(int)(short)LOWORD(pos);
+                y=(int)(short)HIWORD(pos);
+            }
+        } else if(textLen>0) {
+            // EM_POSFROMCHAR does not return a usable position for the insertion
+            // point *after* the final character. Measure the final character and
+            // place the caret immediately after it instead of snapping to x=0.
+            const int last=textLen-1;
+            const LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)last,0);
+            if(pos!=-1) {
+                x=(int)(short)LOWORD(pos);
+                y=(int)(short)HIWORD(pos);
+
+                wchar_t ch[2]{};
+                SendMessageW(hwnd,EM_SETSEL,last,textLen);
+                SendMessageW(hwnd,EM_GETSELTEXT,0,(LPARAM)ch);
+                SendMessageW(hwnd,EM_SETSEL,selStart,selEnd);
+
+                HDC dc=GetDC(hwnd);
+                if(dc) {
+                    HFONT font=(HFONT)SendMessageW(hwnd,WM_GETFONT,0,0);
+                    HGDIOBJ oldFont=nullptr;
+                    if(font) oldFont=SelectObject(dc,font);
+                    SIZE size{};
+                    if(ch[0] && GetTextExtentPoint32W(dc,ch,1,&size)) x+=std::max(1L,size.cx);
+                    else x+=8;
+                    if(oldFont) SelectObject(dc,oldFont);
+                    ReleaseDC(hwnd,dc);
+                }
+            }
+        }
+
+        SetCaretPos(std::max(8,x),std::max(7,y));
+    }
+
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
 
-        // Do not create, destroy, hide, show, or manually position a caret here.
-        // The native Windows EDIT control owns its caret and automatically moves it
-        // with typing, mouse clicks, selection changes, paste, delete and undo.
+        if(msg==WM_SETFOCUS) {
+            const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+            DestroyCaret();
+            CreateCaret(hwnd,nullptr,2,22);
+            PositionVisibleChatCaret(hwnd);
+            ShowCaret(hwnd);
+            return result;
+        }
+
+        if(msg==WM_KILLFOCUS) {
+            HideCaret(hwnd);
+            DestroyCaret();
+            return DefSubclassProc(hwnd,msg,wp,lp);
+        }
+
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
             return 0;
@@ -255,11 +315,11 @@ public:
 
         if(msg==WM_KEYDOWN && (GetKeyState(VK_CONTROL)&0x8000)) {
             switch(wp) {
-                case 'A': SendMessageW(hwnd,EM_SETSEL,0,-1); return 0;
+                case 'A': SendMessageW(hwnd,EM_SETSEL,0,-1); PositionVisibleChatCaret(hwnd); return 0;
                 case 'C': SendMessageW(hwnd,WM_COPY,0,0); return 0;
-                case 'X': SendMessageW(hwnd,WM_CUT,0,0); return 0;
-                case 'V': SendMessageW(hwnd,WM_PASTE,0,0); return 0;
-                case 'Z': SendMessageW(hwnd,WM_UNDO,0,0); return 0;
+                case 'X': SendMessageW(hwnd,WM_CUT,0,0); PositionVisibleChatCaret(hwnd); return 0;
+                case 'V': SendMessageW(hwnd,WM_PASTE,0,0); PositionVisibleChatCaret(hwnd); return 0;
+                case 'Z': SendMessageW(hwnd,WM_UNDO,0,0); PositionVisibleChatCaret(hwnd); return 0;
             }
         }
 
@@ -301,10 +361,16 @@ public:
                 case 5: SendMessageW(hwnd,WM_CLEAR,0,0); break;
                 case 6: SendMessageW(hwnd,EM_SETSEL,0,-1); break;
             }
+            PositionVisibleChatCaret(hwnd);
             return 0;
         }
 
-        return DefSubclassProc(hwnd,msg,wp,lp);
+        const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
+        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP ||
+           msg==WM_PASTE || msg==WM_CUT || msg==WM_CLEAR || msg==WM_UNDO) {
+            PositionVisibleChatCaret(hwnd);
+        }
+        return result;
     }
 
     App() : runtime_(std::make_unique<Runtime>()) {}
