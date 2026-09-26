@@ -242,31 +242,17 @@ struct BrushSet {
 
 class App {
 public:
-    static void SyncChatCaret(HWND hwnd) {
-        if(GetFocus()!=hwnd) return;
-        DWORD start=0,end=0;
-        SendMessageW(hwnd,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-        const LRESULT pos=SendMessageW(hwnd,EM_POSFROMCHAR,(WPARAM)end,0);
-        int x=(int)(short)LOWORD(pos);
-        int y=(int)(short)HIWORD(pos);
-        if(pos==-1) {
-            RECT rc{};
-            GetClientRect(hwnd,&rc);
-            x=8;
-            y=7;
-        }
-        SetCaretPos(std::max(8,x),std::max(7,y));
-        ShowCaret(hwnd);
-    }
-
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
         auto* app=reinterpret_cast<App*>(ref);
 
+        // The Windows EDIT control owns the insertion point. Sentinel only provides
+        // a clearly visible caret for the dark theme; it never manually repositions
+        // it. This avoids EM_POSFROMCHAR snapping an end-of-text caret back to x=0.
         if(msg==WM_SETFOCUS) {
             const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
             DestroyCaret();
             CreateCaret(hwnd,nullptr,2,22);
-            SyncChatCaret(hwnd);
+            ShowCaret(hwnd);
             return result;
         }
 
@@ -283,25 +269,11 @@ public:
 
         if(msg==WM_KEYDOWN && (GetKeyState(VK_CONTROL)&0x8000)) {
             switch(wp) {
-                case 'A':
-                    SendMessageW(hwnd,EM_SETSEL,0,-1);
-                    SyncChatCaret(hwnd);
-                    return 0;
-                case 'C':
-                    SendMessageW(hwnd,WM_COPY,0,0);
-                    return 0;
-                case 'X':
-                    SendMessageW(hwnd,WM_CUT,0,0);
-                    SyncChatCaret(hwnd);
-                    return 0;
-                case 'V':
-                    SendMessageW(hwnd,WM_PASTE,0,0);
-                    SyncChatCaret(hwnd);
-                    return 0;
-                case 'Z':
-                    SendMessageW(hwnd,WM_UNDO,0,0);
-                    SyncChatCaret(hwnd);
-                    return 0;
+                case 'A': SendMessageW(hwnd,EM_SETSEL,0,-1); return 0;
+                case 'C': SendMessageW(hwnd,WM_COPY,0,0); return 0;
+                case 'X': SendMessageW(hwnd,WM_CUT,0,0); return 0;
+                case 'V': SendMessageW(hwnd,WM_PASTE,0,0); return 0;
+                case 'Z': SendMessageW(hwnd,WM_UNDO,0,0); return 0;
             }
         }
 
@@ -343,16 +315,10 @@ public:
                 case 5: SendMessageW(hwnd,WM_CLEAR,0,0); break;
                 case 6: SendMessageW(hwnd,EM_SETSEL,0,-1); break;
             }
-            SyncChatCaret(hwnd);
             return 0;
         }
 
-        const LRESULT result=DefSubclassProc(hwnd,msg,wp,lp);
-        if(msg==WM_CHAR || msg==WM_KEYUP || msg==WM_LBUTTONUP || msg==WM_MOUSEMOVE ||
-           msg==WM_PASTE || msg==WM_CUT || msg==WM_CLEAR || msg==WM_UNDO) {
-            SyncChatCaret(hwnd);
-        }
-        return result;
+        return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
     App() : runtime_(std::make_unique<Runtime>()) {}
