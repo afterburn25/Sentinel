@@ -386,8 +386,28 @@ public:
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
 
-        model_=sentinel::simulation::CreateRuleBasedTestModel();
-        modelStatus_=L"Built-in contextual model";
+        // Prefer the configured OpenAI-compatible local model at startup. The prior
+        // behavior always replaced persisted model settings with the built-in rule
+        // model, which made a successfully started llama.cpp server appear to have
+        // no effect until the operator manually pressed Connect in Model Lab.
+        if(!simSettings_.endpoint.empty() && !simSettings_.model.empty()) {
+            try {
+                auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                    simSettings_.endpoint,simSettings_.model);
+                sentinel::simulation::ModelContext testContext;
+                testContext.scenario="Sentinel local model startup connection test";
+                testContext.personaSummary="Synthetic test only.";
+                (void)candidate->GenerateInvestigatorSuggestion(testContext);
+                model_=std::move(candidate);
+                modelStatus_=L"Connected automatically: "+Widen(simSettings_.model);
+            } catch(const std::exception& e) {
+                model_=sentinel::simulation::CreateRuleBasedTestModel();
+                modelStatus_=L"Local model unavailable; built-in fallback active: "+Widen(e.what());
+            }
+        } else {
+            model_=sentinel::simulation::CreateRuleBasedTestModel();
+            modelStatus_=L"Built-in contextual model";
+        }
         ResumeOrCreateConversation();
         ApplyPageControls();
         return S_OK;
