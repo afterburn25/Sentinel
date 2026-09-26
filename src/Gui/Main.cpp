@@ -2299,6 +2299,12 @@ private:
         if(currentConversationId_.empty()) ResetSimulation();
         simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
             utf8,currentConversationId_,12);
+        const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
+            currentConversationId_,10);
+        if(!participantFacts.empty()) {
+            if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+            simContext_.recalledMemory+=participantFacts;
+        }
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
         runtime_->conversationMemory.Append(
             currentConversationId_,
