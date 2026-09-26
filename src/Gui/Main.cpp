@@ -45,6 +45,7 @@
 #include <memory>
 #include <iterator>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <fstream>
 #include <string>
@@ -624,6 +625,8 @@ public:
         personaLocationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1012,GetModuleHandleW(nullptr),nullptr);
         personaInterestsEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1013,GetModuleHandleW(nullptr),nullptr);
         personaStyleEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1014,GetModuleHandleW(nullptr),nullptr);
+        personaWritingStyleCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1039,GetModuleHandleW(nullptr),nullptr);
+        personaProfileCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1040,GetModuleHandleW(nullptr),nullptr);
         scenarioNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1015,GetModuleHandleW(nullptr),nullptr);
         scenarioObjectiveEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1016,GetModuleHandleW(nullptr),nullptr);
         scenarioSeedEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1017,GetModuleHandleW(nullptr),nullptr);
@@ -659,7 +662,7 @@ public:
         SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+        HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
         for(HWND e:advancedEdits) {
@@ -669,7 +672,8 @@ public:
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
-            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_};
+            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
+            personaWritingStyleCombo_,personaProfileCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -752,6 +756,10 @@ public:
         const wchar_t* emojiItems[]={
             L"None",L"Rare",L"Occasional",L"Frequent"
         };
+        const wchar_t* writingStyleItems[]={
+            L"Casual",L"Friendly",L"Dry",L"Playful",L"Shy",L"Direct",L"Chatty",
+            L"Reserved",L"Sarcastic",L"Enthusiastic",L"Thoughtful",L"Blunt",L"Warm",L"Minimalist"
+        };
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
@@ -773,6 +781,8 @@ public:
         fillCombo(personaGrammarCombo_,grammarItems,std::size(grammarItems));
         fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
         fillCombo(personaEmojiCombo_,emojiItems,std::size(emojiItems));
+        fillCombo(personaWritingStyleCombo_,writingStyleItems,std::size(writingStyleItems));
+        RefreshPersonaProfileList();
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
         LoadPersonaMedia();
@@ -863,6 +873,9 @@ public:
             else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"persona_save") SaveProfileEditors();
+            else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
+            else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
+            else if (b.id==L"persona_generate_behavior") GenerateBehaviorFromBackground();
             else if (b.id==L"media_import") ImportPersonaMedia();
             else if (b.id==L"media_approve") TogglePersonaMediaApproval();
             else if (b.id==L"media_delete") DeletePersonaMedia();
@@ -1025,8 +1038,12 @@ public:
                 simPreparedReply_=std::string("Model error: ")+e.what();
             }
 
-            int typingDelay=1200+(int)simPreparedReply_.size()*42;
-            typingDelay=std::clamp(typingDelay,1800,9000);
+            const int perChar=RandomInRange(
+                std::max(10,simSettings_.persona.typingMsPerCharMin),
+                std::max(simSettings_.persona.typingMsPerCharMin,simSettings_.persona.typingMsPerCharMax));
+            const int startupJitter=RandomInRange(250,1200);
+            int typingDelay=startupJitter+(int)simPreparedReply_.size()*perChar;
+            typingDelay=std::clamp(typingDelay,600,15000);
             SetTimer(hwnd_,kSimReplyTimer,(UINT)typingDelay,nullptr);
             return;
         }
@@ -1081,6 +1098,7 @@ private:
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
     HWND personaNameEdit_{},personaAgeCombo_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
+    HWND personaWritingStyleCombo_{},personaProfileCombo_{};
     HWND personaOccupationEdit_{},personaEducationEdit_{},personaFamilyEdit_{},personaBackgroundEdit_{};
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
@@ -1829,11 +1847,12 @@ private:
 
     void ShowPersonaEditors(bool show) {
         HWND controls[]={
-            personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_,
-            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_
+            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
+            personaWritingStyleCombo_,personaProfileCombo_
         };
         for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
     }
@@ -1885,6 +1904,8 @@ private:
 
         if(page_==Page::Persona) {
             const float x=kSidebar+28.0f, y=kHeader+104.0f, gap=14.0f;
+            const float profileW=360.0f;
+            MoveControl(personaProfileCombo_,(int)(x+108),(int)(y-42),(int)profileW,180);
             const float contentW=w-x-28.0f;
             const float colW=(contentW-gap)/2.0f;
             const float rightX=x+colW+gap;
@@ -1913,7 +1934,7 @@ private:
             MoveControl(personaSocialCombo_,(int)rf,(int)row,(int)rw,160); row+=42;
             MoveControl(personaConfidenceCombo_,(int)rf,(int)row,(int)rw,140); row+=42;
             MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
-            MoveControl(personaStyleEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
+            MoveControl(personaWritingStyleCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
             MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
             MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,32);
 
@@ -1950,6 +1971,113 @@ private:
         return value;
     }
 
+    std::string BuildPersonaSummary() const {
+        const auto& p=simSettings_.persona;
+        return p.name+", age "+std::to_string(p.age)+
+            ", gender "+p.gender+", pronouns "+p.pronouns+
+            ", location "+p.location+", occupation "+p.occupation+
+            ", education "+p.education+", relationship status "+p.relationshipStatus+
+            ", family context "+p.familyContext+", personality "+p.personality+
+            ", social style "+p.socialStyle+", confidence "+p.confidenceLevel+
+            ", background "+p.background+", interests "+p.interests+
+            ", writing style "+p.writingStyle+
+            ", communication level "+p.communicationLevel+
+            ", slang "+p.slangLevel+
+            ", grammar "+p.grammarQuality+
+            ", typo frequency "+p.typoFrequency+
+            ", emoji use "+p.emojiLevel+
+            ", vocabulary "+p.vocabularyLevel+
+            ", capitalization "+p.capitalizationStyle+
+            ", message length "+p.messageLength+
+            ", response start delay "+std::to_string(p.responseStartMinMs)+"-"+std::to_string(p.responseStartMaxMs)+" ms.";
+    }
+
+    void RefreshPersonaProfileList(const std::string& selectName={}) {
+        if(!personaProfileCombo_) return;
+        const auto names=runtime_->personaProfiles.ListNames();
+        SendMessageW(personaProfileCombo_,CB_RESETCONTENT,0,0);
+        int selected=-1;
+        for(size_t i=0;i<names.size();++i) {
+            const auto w=Widen(names[i]);
+            SendMessageW(personaProfileCombo_,CB_ADDSTRING,0,(LPARAM)w.c_str());
+            if(names[i]==selectName) selected=(int)i;
+        }
+        if(selected<0 && !names.empty()) selected=0;
+        if(selected>=0) SendMessageW(personaProfileCombo_,CB_SETCURSEL,(WPARAM)selected,0);
+    }
+
+    void LoadSelectedPersonaProfile() {
+        const auto name=ComboText(personaProfileCombo_);
+        if(name.empty()) { statusText_=L"Select a saved persona profile"; return; }
+        auto profile=runtime_->personaProfiles.Load(name);
+        if(!profile) { statusText_=L"Persona profile could not be loaded"; return; }
+        simSettings_.persona=*profile;
+        simSettings_.minDelayMs=profile->responseStartMinMs;
+        simSettings_.maxDelayMs=profile->responseStartMaxMs;
+        LoadProfileEditors();
+        LoadPersonaMedia();
+        simContext_.personaSummary=BuildPersonaSummary();
+        sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+        statusText_=L"Loaded persona profile: "+Widen(name);
+    }
+
+    void DeleteSelectedPersonaProfile() {
+        const auto name=ComboText(personaProfileCombo_);
+        if(name.empty()) return;
+        if(MessageBoxW(hwnd_,(L"Delete saved persona profile '"+Widen(name)+L"'?").c_str(),
+            L"Delete Persona Profile",MB_YESNO|MB_ICONQUESTION)!=IDYES) return;
+        if(runtime_->personaProfiles.Delete(name)) {
+            RefreshPersonaProfileList();
+            statusText_=L"Persona profile deleted";
+        }
+    }
+
+    static std::string ProfileLineValue(const std::string& text,const std::string& key) {
+        const std::string marker=key+"=";
+        auto pos=text.find(marker);
+        if(pos==std::string::npos) return {};
+        pos+=marker.size();
+        auto end=text.find_first_of("\r\n",pos);
+        return text.substr(pos,end==std::string::npos?std::string::npos:end-pos);
+    }
+
+    void GenerateBehaviorFromBackground() {
+        if(!model_) { statusText_=L"No model available for behavior generation"; return; }
+        const auto background=Narrow(EditText(personaBackgroundEdit_));
+        if(background.empty()) { statusText_=L"Enter a persona background first"; return; }
+        int ageSel=(int)SendMessageW(personaAgeCombo_,CB_GETCURSEL,0,0);
+        const int age=(ageSel==CB_ERR)?simSettings_.persona.age:(13+ageSel);
+        try {
+            sentinel::simulation::ModelContext ctx=simContext_;
+            ctx.personaSummary=BuildPersonaSummary();
+            const auto result=model_->GenerateBehaviorProfile(age,background,ctx);
+
+            auto apply=[&](HWND combo,const std::string& key){
+                const auto v=ProfileLineValue(result,key);
+                if(v.empty()) return;
+                const int idx=FindComboText(combo,v);
+                SendMessageW(combo,CB_SETCURSEL,(WPARAM)idx,0);
+            };
+            apply(personaPersonalityCombo_,"PERSONALITY");
+            apply(personaSocialCombo_,"SOCIAL_STYLE");
+            apply(personaConfidenceCombo_,"CONFIDENCE");
+            apply(personaWritingStyleCombo_,"WRITING_STYLE");
+            apply(personaCommunicationCombo_,"COMMUNICATION");
+            apply(personaSlangCombo_,"SLANG");
+            apply(personaGrammarCombo_,"GRAMMAR");
+            apply(personaTypoCombo_,"TYPOS");
+            apply(personaEmojiCombo_,"EMOJI");
+
+            const auto interests=ProfileLineValue(result,"INTERESTS");
+            if(!interests.empty() && interests!="keep existing interests")
+                SetWindowTextW(personaInterestsEdit_,Widen(interests).c_str());
+
+            statusText_=L"Behavior profile generated from background; review and Save";
+        } catch(const std::exception& e) {
+            statusText_=L"Behavior generation failed: "+Widen(e.what());
+        }
+    }
+
     void LoadProfileEditors() {
         SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
         SendMessageW(personaAgeCombo_,CB_SETCURSEL,(WPARAM)std::clamp(simSettings_.persona.age-13,0,77),0);
@@ -1959,7 +2087,6 @@ private:
         SetWindowTextW(personaFamilyEdit_,Widen(simSettings_.persona.familyContext).c_str());
         SetWindowTextW(personaBackgroundEdit_,Widen(simSettings_.persona.background).c_str());
         SetWindowTextW(personaInterestsEdit_,Widen(simSettings_.persona.interests).c_str());
-        SetWindowTextW(personaStyleEdit_,Widen(simSettings_.persona.writingStyle).c_str());
 
         SendMessageW(personaGenderCombo_,CB_SETCURSEL,FindComboText(personaGenderCombo_,simSettings_.persona.gender),0);
         SendMessageW(personaPronounsCombo_,CB_SETCURSEL,FindComboText(personaPronounsCombo_,simSettings_.persona.pronouns),0);
@@ -1972,12 +2099,13 @@ private:
         SendMessageW(personaGrammarCombo_,CB_SETCURSEL,FindComboText(personaGrammarCombo_,simSettings_.persona.grammarQuality),0);
         SendMessageW(personaTypoCombo_,CB_SETCURSEL,FindComboText(personaTypoCombo_,simSettings_.persona.typoFrequency),0);
         SendMessageW(personaEmojiCombo_,CB_SETCURSEL,FindComboText(personaEmojiCombo_,simSettings_.persona.emojiLevel),0);
+        SendMessageW(personaWritingStyleCombo_,CB_SETCURSEL,FindComboText(personaWritingStyleCombo_,simSettings_.persona.writingStyle),0);
 
         SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
         SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
         SetWindowTextW(scenarioSeedEdit_,std::to_wstring(simSettings_.scenario.seed).c_str());
-        SetWindowTextW(minDelayEdit_,std::to_wstring(simSettings_.minDelayMs).c_str());
-        SetWindowTextW(maxDelayEdit_,std::to_wstring(simSettings_.maxDelayMs).c_str());
+        SetWindowTextW(minDelayEdit_,std::to_wstring(simSettings_.persona.responseStartMinMs).c_str());
+        SetWindowTextW(maxDelayEdit_,std::to_wstring(simSettings_.persona.responseStartMaxMs).c_str());
     }
 
     void SaveProfileEditors() {
@@ -1999,7 +2127,7 @@ private:
             simSettings_.persona.confidenceLevel=ComboText(personaConfidenceCombo_);
             simSettings_.persona.background=Narrow(EditText(personaBackgroundEdit_));
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
-            simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
+            simSettings_.persona.writingStyle=ComboText(personaWritingStyleCombo_);
             simSettings_.persona.communicationLevel=ComboText(personaCommunicationCombo_);
             simSettings_.persona.slangLevel=ComboText(personaSlangCombo_);
             simSettings_.persona.grammarQuality=ComboText(personaGrammarCombo_);
@@ -2018,13 +2146,18 @@ private:
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
-            simSettings_.minDelayMs=std::clamp(std::stoi(EditText(minDelayEdit_)),500,30000);
-            simSettings_.maxDelayMs=std::clamp(std::stoi(EditText(maxDelayEdit_)),simSettings_.minDelayMs,60000);
+            simSettings_.persona.responseStartMinMs=std::clamp(std::stoi(EditText(minDelayEdit_)),250,30000);
+            simSettings_.persona.responseStartMaxMs=std::clamp(
+                std::stoi(EditText(maxDelayEdit_)),simSettings_.persona.responseStartMinMs,60000);
+            simSettings_.minDelayMs=simSettings_.persona.responseStartMinMs;
+            simSettings_.maxDelayMs=simSettings_.persona.responseStartMaxMs;
             int ageSel=(int)SendMessageW(ageStateCombo_,CB_GETCURSEL,0,0);
             if(ageSel>=0 && ageSel<=5) simSettings_.ageState=(sentinel::simulation::AgeKnowledgeState)ageSel;
             simSettings_.endpoint=Narrow(EditText(modelEndpointEdit_));
             simSettings_.model=Narrow(EditText(modelNameEdit_));
             sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+            runtime_->personaProfiles.Save(simSettings_.persona);
+            RefreshPersonaProfileList(simSettings_.persona.name);
 
             simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
             simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
@@ -2399,6 +2532,16 @@ private:
         }
     }
 
+    int RandomInRange(int lo,int hi) {
+        if(hi<lo) std::swap(lo,hi);
+        static thread_local std::mt19937 rng([]{
+            std::random_device rd;
+            return std::mt19937(rd());
+        }());
+        std::uniform_int_distribution<int> dist(lo,hi);
+        return dist(rng);
+    }
+
     void SendSimulationMessage() {
         if(simBotTyping_ || simReplyPending_) return;
         wchar_t buffer[2048]{};
@@ -2434,8 +2577,11 @@ private:
         ScrollSimulationToBottom();
 
         // Human-like pacing: first read/think silently, then show typing.
-        int readingDelay=1400+(int)utf8.size()*28;
-        readingDelay=std::clamp(readingDelay,1600,5200);
+        const int baseStart=RandomInRange(
+            simSettings_.persona.responseStartMinMs,
+            simSettings_.persona.responseStartMaxMs);
+        const int lengthAdjustment=std::min(1800,(int)utf8.size()*RandomInRange(4,12));
+        int readingDelay=std::clamp(baseStart+lengthAdjustment,250,60000);
         SetTimer(hwnd_,kSimTypingStartTimer,(UINT)readingDelay,nullptr);
         statusText_=L"Message delivered";
         SetFocus(chatEdit_);
@@ -2917,6 +3063,12 @@ private:
         const float colW=(contentW-gap)/2.0f;
         const float rightX=x+colW+gap;
 
+        Rounded(x,y-46,contentW,38,brush_.panel.Get(),brush_.border.Get(),8);
+        TextLine(L"Saved Persona",x+12,y-42,92,28,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"persona_load",L"Load",x+contentW-266,y-42,72,28,false);
+        AddButton(L"persona_delete",L"Delete",x+contentW-186,y-42,72,28,false);
+        AddButton(L"persona_save",L"Save",x+contentW-106,y-42,88,28,true);
+
         // Identity & background
         Rounded(x,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Identity & Background",x+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
@@ -2972,6 +3124,7 @@ private:
         row+=42;
 
         TextLine(L"Background",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"persona_generate_behavior",L"Generate Behavior",rightX+colW-158,row,140,28,false);
 
         // Scenario & pacing
         const float sy=y+396;
@@ -2984,7 +3137,7 @@ private:
 
         TextLine(L"Seed",x+20,sy+92,48,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Typing delay",x+164,sy+92,82,30,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Start delay ms",x+164,sy+92,82,30,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"to",x+342,sy+92,24,30,tinyFmt_.Get(),brush_.muted.Get());
 
         AddButton(L"persona_save",L"Save Persona & Policy",x+contentW-210,sy+88,190,38,true);
