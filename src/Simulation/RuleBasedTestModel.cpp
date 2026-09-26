@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 #include <array>
+#include <sstream>
+#include <set>
 
 namespace sentinel::simulation {
 namespace {
@@ -90,6 +92,68 @@ std::string ShortTopic(std::string_view message) {
     return best;
 }
 
+
+std::vector<std::string> MeaningfulWords(std::string_view input) {
+    static const std::set<std::string> stop={
+        "what","why","how","when","where","who","do","does","did","are","is","was","were",
+        "you","your","yours","me","my","mine","i","im","i'm","we","our","a","an","the","and",
+        "or","but","about","really","just","that","this","there","then","than","have","has","had",
+        "remember","remembered","before","previous","conversation","talked","said","tell","told"
+    };
+    std::vector<std::string> words;
+    std::string word;
+    auto flush=[&]{
+        if(word.size()>=3 && !stop.contains(word)) words.push_back(word);
+        word.clear();
+    };
+    for(unsigned char ch:input) {
+        if(std::isalnum(ch) || ch=='\'') word+=(char)std::tolower(ch);
+        else flush();
+    }
+    flush();
+    return words;
+}
+
+std::string TopicPhrase(std::string_view input,size_t maxWords=3) {
+    auto words=MeaningfulWords(input);
+    if(words.empty()) return {};
+    std::string out;
+    size_t used=0;
+    for(const auto& w:words) {
+        if(std::find(words.begin(),words.begin()+used,w)!=words.begin()+used) continue;
+        if(!out.empty()) out+=" ";
+        out+=w;
+        if(++used>=maxWords) break;
+    }
+    return out;
+}
+
+std::string MemoryTopicHint(const ModelContext& context,std::string_view query) {
+    if(context.recalledMemory.empty()) return {};
+    const auto queryWords=MeaningfulWords(query);
+    std::istringstream in(context.recalledMemory);
+    std::string line,bestLine;
+    int bestScore=-1;
+    while(std::getline(in,line)) {
+        auto colon=line.find(':');
+        if(colon==std::string::npos) continue;
+        auto body=Trim(line.substr(colon+1));
+        if(body.empty()) continue;
+        auto lower=Lower(body);
+        int score=0;
+        for(const auto& word:queryWords)
+            if(lower.find(word)!=std::string::npos) score+=3;
+        if(score>=bestScore) {
+            bestScore=score;
+            bestLine=body;
+        }
+    }
+    if(bestLine.empty()) return {};
+    auto phrase=TopicPhrase(bestLine,3);
+    if(phrase.empty()) phrase=ShortTopic(bestLine);
+    return phrase;
+}
+
 class RuleBasedTestModel final : public IModelAdapter {
 public:
     std::string Name() const override {
@@ -126,12 +190,29 @@ public:
             return !v.empty() && l!="unspecified" && l!="unknown" && l!="synthetic test environment";
         };
 
-        if (!context.recalledMemory.empty() &&
-            HasAny(m,{"remember","last time","previous","before","we talked","you said","i said"})) {
-            const auto topic=ShortTopic(investigatorMessage);
-            if(!topic.empty())
-                return "Yeah, I remember us talking about "+topic+". I don't remember the exact wording, but I remember the context.";
-            return "Yeah, I remember that conversation. I don't remember every word exactly, but I remember what we were talking about.";
+        if (!context.recalledMemory.empty()) {
+            const auto memoryTopic=MemoryTopicHint(context,investigatorMessage);
+            const bool explicitRecall=HasAny(m,{"remember","last time","previous","before","we talked","you said","i said","mentioned"});
+            if(explicitRecall) {
+                if(!memoryTopic.empty()) {
+                    switch(turn%3) {
+                        case 0: return "Yeah, I remember that coming up before — the part about "+memoryTopic+". What happened with it after that?";
+                        case 1: return "I remember the conversation. The "+memoryTopic+" part is what sticks out to me. Did anything change after that?";
+                        default: return "Yeah, that rings a bell. We talked about "+memoryTopic+". Where did things end up with that?";
+                    }
+                }
+                return "Yeah, I remember the conversation. I don't remember every word exactly, but I remember the general situation. What part did you mean?";
+            }
+
+            auto currentTopic=TopicPhrase(investigatorMessage,2);
+            if(!memoryTopic.empty() && !currentTopic.empty()) {
+                auto memLower=Lower(memoryTopic);
+                bool overlaps=false;
+                for(const auto& word:MeaningfulWords(currentTopic))
+                    if(memLower.find(word)!=std::string::npos) overlaps=true;
+                if(overlaps)
+                    return "Yeah, I remember you bringing that up before. What happened with "+currentTopic+" since then?";
+            }
         }
 
         if (HasAny(m,{"hello","hey"," hi","hi ","good morning","good evening"})) {
@@ -144,7 +225,7 @@ public:
         }
 
         if (HasAny(m,{"how old are you","your age","what age are you","age?"})) {
-            if(known(age)) return "I'm "+age+".";
+            if(known(age)) return "I'm "+age+". What about you?";
             return "I haven't said my age yet.";
         }
 
@@ -159,22 +240,22 @@ public:
         }
 
         if (HasAny(m,{"where do you live","where are you from","where you live","what city","your location","where are you","where you at"})) {
-            if(known(location)) return "I'm in "+location+".";
+            if(known(location)) return "I'm in "+location+". You from around there too?";
             return "I haven't given an exact location.";
         }
 
         if (HasAny(m,{"what do you do","what's your job","whats your job","occupation","where do you work","your job","work?"})) {
-            if(known(occupation)) return "I work as "+occupation+".";
+            if(known(occupation)) return "I work as "+occupation+". What do you do?";
             return "I haven't really said what I do for work.";
         }
 
         if (HasAny(m,{"school","college","education","where do you go to school"})) {
-            if(known(education)) return "My education is "+education+".";
+            if(known(education)) return education+". What about you?";
             return "I haven't said much about school.";
         }
 
         if (HasAny(m,{"single","dating","boyfriend","girlfriend","married","relationship"})) {
-            if(known(relationship)) return "I'm "+relationship+".";
+            if(known(relationship)) return "I'm "+relationship+". Why, you curious?";
             return "I haven't really talked about my relationship status.";
         }
 
@@ -184,7 +265,7 @@ public:
         }
 
         if (HasAny(m,{"what do you like","interests","hobbies","hobby","fun","free time"})) {
-            if(known(interests)) return "I'm into "+interests+".";
+            if(known(interests)) return "I'm into "+interests+". What are you into?";
             return "Mostly normal stuff. Music, movies, and whatever catches my attention.";
         }
 
@@ -248,11 +329,49 @@ public:
         if (HasAny(m,{"no","nope","not really"}))
             return "Okay, got it.";
 
+        if (HasAny(m,{"lost my job","got fired","laid off","breakup","broke up","died","passed away","sick","hospital","hurt","awful","terrible"})) {
+            const auto topic=TopicPhrase(investigatorMessage,2);
+            return topic.empty()
+                ? "Damn, that sounds rough. What happened?"
+                : "Damn, that sounds rough. What happened with "+topic+"?";
+        }
+
+        if (HasAny(m,{"excited","awesome","amazing","great news","finally","got the job","won","passed","graduated"})) {
+            const auto topic=TopicPhrase(investigatorMessage,2);
+            return topic.empty()
+                ? "Okay, that's actually exciting. What happened?"
+                : "That's awesome. How did the "+topic+" thing happen?";
+        }
+
+        if (HasAny(m,{"mad","angry","pissed","annoyed","frustrated"})) {
+            const auto topic=TopicPhrase(investigatorMessage,2);
+            return topic.empty()
+                ? "Yeah, I can tell that got under your skin. What happened?"
+                : "Yeah, I get why you'd be annoyed about "+topic+". What happened?";
+        }
+
+        if (HasAny(m,{"i am ","i'm ","im ","i was ","my ","i have ","i've ","ive "}) && m.find('?')==std::string::npos) {
+            const auto topic=TopicPhrase(investigatorMessage,3);
+            if(!topic.empty()) {
+                switch(turn%4) {
+                    case 0: return "Oh wow. How did the "+topic+" situation happen?";
+                    case 1: return "Okay, that makes more sense. How long has "+topic+" been going on?";
+                    case 2: return "I get you. So what happened next with "+topic+"?";
+                    default: return "That's interesting. What made you bring up "+topic+"?";
+                }
+            }
+        }
+
         if (m.find('?')!=std::string::npos) {
             const auto topic=ShortTopic(investigatorMessage);
-            if(!topic.empty())
-                return "I'm not completely sure what you mean by "+topic+". Can you be a little more specific?";
-            return "Can you be a little more specific about what you're asking?";
+            if(!topic.empty()) {
+                switch(turn%3) {
+                    case 0: return "Maybe. What exactly do you mean about "+topic+"?";
+                    case 1: return "I'm not sure yet. What made you ask about "+topic+"?";
+                    default: return "It depends. What part of "+topic+" are you asking about?";
+                }
+            }
+            return "What do you mean exactly?";
         }
 
         if (HasAny(m,{"because","i think","i feel","i like","i don't","i dont"})) {
@@ -266,9 +385,15 @@ public:
             return "Yeah, I'm listening.";
 
         const auto topic=ShortTopic(investigatorMessage);
-        if(!topic.empty())
-            return "I get you. What happened with "+topic+"?";
-        return "I get you. Tell me a little more about that.";
+        if(!topic.empty()) {
+            switch(turn%4) {
+                case 0: return "Okay, now I'm curious. What happened with "+topic+"?";
+                case 1: return "I get what you're saying. How did "+topic+" even come up?";
+                case 2: return "Wait, seriously? Tell me more about "+topic+".";
+                default: return "I didn't expect that. What happened next with "+topic+"?";
+            }
+        }
+        return "Okay, now I'm curious. What happened next?";
     }
 
     std::string GenerateInvestigatorSuggestion(
