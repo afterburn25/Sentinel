@@ -877,6 +877,7 @@ public:
             else if (b.id==L"sim_browse_models") BrowseModels();
             else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
+            else if (b.id==L"sim_export_persona_log") ExportPersonaConversationLog();
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
@@ -1013,6 +1014,8 @@ public:
                         currentConversationId_,
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         initiative);
+                    LogPersonaConversationEvent(
+                        "proactive_followup",{},initiative,0,0);
                     sentinel::simulation::SaveSession(
                         runtime_->root/"simulation-session.tsv",simContext_);
                     statusText_=L"Synthetic subject started a benign follow-up";
@@ -1049,6 +1052,7 @@ public:
             const int startupJitter=RandomInRange(250,1200);
             int typingDelay=startupJitter+(int)simPreparedReply_.size()*perChar;
             typingDelay=std::clamp(typingDelay,600,15000);
+            simLastTypingDelayMs_=typingDelay;
             SetTimer(hwnd_,kSimReplyTimer,(UINT)typingDelay,nullptr);
             return;
         }
@@ -1069,6 +1073,9 @@ public:
                         currentConversationId_,
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         simPreparedReply_);
+                    LogPersonaConversationEvent(
+                        "reactive_reply",simPendingMessage_,simPreparedReply_,
+                        simLastStartDelayMs_,simLastTypingDelayMs_);
                     const auto source=Widen(model_?model_->Name():"No model");
                     statusText_=L"Response from "+source;
                     if(!simContext_.recalledMemory.empty())
@@ -1129,6 +1136,8 @@ private:
     bool simInitiativeSent_{false};
     std::string simPendingMessage_;
     std::string simPreparedReply_;
+    int simLastStartDelayMs_{0};
+    int simLastTypingDelayMs_{0};
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
     sentinel::simulation::SimulationSettings simSettings_;
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
@@ -1840,6 +1849,7 @@ private:
         AddButton(L"sim_suggest",L"Generate",rx+18,y+500,bw,32,false);
         AddButton(L"sim_reset",L"Reset",rx+26+bw,y+500,bw,32,false);
         AddButton(L"sim_preserve",L"Preserve",rx+34+bw*2,y+500,bw,32,false);
+        AddButton(L"sim_export_persona_log",L"Export Persona Log",rx+18,y+544,sideW-36,30,false);
     }
 
     void ShowChatEditor(bool show) {
@@ -2058,6 +2068,8 @@ private:
             sentinel::simulation::ModelContext ctx=simContext_;
             ctx.personaSummary=BuildPersonaSummary();
             const auto result=model_->GenerateBehaviorProfile(age,background,ctx);
+            LogPersonaConversationEvent(
+                "behavior_profile_generation",background,result,0,0);
 
             auto apply=[&](HWND combo,const std::string& key){
                 const auto v=ProfileLineValue(result,key);
@@ -2569,6 +2581,7 @@ private:
             if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
             simContext_.recalledMemory+=participantFacts;
         }
+        LogPersonaConversationEvent("inbound",utf8,{},0,0);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
         runtime_->conversationMemory.Append(
             currentConversationId_,
@@ -2592,6 +2605,8 @@ private:
             simSettings_.persona.responseStartMaxMs);
         const int lengthAdjustment=std::min(1800,(int)utf8.size()*RandomInRange(4,12));
         int readingDelay=std::clamp(baseStart+lengthAdjustment,250,60000);
+        simLastStartDelayMs_=readingDelay;
+        simLastTypingDelayMs_=0;
         SetTimer(hwnd_,kSimTypingStartTimer,(UINT)readingDelay,nullptr);
         statusText_=L"Message delivered";
         SetFocus(chatEdit_);
@@ -2871,6 +2886,148 @@ private:
         } catch(const std::exception& e) {
             simSuggestion_=L"Model error: "+Widen(e.what());
             statusText_=L"Model request failed";
+        }
+    }
+
+    static std::string SqlJsonEscape(std::string_view input) {
+        std::string out;
+        for(unsigned char ch:input) {
+            switch(ch) {
+                case '\\': out+="\\\\"; break;
+                case '"': out+="\\\""; break;
+                case '\n': out+="\\n"; break;
+                case '\r': out+="\\r"; break;
+                case '\t': out+="\\t"; break;
+                default:
+                    if(ch>=0x20) out+=(char)ch;
+                    break;
+            }
+        }
+        return out;
+    }
+
+    std::string PersonaContextJson() const {
+        const auto& p=simSettings_.persona;
+        return std::string("{")+
+            "\"age\":"+std::to_string(p.age)+
+            ",\"personality\":\""+SqlJsonEscape(p.personality)+"\""+
+            ",\"socialStyle\":\""+SqlJsonEscape(p.socialStyle)+"\""+
+            ",\"confidence\":\""+SqlJsonEscape(p.confidenceLevel)+"\""+
+            ",\"writingStyle\":\""+SqlJsonEscape(p.writingStyle)+"\""+
+            ",\"communicationLevel\":\""+SqlJsonEscape(p.communicationLevel)+"\""+
+            ",\"cognitiveLevel\":\""+SqlJsonEscape(p.cognitiveLevel)+"\""+
+            ",\"slang\":\""+SqlJsonEscape(p.slangLevel)+"\""+
+            ",\"grammar\":\""+SqlJsonEscape(p.grammarQuality)+"\""+
+            ",\"typos\":\""+SqlJsonEscape(p.typoFrequency)+"\""+
+            ",\"emoji\":\""+SqlJsonEscape(p.emojiLevel)+"\""+
+            ",\"vocabulary\":\""+SqlJsonEscape(p.vocabularyLevel)+"\""+
+            ",\"capitalization\":\""+SqlJsonEscape(p.capitalizationStyle)+"\""+
+            ",\"messageLength\":\""+SqlJsonEscape(p.messageLength)+"\""+
+            ",\"responseStartMinMs\":"+std::to_string(p.responseStartMinMs)+
+            ",\"responseStartMaxMs\":"+std::to_string(p.responseStartMaxMs)+
+            ",\"typingMsPerCharMin\":"+std::to_string(p.typingMsPerCharMin)+
+            ",\"typingMsPerCharMax\":"+std::to_string(p.typingMsPerCharMax)+
+            "}";
+    }
+
+    void LogPersonaConversationEvent(
+        const std::string& eventKind,
+        const std::string& input,
+        const std::string& output,
+        int startDelayMs=0,
+        int typingDelayMs=0)
+    {
+        try {
+            sqlite3_stmt* s{};
+            const char* sql=
+                "INSERT INTO persona_conversation_logs("
+                "id,conversation_id,persona_name,model_name,event_kind,input_text,output_text,"
+                "persona_summary,recalled_memory,context_json,start_delay_ms,typing_delay_ms,policy_status) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) return;
+
+            const auto id=sentinel::Uuid::Random().ToString();
+            const auto modelName=model_?model_->Name():"";
+            const auto contextJson=PersonaContextJson();
+            const auto policy=Narrow(policyStatus_);
+            auto bind=[&](int i,const std::string& value){
+                sqlite3_bind_text(s,i,value.c_str(),-1,SQLITE_TRANSIENT);
+            };
+            bind(1,id); bind(2,currentConversationId_); bind(3,simSettings_.persona.name);
+            bind(4,modelName); bind(5,eventKind); bind(6,input); bind(7,output);
+            bind(8,simContext_.personaSummary); bind(9,simContext_.recalledMemory); bind(10,contextJson);
+            sqlite3_bind_int(s,11,startDelayMs); sqlite3_bind_int(s,12,typingDelayMs);
+            bind(13,policy);
+            sqlite3_step(s);
+            sqlite3_finalize(s);
+        } catch(...) {}
+    }
+
+    void ExportPersonaConversationLog() {
+        try {
+            auto exportDir=runtime_->root/"exports";
+            std::filesystem::create_directories(exportDir);
+            const auto stamp=std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            std::string safeName=simSettings_.persona.name.empty()?"persona":simSettings_.persona.name;
+            for(char& ch:safeName)
+                if(!(std::isalnum((unsigned char)ch) || ch=='-' || ch=='_')) ch='_';
+            const auto path=exportDir/("persona-log-"+safeName+"-"+std::to_string(stamp)+".txt");
+
+            std::ofstream out(path,std::ios::binary|std::ios::trunc);
+            out<<"SENTINEL PERSONA CONVERSATION DEBUG LOG\n";
+            out<<"Persona: "<<simSettings_.persona.name<<"\n";
+            out<<"Conversation ID: "<<currentConversationId_<<"\n";
+            out<<"Model: "<<(model_?model_->Name():"")<<"\n";
+            out<<"Persona summary: "<<BuildPersonaSummary()<<"\n";
+            out<<"Profile settings: "<<PersonaContextJson()<<"\n\n";
+
+            sqlite3_stmt* s{};
+            const char* sql=
+                "SELECT created_utc,event_kind,input_text,output_text,recalled_memory,context_json,"
+                "start_delay_ms,typing_delay_ms,policy_status,model_name "
+                "FROM persona_conversation_logs WHERE conversation_id=? ORDER BY created_utc,id";
+            if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+                throw std::runtime_error("could not prepare persona log export");
+            sqlite3_bind_text(s,1,currentConversationId_.c_str(),-1,SQLITE_TRANSIENT);
+
+            int n=0;
+            while(sqlite3_step(s)==SQLITE_ROW) {
+                auto col=[&](int i)->std::string{
+                    const auto* p=(const char*)sqlite3_column_text(s,i);
+                    return p?p:"";
+                };
+                out<<"============================================================\n";
+                out<<"Event "<<(++n)<<" | "<<col(0)<<" | "<<col(1)<<"\n";
+                out<<"Model: "<<col(9)<<"\n";
+                out<<"Start delay: "<<sqlite3_column_int(s,6)<<" ms\n";
+                out<<"Typing delay: "<<sqlite3_column_int(s,7)<<" ms\n";
+                out<<"Policy: "<<col(8)<<"\n";
+                out<<"INPUT:\n"<<col(2)<<"\n\n";
+                out<<"OUTPUT:\n"<<col(3)<<"\n\n";
+                out<<"RECALLED MEMORY / FACTS:\n"<<col(4)<<"\n\n";
+                out<<"PERSONA SETTINGS SNAPSHOT:\n"<<col(5)<<"\n\n";
+            }
+            sqlite3_finalize(s);
+
+            out<<"============================================================\n";
+            out<<"VISIBLE CONVERSATION TRANSCRIPT\n";
+            for(const auto& turn:simContext_.history) {
+                const char* who=
+                    turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator?"OTHER PERSON":
+                    turn.speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject?"PERSONA":"MODEL/SYSTEM";
+                out<<who<<": "<<turn.text<<"\n";
+            }
+            out.close();
+
+            statusText_=L"Persona debug log exported: "+path.wstring();
+            MessageBoxW(hwnd_,
+                (L"Persona debug log exported to:\n\n"+path.wstring()+
+                 L"\n\nUpload this .txt file to ChatGPT when you want the persona behavior reviewed.").c_str(),
+                L"Persona Log Exported",MB_OK|MB_ICONINFORMATION);
+        } catch(const std::exception& e) {
+            statusText_=L"Persona log export failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Persona Log Export Failed",MB_OK|MB_ICONERROR);
         }
     }
 
