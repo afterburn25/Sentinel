@@ -647,6 +647,7 @@ public:
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         operatingStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
         personaCommunicationCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
+        personaCognitiveCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
         personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
         personaGrammarCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1036,GetModuleHandleW(nullptr),nullptr);
         personaTypoCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1037,GetModuleHandleW(nullptr),nullptr);
@@ -672,7 +673,7 @@ public:
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
-            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
+            personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
             personaWritingStyleCombo_,personaProfileCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -744,6 +745,9 @@ public:
         const wchar_t* communicationItems[]={
             L"Age-appropriate",L"Simple",L"Average",L"Advanced"
         };
+        const wchar_t* cognitiveItems[]={
+            L"Simple",L"Average",L"Above average",L"Analytical"
+        };
         const wchar_t* slangItems[]={
             L"None",L"Light",L"Moderate",L"Heavy"
         };
@@ -777,6 +781,7 @@ public:
         fillCombo(personaSocialCombo_,socialItems,std::size(socialItems));
         fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
         fillCombo(personaCommunicationCombo_,communicationItems,std::size(communicationItems));
+        fillCombo(personaCognitiveCombo_,cognitiveItems,std::size(cognitiveItems));
         fillCombo(personaSlangCombo_,slangItems,std::size(slangItems));
         fillCombo(personaGrammarCombo_,grammarItems,std::size(grammarItems));
         fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
@@ -1103,7 +1108,7 @@ private:
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
-    HWND personaCommunicationCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
+    HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -1851,7 +1856,7 @@ private:
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_,
-            personaCommunicationCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
+            personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
             personaWritingStyleCombo_,personaProfileCombo_
         };
         for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
@@ -1947,10 +1952,11 @@ private:
 
             const float ty=sy+158;
             MoveControl(personaCommunicationCombo_,(int)(x+112),(int)(ty+44),145,150);
-            MoveControl(personaSlangCombo_,(int)(x+327),(int)(ty+44),140,150);
-            MoveControl(personaGrammarCombo_,(int)(x+547),(int)(ty+44),145,150);
-            MoveControl(personaTypoCombo_,(int)(x+112),(int)(ty+84),145,150);
-            MoveControl(personaEmojiCombo_,(int)(x+347),(int)(ty+84),140,150);
+            MoveControl(personaCognitiveCombo_,(int)(x+347),(int)(ty+44),120,150);
+            MoveControl(personaSlangCombo_,(int)(x+547),(int)(ty+44),145,150);
+            MoveControl(personaGrammarCombo_,(int)(x+112),(int)(ty+84),145,150);
+            MoveControl(personaTypoCombo_,(int)(x+327),(int)(ty+84),140,150);
+            MoveControl(personaEmojiCombo_,(int)(x+547),(int)(ty+84),145,150);
         }
 
         if(page_==Page::Agency) {
@@ -1982,6 +1988,7 @@ private:
             ", background "+p.background+", interests "+p.interests+
             ", writing style "+p.writingStyle+
             ", communication level "+p.communicationLevel+
+            ", cognitive level "+p.cognitiveLevel+
             ", slang "+p.slangLevel+
             ", grammar "+p.grammarQuality+
             ", typo frequency "+p.typoFrequency+
@@ -2063,6 +2070,7 @@ private:
             apply(personaConfidenceCombo_,"CONFIDENCE");
             apply(personaWritingStyleCombo_,"WRITING_STYLE");
             apply(personaCommunicationCombo_,"COMMUNICATION");
+            apply(personaCognitiveCombo_,"COGNITIVE");
             apply(personaSlangCombo_,"SLANG");
             apply(personaGrammarCombo_,"GRAMMAR");
             apply(personaTypoCombo_,"TYPOS");
@@ -2095,6 +2103,7 @@ private:
         SendMessageW(personaSocialCombo_,CB_SETCURSEL,FindComboText(personaSocialCombo_,simSettings_.persona.socialStyle),0);
         SendMessageW(personaConfidenceCombo_,CB_SETCURSEL,FindComboText(personaConfidenceCombo_,simSettings_.persona.confidenceLevel),0);
         SendMessageW(personaCommunicationCombo_,CB_SETCURSEL,FindComboText(personaCommunicationCombo_,simSettings_.persona.communicationLevel),0);
+        SendMessageW(personaCognitiveCombo_,CB_SETCURSEL,FindComboText(personaCognitiveCombo_,simSettings_.persona.cognitiveLevel),0);
         SendMessageW(personaSlangCombo_,CB_SETCURSEL,FindComboText(personaSlangCombo_,simSettings_.persona.slangLevel),0);
         SendMessageW(personaGrammarCombo_,CB_SETCURSEL,FindComboText(personaGrammarCombo_,simSettings_.persona.grammarQuality),0);
         SendMessageW(personaTypoCombo_,CB_SETCURSEL,FindComboText(personaTypoCombo_,simSettings_.persona.typoFrequency),0);
@@ -2129,6 +2138,7 @@ private:
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
             simSettings_.persona.writingStyle=ComboText(personaWritingStyleCombo_);
             simSettings_.persona.communicationLevel=ComboText(personaCommunicationCombo_);
+            simSettings_.persona.cognitiveLevel=ComboText(personaCognitiveCombo_);
             simSettings_.persona.slangLevel=ComboText(personaSlangCombo_);
             simSettings_.persona.grammarQuality=ComboText(personaGrammarCombo_);
             simSettings_.persona.typoFrequency=ComboText(personaTypoCombo_);
@@ -3154,11 +3164,12 @@ private:
             x+205,ty+10,contentW-225,28,tinyFmt_.Get(),brush_.muted.Get());
 
         TextLine(L"Communication",x+20,ty+48,88,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Slang",x+275,ty+48,48,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Grammar",x+485,ty+48,56,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Cognitive",x+275,ty+48,60,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Slang",x+485,ty+48,48,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Typos",x+20,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Emoji use",x+275,ty+88,66,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Grammar",x+20,ty+88,56,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Typos",x+275,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Emoji",x+485,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
 
         // Approved benign persona media library.
         const float my=ty+156;
