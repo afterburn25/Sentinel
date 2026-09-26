@@ -39,6 +39,9 @@ public:
 
     [[nodiscard]] virtual std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) = 0;
+
+    [[nodiscard]] virtual std::string GenerateSyntheticInitiative(
+        const ModelContext& context) = 0;
 };
 
 std::unique_ptr<IModelAdapter> CreateRuleBasedTestModel();
