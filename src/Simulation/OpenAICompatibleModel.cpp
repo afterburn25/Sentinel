@@ -317,6 +317,32 @@ public:
             "The conversation has been quiet for a while. Send one natural benign message to keep the conversation going.");
     }
 
+    std::string GenerateBehaviorProfile(
+        int age,
+        std::string_view background,
+        const ModelContext& context) override
+    {
+        std::string system =
+            "You are configuring a benign synthetic conversation persona for Sentinel. "
+            "Convert the supplied fictional background into a compact behavior/communication profile. "
+            "Do not infer sexual behavior, sexual preferences, exploitability, vulnerability to coercion, criminality, or mental-health diagnoses. "
+            "Preserve explicitly stated facts and make conservative inferences only about ordinary social/communication style. "
+            "Return EXACTLY these ten lines and use only values from the listed choices:\n"
+            "PERSONALITY=Reserved|Balanced|Outgoing|Playful|Serious|Curious|Guarded|Confident|Warm|Analytical|Impulsive|Sarcastic|Easygoing|Independent\n"
+            "SOCIAL_STYLE=Very reserved|Reserved|Quiet but responsive|Balanced|Social|Very social|Attention-seeking|Peer-approval focused\n"
+            "CONFIDENCE=Very low|Low|Medium|High|Very high\n"
+            "WRITING_STYLE=Casual|Friendly|Dry|Playful|Shy|Direct|Chatty|Reserved|Sarcastic|Enthusiastic|Thoughtful|Blunt|Warm|Minimalist\n"
+            "COMMUNICATION=Age-appropriate|Simple|Average|Advanced\n"
+            "SLANG=None|Light|Moderate|Heavy\n"
+            "GRAMMAR=Careful|Casual|Loose|Very loose\n"
+            "TYPOS=None|Rare|Occasional|Frequent\n"
+            "EMOJI=None|Rare|Occasional|Frequent\n"
+            "INTERESTS=a short comma-separated list grounded in the background, or keep existing interests when background does not establish any. "
+            "Age should influence vocabulary and digital habits plausibly without stereotyping.";
+        std::string request="Age: "+std::to_string(age)+"\nBackground: "+std::string(background);
+        return Complete(system,context,request);
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
