@@ -18,6 +18,12 @@ AutomationOutcome AutomationEngine::Decide(const AutomationRequest& r) const {
     if(r.mode==AutomationMode::ApprovalRequired)
         return {AutomationDecisionKind::RequireApproval,true,"approval-required mode"};
 
+    if(!r.jurisdictionProfileActive)
+        return {AutomationDecisionKind::RequireApproval,true,"jurisdiction profile is not legally active"};
+
+    if(!r.jurisdictionAllowsAutomation || r.jurisdictionRequiresReview)
+        return {AutomationDecisionKind::RequireApproval,true,"jurisdiction rules require investigator review"};
+
     if(!r.providerSupportsAutomation)
         return {AutomationDecisionKind::RequireApproval,true,"channel does not support automated sending"};
 
