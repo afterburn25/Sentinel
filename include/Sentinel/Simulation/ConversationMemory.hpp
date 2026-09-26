@@ -45,6 +45,10 @@ public:
         std::string_view currentConversationId,
         size_t maxMessages=12) const;
 
+    std::string RecallParticipantFacts(
+        std::string_view currentConversationId,
+        size_t maxMessages=10) const;
+
 private:
     SqliteDatabase& db_;
 };
