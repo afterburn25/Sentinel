@@ -258,10 +258,25 @@ void TestUnifiedChannelCore()
 
 int main()
 {
-    TestIdsAndHashes();
+    try {
+        std::cout << "[core] ids/hashes..." << std::endl;
+        TestIdsAndHashes();
+        std::cout << "[core] ids/hashes PASS" << std::endl;
 #ifdef _WIN32
-    TestWindowsCryptoAndSev();
-    TestUnifiedChannelCore();
+        std::cout << "[core] windows crypto/evidence..." << std::endl;
+        TestWindowsCryptoAndSev();
+        std::cout << "[core] windows crypto/evidence PASS" << std::endl;
+        std::cout << "[core] unified channel/jurisdiction..." << std::endl;
+        TestUnifiedChannelCore();
+        std::cout << "[core] unified channel/jurisdiction PASS" << std::endl;
 #endif
-    std::cout << "SentinelCoreTests passed\n";
+        std::cout << "SentinelCoreTests passed" << std::endl;
+        return 0;
+    } catch(const std::exception& e) {
+        std::cerr << "SentinelCoreTests exception: " << e.what() << std::endl;
+        return 2;
+    } catch(...) {
+        std::cerr << "SentinelCoreTests unknown exception" << std::endl;
+        return 3;
+    }
 }
