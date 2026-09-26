@@ -2867,7 +2867,7 @@ private:
             for(size_t i=0;i<msgs.size() && i<3;i++) {
                 Rounded(qx+18,yy,queueW-36,46,brush_.sidebar.Get(),brush_.border.Get(),8);
                 std::wstring rowText=Widen(msgs[i].text);
-                if(!msgs[i].mediaPath.empty()) rowText=L"[IMAGE] "+rowText+L" | "+Widen(std::filesystem::path(Widen(msgs[i].mediaPath)).filename().wstring());
+                if(!msgs[i].mediaPath.empty()) rowText=L"[IMAGE] "+rowText+L" | "+std::filesystem::path(Widen(msgs[i].mediaPath)).filename().wstring();
                 TextLine(rowText,qx+30,yy+4,queueW-60,38,smallFmt_.Get(),brush_.text.Get());
                 yy+=54;
             }
