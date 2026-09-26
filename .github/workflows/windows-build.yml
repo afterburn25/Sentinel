@@ -1,4 +1,4 @@
-# Sentinel release: 1.0.2
+# Sentinel release: 1.0.3
 name: Windows Build
 
 on:
@@ -88,7 +88,7 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/Sentinel-1.0.2-windows-x64
+          --prefix package/Sentinel-1.0.3-windows-x64
 
       - name: Azure login for Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
@@ -105,7 +105,7 @@ jobs:
           endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\package\Sentinel-1.0.2-windows-x64
+          files-folder: ${{ github.workspace }}\package\Sentinel-1.0.3-windows-x64
           files-folder-filter: exe
           files-folder-recurse: true
           file-digest: SHA256
@@ -118,7 +118,7 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $root = Resolve-Path package/Sentinel-1.0.2-windows-x64
+          $root = Resolve-Path package/Sentinel-1.0.3-windows-x64
           $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
           if (-not $executables) { throw "No executables found for signature verification" }
 
@@ -143,12 +143,12 @@ jobs:
           Production releases should be signed using Microsoft Artifact Signing.
           Repository: https://github.com/afterburn25/Sentinel
           Commit: ${{ github.sha }}
-          "@ | Set-Content -Encoding utf8 package/Sentinel-1.0.2-windows-x64/SIGNING-STATUS.txt
+          "@ | Set-Content -Encoding utf8 package/Sentinel-1.0.3-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/Sentinel-1.0.2-windows-x64
+          $root = Resolve-Path package/Sentinel-1.0.3-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -160,7 +160,7 @@ jobs:
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/Sentinel-1.0.2-windows-x64"
+          $root = "package/Sentinel-1.0.3-windows-x64"
           if (-not (Test-Path "$root/Sentinel.exe")) { throw "Sentinel.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
@@ -168,7 +168,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: Sentinel-1.0.2-windows-x64
-          path: package/Sentinel-1.0.2-windows-x64/
+          name: Sentinel-1.0.3-windows-x64
+          path: package/Sentinel-1.0.3-windows-x64/
           if-no-files-found: error
           retention-days: 30
