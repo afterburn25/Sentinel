@@ -8,6 +8,7 @@
 #include "Sentinel/Channels/AutomationEngine.hpp"
 #include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
 #include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 #include "Sentinel/Update/UpdateService.hpp"
 
@@ -85,6 +86,9 @@ int main() {
         channels::ActionKind::OrdinaryReply,
         true,
         true,
+        false,
+        true,
+        true,
         false});
     Require(ordinary.decision==channels::AutomationDecisionKind::AutoSend,
         "authorized ordinary reply should be eligible for automatic sending");
@@ -94,9 +98,24 @@ int main() {
         channels::ActionKind::BenignMedia,
         true,
         true,
+        false,
+        true,
+        true,
         false});
     Require(mediaDecision.decision==channels::AutomationDecisionKind::RequireApproval,
         "media should remain approval-gated");
+
+    auto noLegalActivation=automation.Decide({
+        channels::AutomationMode::AuthorizedAutomatic,
+        channels::ActionKind::OrdinaryReply,
+        true,
+        true,
+        false,
+        false,
+        false,
+        true});
+    Require(noLegalActivation.decision==channels::AutomationDecisionKind::RequireApproval,
+        "inactive jurisdiction profile must prevent auto-send");
 
     auto localChannel=std::make_unique<channels::LocalSimulationChannelAdapter>(
         operations::CreateInMemoryMessageAdapter());
