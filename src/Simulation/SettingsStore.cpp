@@ -54,6 +54,7 @@ SimulationSettings LoadSimulationSettings(const std::filesystem::path& path) {
             else if(k=="persona.interests") s.persona.interests=v;
             else if(k=="persona.writingStyle") s.persona.writingStyle=v;
             else if(k=="persona.communicationLevel") s.persona.communicationLevel=v;
+            else if(k=="persona.cognitiveLevel") s.persona.cognitiveLevel=v;
             else if(k=="persona.slangLevel") s.persona.slangLevel=v;
             else if(k=="persona.grammarQuality") s.persona.grammarQuality=v;
             else if(k=="persona.typoFrequency") s.persona.typoFrequency=v;
@@ -61,6 +62,10 @@ SimulationSettings LoadSimulationSettings(const std::filesystem::path& path) {
             else if(k=="persona.vocabularyLevel") s.persona.vocabularyLevel=v;
             else if(k=="persona.capitalizationStyle") s.persona.capitalizationStyle=v;
             else if(k=="persona.messageLength") s.persona.messageLength=v;
+            else if(k=="persona.responseStartMinMs") s.persona.responseStartMinMs=std::stoi(v);
+            else if(k=="persona.responseStartMaxMs") s.persona.responseStartMaxMs=std::stoi(v);
+            else if(k=="persona.typingMsPerCharMin") s.persona.typingMsPerCharMin=std::stoi(v);
+            else if(k=="persona.typingMsPerCharMax") s.persona.typingMsPerCharMax=std::stoi(v);
             else if(k=="scenario.name") s.scenario.name=v;
             else if(k=="scenario.objective") s.scenario.objective=v;
             else if(k=="scenario.openingContext") s.scenario.openingContext=v;
@@ -97,6 +102,11 @@ void SaveSimulationSettings(const std::filesystem::path& path,const SimulationSe
     out<<"persona.interests="<<Escape(s.persona.interests)<<"\n";
     out<<"persona.writingStyle="<<Escape(s.persona.writingStyle)<<"\n";
     out<<"persona.communicationLevel="<<Escape(s.persona.communicationLevel)<<"\n";
+    out<<"persona.cognitiveLevel="<<Escape(s.persona.cognitiveLevel)<<"\n";
+    out<<"persona.responseStartMinMs="<<s.persona.responseStartMinMs<<"\n";
+    out<<"persona.responseStartMaxMs="<<s.persona.responseStartMaxMs<<"\n";
+    out<<"persona.typingMsPerCharMin="<<s.persona.typingMsPerCharMin<<"\n";
+    out<<"persona.typingMsPerCharMax="<<s.persona.typingMsPerCharMax<<"\n";
     out<<"persona.slangLevel="<<Escape(s.persona.slangLevel)<<"\n";
     out<<"persona.grammarQuality="<<Escape(s.persona.grammarQuality)<<"\n";
     out<<"persona.typoFrequency="<<Escape(s.persona.typoFrequency)<<"\n";
