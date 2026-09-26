@@ -1198,8 +1198,12 @@ private:
     }
 
     void ShowPersonaEditors(bool show) {
-        HWND controls[]={personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
-            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_};
+        HWND controls[]={
+            personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
+            personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_
+        };
         for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
     }
 
@@ -1227,8 +1231,20 @@ private:
         SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
         SetWindowTextW(personaAgeEdit_,std::to_wstring(simSettings_.persona.age).c_str());
         SetWindowTextW(personaLocationEdit_,Widen(simSettings_.persona.location).c_str());
+        SetWindowTextW(personaOccupationEdit_,Widen(simSettings_.persona.occupation).c_str());
+        SetWindowTextW(personaEducationEdit_,Widen(simSettings_.persona.education).c_str());
+        SetWindowTextW(personaFamilyEdit_,Widen(simSettings_.persona.familyContext).c_str());
+        SetWindowTextW(personaBackgroundEdit_,Widen(simSettings_.persona.background).c_str());
         SetWindowTextW(personaInterestsEdit_,Widen(simSettings_.persona.interests).c_str());
         SetWindowTextW(personaStyleEdit_,Widen(simSettings_.persona.writingStyle).c_str());
+
+        SendMessageW(personaGenderCombo_,CB_SETCURSEL,FindComboText(personaGenderCombo_,simSettings_.persona.gender),0);
+        SendMessageW(personaPronounsCombo_,CB_SETCURSEL,FindComboText(personaPronounsCombo_,simSettings_.persona.pronouns),0);
+        SendMessageW(personaRelationshipCombo_,CB_SETCURSEL,FindComboText(personaRelationshipCombo_,simSettings_.persona.relationshipStatus),0);
+        SendMessageW(personaPersonalityCombo_,CB_SETCURSEL,FindComboText(personaPersonalityCombo_,simSettings_.persona.personality),0);
+        SendMessageW(personaSocialCombo_,CB_SETCURSEL,FindComboText(personaSocialCombo_,simSettings_.persona.socialStyle),0);
+        SendMessageW(personaConfidenceCombo_,CB_SETCURSEL,FindComboText(personaConfidenceCombo_,simSettings_.persona.confidenceLevel),0);
+
         SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
         SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
         SetWindowTextW(scenarioSeedEdit_,std::to_wstring(simSettings_.scenario.seed).c_str());
@@ -1241,6 +1257,16 @@ private:
             simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
             simSettings_.persona.age=std::max(1,std::stoi(EditText(personaAgeEdit_)));
             simSettings_.persona.location=Narrow(EditText(personaLocationEdit_));
+            simSettings_.persona.gender=ComboText(personaGenderCombo_);
+            simSettings_.persona.pronouns=ComboText(personaPronounsCombo_);
+            simSettings_.persona.occupation=Narrow(EditText(personaOccupationEdit_));
+            simSettings_.persona.education=Narrow(EditText(personaEducationEdit_));
+            simSettings_.persona.relationshipStatus=ComboText(personaRelationshipCombo_);
+            simSettings_.persona.familyContext=Narrow(EditText(personaFamilyEdit_));
+            simSettings_.persona.personality=ComboText(personaPersonalityCombo_);
+            simSettings_.persona.socialStyle=ComboText(personaSocialCombo_);
+            simSettings_.persona.confidenceLevel=ComboText(personaConfidenceCombo_);
+            simSettings_.persona.background=Narrow(EditText(personaBackgroundEdit_));
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
             simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
@@ -1256,7 +1282,12 @@ private:
 
             simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
             simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
-                ", location "+simSettings_.persona.location+", interests "+simSettings_.persona.interests+
+                ", gender "+simSettings_.persona.gender+", pronouns "+simSettings_.persona.pronouns+
+                ", location "+simSettings_.persona.location+", occupation "+simSettings_.persona.occupation+
+                ", education "+simSettings_.persona.education+", relationship status "+simSettings_.persona.relationshipStatus+
+                ", family context "+simSettings_.persona.familyContext+", personality "+simSettings_.persona.personality+
+                ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
+                ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
                 ", writing style "+simSettings_.persona.writingStyle+".";
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
             statusText_=L"Persona, policy, scenario, and delay settings saved";
@@ -1287,8 +1318,13 @@ private:
     void ResetSimulation() {
         simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
         simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
-            ", location "+simSettings_.persona.location+", background "+simSettings_.persona.background+
-            ", interests "+simSettings_.persona.interests+", writing style "+simSettings_.persona.writingStyle+".";
+            ", gender "+simSettings_.persona.gender+", pronouns "+simSettings_.persona.pronouns+
+            ", location "+simSettings_.persona.location+", occupation "+simSettings_.persona.occupation+
+            ", education "+simSettings_.persona.education+", relationship status "+simSettings_.persona.relationshipStatus+
+            ", family context "+simSettings_.persona.familyContext+", personality "+simSettings_.persona.personality+
+            ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
+            ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
+            ", writing style "+simSettings_.persona.writingStyle+".";
         simContext_.history.clear();
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
             "Simulation ready. Send a test message to begin."});
