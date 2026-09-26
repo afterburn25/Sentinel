@@ -421,6 +421,7 @@ public:
         std::string confidence="Medium";
         std::string writing=age<=17?"Casual":"Friendly";
         std::string communication="Age-appropriate";
+        std::string cognitive="Average";
         std::string slang=age<=17?"Moderate":"Light";
         std::string grammar=age<=17?"Loose":"Casual";
         std::string typos=age<=17?"Occasional":"Rare";
@@ -431,7 +432,8 @@ public:
         if(HasAny(b,{"confident","independent"})){personality="Confident";confidence="High";}
         if(HasAny(b,{"sarcastic","dry humor"})){personality="Sarcastic";writing="Sarcastic";}
         if(HasAny(b,{"playful","joking","funny"})){personality="Playful";writing="Playful";}
-        if(HasAny(b,{"book","reads","academic","honors"})){communication="Advanced";grammar="Careful";}
+        if(HasAny(b,{"book","reads","academic","honors"})){communication="Advanced";cognitive="Above average";grammar="Careful";}
+        if(HasAny(b,{"analytical","logic","engineering","science"})) cognitive="Analytical";
         if(HasAny(b,{"texts a lot","online","social media"})){slang=age<=17?"Heavy":"Moderate";emoji="Frequent";}
 
         return
@@ -440,6 +442,7 @@ public:
             "CONFIDENCE="+confidence+"\n"
             "WRITING_STYLE="+writing+"\n"
             "COMMUNICATION="+communication+"\n"
+            "COGNITIVE="+cognitive+"\n"
             "SLANG="+slang+"\n"
             "GRAMMAR="+grammar+"\n"
             "TYPOS="+typos+"\n"
