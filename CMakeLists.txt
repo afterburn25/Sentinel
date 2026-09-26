@@ -36,6 +36,8 @@ add_library(sentinel_core
     src/Operations/Supervisor.cpp
     src/Channels/ChannelCore.cpp
     src/Channels/LocalSimulationChannelAdapter.cpp
+    src/Channels/AutomationEngine.cpp
+    src/Channels/ChannelAdapterRegistry.cpp
     src/Agency/AgencyServer.cpp
     src/Update/UpdateService.cpp
 )
