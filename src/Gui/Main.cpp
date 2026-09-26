@@ -58,6 +58,7 @@ constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 constexpr UINT_PTR kSimTypingStartTimer = 4101;
 constexpr UINT_PTR kSimReplyTimer = 4102;
+constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
@@ -942,6 +943,41 @@ public:
     }
 
     void HandleTimer(UINT_PTR id) {
+        if(id==kSimEngagementTimer) {
+            KillTimer(hwnd_,kSimEngagementTimer);
+            if(simReplyPending_ || simBotTyping_ || simInitiativeSent_ || !model_) return;
+            if(page_!=Page::Simulation) return;
+
+            simInitiativeSent_=true;
+            try {
+                const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
+                    currentConversationId_,10);
+                if(!participantFacts.empty()) {
+                    if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+                    simContext_.recalledMemory+=participantFacts;
+                }
+
+                auto initiative=model_->GenerateSyntheticInitiative(simContext_);
+                if(!initiative.empty()) {
+                    simContext_.history.push_back({
+                        sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                        initiative});
+                    runtime_->conversationMemory.Append(
+                        currentConversationId_,
+                        sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                        initiative);
+                    sentinel::simulation::SaveSession(
+                        runtime_->root/"simulation-session.tsv",simContext_);
+                    statusText_=L"Synthetic subject started a benign follow-up";
+                    ScrollSimulationToBottom();
+                    InvalidateRect(hwnd_,nullptr,FALSE);
+                }
+            } catch(const std::exception& e) {
+                statusText_=L"Proactive engagement skipped: "+Widen(e.what());
+            }
+            return;
+        }
+
         if(id==kSimTypingStartTimer) {
             KillTimer(hwnd_,kSimTypingStartTimer);
             if(!simReplyPending_ || simPendingMessage_.empty()) return;
@@ -1001,6 +1037,10 @@ public:
         simPendingMessage_.clear();
         simPreparedReply_.clear();
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
+        // One benign proactive nudge is allowed in Simulation after 60 seconds
+        // of silence. Live-channel automation remains governed by the operation
+        // rules profile and is not enabled by this simulation timer.
+        if(!simInitiativeSent_) SetTimer(hwnd_,kSimEngagementTimer,60000,nullptr);
         ScrollSimulationToBottom();
         SetFocus(chatEdit_);
         SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
@@ -1033,6 +1073,7 @@ private:
     int simFirstVisible_{0};
     bool simBotTyping_{false};
     bool simReplyPending_{false};
+    bool simInitiativeSent_{false};
     std::string simPendingMessage_;
     std::string simPreparedReply_;
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
@@ -2227,6 +2268,8 @@ private:
         simPreparedReply_.clear();
         KillTimer(hwnd_,kSimTypingStartTimer);
         KillTimer(hwnd_,kSimReplyTimer);
+        KillTimer(hwnd_,kSimEngagementTimer);
+        simInitiativeSent_=false;
         if(chatEdit_) {
             SetWindowTextW(chatEdit_,L"");
             if(page_==Page::Simulation) {
@@ -2275,6 +2318,8 @@ private:
             simPreparedReply_.clear();
             KillTimer(hwnd_,kSimTypingStartTimer);
             KillTimer(hwnd_,kSimReplyTimer);
+            KillTimer(hwnd_,kSimEngagementTimer);
+            simInitiativeSent_=false;
             if(chatEdit_) {
                 SetWindowTextW(chatEdit_,L"");
                 SetFocus(chatEdit_);
@@ -2318,6 +2363,8 @@ private:
         simPreparedReply_.clear();
         simReplyPending_=true;
         simBotTyping_=false;
+        simInitiativeSent_=false;
+        KillTimer(hwnd_,kSimEngagementTimer);
         ScrollSimulationToBottom();
 
         // Human-like pacing: first read/think silently, then show typing.
