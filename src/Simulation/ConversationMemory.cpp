@@ -159,12 +159,14 @@ bool ConversationMemoryStore::Load(
         return false;
     }
     const auto scenario=ColumnText(s,0);
+    const auto personaSummary=ColumnText(s,1);
     sqlite3_finalize(s);
 
     ModelContext loaded=context;
     loaded.history.clear();
     loaded.recalledMemory.clear();
     loaded.scenario=scenario;
+    loaded.personaSummary=personaSummary;
 
     Check(sqlite3_prepare_v2(db,
         "SELECT speaker,body FROM simulation_messages WHERE conversation_id=? ORDER BY row_id ASC",
