@@ -1587,57 +1587,110 @@ private:
     }
 
     void DrawPersona(float w,float h) {
-        PageTitle(L"Persona & Policy",L"Persistent synthetic persona, scenario, age state, and response pacing");
-        float x=kSidebar+28,y=kHeader+104;
-        float left=(w-x-42)*0.58f,right=(w-x-42)-left;
+        PageTitle(L"Persona & Policy",L"Structured synthetic identity, behavior, scenario, age state, and pacing");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float gap=14.0f;
+        const float contentW=w-x-28.0f;
+        const float colW=(contentW-gap)/2.0f;
+        const float rightX=x+colW+gap;
 
-        Rounded(x,y,left,520,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Persona Profile",x+18,y+15,260,28,h1Fmt_.Get(),brush_.text.Get());
+        // Identity & background
+        Rounded(x,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Identity & Background",x+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
 
-        Text(L"Name",x+22,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaNameEdit_,(int)(x+135),(int)(y+54),(int)(left-160),32,TRUE);
-        Text(L"Age",x+22,y+106,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaAgeEdit_,(int)(x+135),(int)(y+98),110,32,TRUE);
-        Text(L"Age state",x+270,y+106,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(ageStateCombo_,(int)(x+360),(int)(y+98),(int)(left-385),160,TRUE);
+        const float lx=x+20, lf=x+132, lw=colW-152;
+        float row=y+54;
 
-        Text(L"Location",x+22,y+150,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaLocationEdit_,(int)(x+135),(int)(y+142),(int)(left-160),32,TRUE);
-        Text(L"Interests",x+22,y+194,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaInterestsEdit_,(int)(x+135),(int)(y+186),(int)(left-160),32,TRUE);
-        Text(L"Writing style",x+22,y+238,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaStyleEdit_,(int)(x+135),(int)(y+230),(int)(left-160),32,TRUE);
+        TextLine(L"Name",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32);
+        row+=42;
 
-        Text(L"Scenario",x+22,y+290,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioNameEdit_,(int)(x+135),(int)(y+282),(int)(left-160),32,TRUE);
-        Text(L"Objective",x+22,y+334,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioObjectiveEdit_,(int)(x+135),(int)(y+326),(int)(left-160),32,TRUE);
-        Text(L"Seed",x+22,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(scenarioSeedEdit_,(int)(x+135),(int)(y+370),110,32,TRUE);
+        TextLine(L"Age",lx,row,46,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaAgeEdit_,(int)(lx+50),(int)row,72,32);
+        TextLine(L"Age state",lx+136,row,72,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170);
+        row+=42;
 
-        Text(L"Typing delay (ms)",x+270,y+378,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(minDelayEdit_,(int)(x+385),(int)(y+370),90,32,TRUE);
-        Text(L"to",x+482,y+378,24,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(maxDelayEdit_,(int)(x+507),(int)(y+370),90,32,TRUE);
+        TextLine(L"Gender",lx,row,58,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaGenderCombo_,(int)(lx+64),(int)row,132,160);
+        TextLine(L"Pronouns",lx+210,row,62,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160);
+        row+=42;
 
-        AddButton(L"persona_save",L"Save Profile & Policy",x+22,y+438,210,42,true);
-        Text(L"Settings persist in the local Sentinel secure workspace.",x+250,y+449,left-280,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Location",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaLocationEdit_,(int)lf,(int)row,(int)lw,32);
+        row+=42;
 
-        float rx=x+left+14;
-        Rounded(rx,y,right,248,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Policy State",rx+18,y+15,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Age knowledge",rx+18,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+132,y+60,right-150,22,smallFmt_.Get(),brush_.cyan.Get());
-        Text(L"Current decision",rx+18,y+100,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(policyStatus_,rx+18,y+124,right-36,88,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Occupation",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaOccupationEdit_,(int)lf,(int)row,(int)lw,32);
+        row+=42;
 
-        Rounded(rx,y+264,right,256,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Persona Memory",rx+18,y+279,right-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Locked facts and learned-session memory are isolated from source evidence.",rx+18,y+320,right-36,44,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"Configured identity",rx+18,y+382,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(simSettings_.persona.name),rx+146,y+380,right-164,22,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Writing style",rx+18,y+416,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(simSettings_.persona.writingStyle),rx+146,y+414,right-164,40,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Education",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaEducationEdit_,(int)lf,(int)row,(int)lw,32);
+        row+=42;
+
+        TextLine(L"Relationship",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaRelationshipCombo_,(int)lf,(int)row,(int)lw,180);
+
+        // Behavior & context
+        Rounded(rightX,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Behavior & Context",rightX+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
+
+        const float rx=rightX+20, rf=rightX+132, rw=colW-152;
+        row=y+54;
+
+        TextLine(L"Personality",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaPersonalityCombo_,(int)rf,(int)row,(int)rw,180);
+        row+=42;
+
+        TextLine(L"Social style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaSocialCombo_,(int)rf,(int)row,(int)rw,160);
+        row+=42;
+
+        TextLine(L"Confidence",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaConfidenceCombo_,(int)rf,(int)row,(int)rw,140);
+        row+=42;
+
+        TextLine(L"Interests",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32);
+        row+=42;
+
+        TextLine(L"Writing style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaStyleEdit_,(int)rf,(int)row,(int)rw,32);
+        row+=42;
+
+        TextLine(L"Family",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32);
+        row+=42;
+
+        TextLine(L"Background",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,32);
+
+        // Scenario & pacing
+        const float sy=y+396;
+        Rounded(x,sy,contentW,144,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Scenario, Policy & Pacing",x+18,sy+10,300,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Scenario",x+20,sy+50,68,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(scenarioNameEdit_,(int)(x+92),(int)(sy+50),210,32);
+
+        TextLine(L"Objective",x+316,sy+50,70,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(scenarioObjectiveEdit_,(int)(x+390),(int)(sy+50),(int)std::max(220.0f,contentW-690),32);
+
+        TextLine(L"Seed",x+20,sy+92,48,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(scenarioSeedEdit_,(int)(x+72),(int)(sy+92),74,32);
+
+        TextLine(L"Typing delay",x+164,sy+92,82,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(minDelayEdit_,(int)(x+250),(int)(sy+92),86,32);
+        TextLine(L"to",x+342,sy+92,24,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(maxDelayEdit_,(int)(x+370),(int)(sy+92),86,32);
+
+        AddButton(L"persona_save",L"Save Persona & Policy",x+contentW-210,sy+88,190,38,true);
+
+        // Compact policy status
+        TextLine(L"Policy",x+474,sy+92,52,30,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
     void RegisterCurrentModel() {
