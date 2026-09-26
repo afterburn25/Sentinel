@@ -547,7 +547,13 @@ public:
             if(model_) {
                 auto reply=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
                 simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,reply});
-                statusText_=L"Model response received";
+                runtime_->conversationMemory.Append(
+                    currentConversationId_,
+                    sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                    reply);
+                statusText_=simContext_.recalledMemory.empty()
+                    ? L"Model response received"
+                    : L"Model response received with prior-conversation context";
             }
         } catch(const std::exception& e) {
             simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::ModelSuggestion,
@@ -1438,16 +1444,79 @@ private:
             ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
             ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
             ", writing style "+simSettings_.persona.writingStyle+".";
+        simContext_.recalledMemory.clear();
         simContext_.history.clear();
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
             "Simulation ready. Send a test message to begin."});
+
+        const std::string title=simSettings_.scenario.name.empty()
+            ? ("Conversation with "+simSettings_.persona.name)
+            : simSettings_.scenario.name;
+        currentConversationId_=runtime_->conversationMemory.StartConversation(
+            title,simContext_.personaSummary,simContext_.scenario);
+        currentConversationTitle_=Widen(title);
+        archiveCursor_=0;
+
         simSuggestion_=L"No suggestion generated yet";
         simBotTyping_=false;
         simPendingMessage_.clear();
         KillTimer(hwnd_,kSimReplyTimer);
-        if(chatEdit_) SetWindowTextW(chatEdit_,L"");
+        if(chatEdit_) {
+            SetWindowTextW(chatEdit_,L"");
+            if(page_==Page::Simulation) {
+                SetFocus(chatEdit_);
+                SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+            }
+        }
         ScrollSimulationToBottom();
+        statusText_=L"New persistent conversation started";
         InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void LoadPreviousConversation() {
+        try {
+            auto conversations=runtime_->conversationMemory.List(50);
+            if(conversations.empty()) {
+                statusText_=L"No previous conversations yet";
+                return;
+            }
+
+            size_t target=0;
+            auto it=std::find_if(conversations.begin(),conversations.end(),[&](const auto& item){
+                return item.id==currentConversationId_;
+            });
+            if(it!=conversations.end()) {
+                size_t current=(size_t)std::distance(conversations.begin(),it);
+                target=(current+1<conversations.size())?current+1:0;
+            } else if(archiveCursor_>=0 && (size_t)archiveCursor_<conversations.size()) {
+                target=(size_t)archiveCursor_;
+            }
+
+            sentinel::simulation::ModelContext loaded=simContext_;
+            if(!runtime_->conversationMemory.Load(conversations[target].id,loaded)) {
+                statusText_=L"Selected conversation has no messages yet";
+                return;
+            }
+
+            currentConversationId_=conversations[target].id;
+            currentConversationTitle_=Widen(conversations[target].title);
+            archiveCursor_=(int)target;
+            simContext_=std::move(loaded);
+            simContext_.recalledMemory.clear();
+            simBotTyping_=false;
+            simPendingMessage_.clear();
+            KillTimer(hwnd_,kSimReplyTimer);
+            if(chatEdit_) {
+                SetWindowTextW(chatEdit_,L"");
+                SetFocus(chatEdit_);
+                SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+            }
+            ScrollSimulationToBottom();
+            statusText_=L"Previous conversation loaded";
+            InvalidateRect(hwnd_,nullptr,FALSE);
+        } catch(const std::exception& e) {
+            statusText_=L"Conversation load failed: "+Widen(e.what());
+        }
     }
 
     void SendSimulationMessage() {
@@ -1458,7 +1527,14 @@ private:
         while(!message.empty() && (message.back()==L'\r' || message.back()==L'\n' || message.back()==L' ')) message.pop_back();
         if(message.empty()) return;
         auto utf8=Narrow(message);
+        if(currentConversationId_.empty()) ResetSimulation();
+        simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
+            utf8,currentConversationId_,12);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
+        runtime_->conversationMemory.Append(
+            currentConversationId_,
+            sentinel::simulation::ChatTurn::Speaker::Investigator,
+            utf8);
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         SetWindowTextW(chatEdit_,L"");
         simSuggestion_=L"No suggestion generated yet";
