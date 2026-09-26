@@ -268,10 +268,9 @@ public:
                 x=(int)(short)LOWORD(pos);
                 y=(int)(short)HIWORD(pos);
 
-                wchar_t ch[2]{};
-                SendMessageW(hwnd,EM_SETSEL,last,textLen);
-                SendMessageW(hwnd,EM_GETSELTEXT,0,(LPARAM)ch);
-                SendMessageW(hwnd,EM_SETSEL,selStart,selEnd);
+                std::wstring fullText((size_t)textLen+1,L'\0');
+                GetWindowTextW(hwnd,fullText.data(),textLen+1);
+                wchar_t ch[2]{fullText[(size_t)last],L'\0'};
 
                 HDC dc=GetDC(hwnd);
                 if(dc) {
