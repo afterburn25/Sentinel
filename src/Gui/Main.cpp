@@ -245,13 +245,13 @@ public:
         scenarioSeedEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1017,GetModuleHandleW(nullptr),nullptr);
         minDelayEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1018,GetModuleHandleW(nullptr),nullptr);
         maxDelayEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1019,GetModuleHandleW(nullptr),nullptr);
-        ageStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1020,GetModuleHandleW(nullptr),nullptr);
-        personaGenderCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1023,GetModuleHandleW(nullptr),nullptr);
-        personaPronounsCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1024,GetModuleHandleW(nullptr),nullptr);
-        personaRelationshipCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1025,GetModuleHandleW(nullptr),nullptr);
-        personaPersonalityCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1026,GetModuleHandleW(nullptr),nullptr);
-        personaSocialCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1027,GetModuleHandleW(nullptr),nullptr);
-        personaConfidenceCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST|CBS_OWNERDRAWFIXED|CBS_HASSTRINGS,0,0,0,0,hwnd_,(HMENU)1028,GetModuleHandleW(nullptr),nullptr);
+        ageStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1020,GetModuleHandleW(nullptr),nullptr);
+        personaGenderCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1023,GetModuleHandleW(nullptr),nullptr);
+        personaPronounsCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1024,GetModuleHandleW(nullptr),nullptr);
+        personaRelationshipCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1025,GetModuleHandleW(nullptr),nullptr);
+        personaPersonalityCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1026,GetModuleHandleW(nullptr),nullptr);
+        personaSocialCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1027,GetModuleHandleW(nullptr),nullptr);
+        personaConfidenceCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1028,GetModuleHandleW(nullptr),nullptr);
         personaOccupationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1029,GetModuleHandleW(nullptr),nullptr);
         personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
         personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
@@ -277,7 +277,7 @@ public:
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-            SetWindowTheme(combo,L"",L"");
+            SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
             SendMessageW(combo,CB_SETITEMHEIGHT,0,24);
             SendMessageW(combo,CB_SETITEMHEIGHT,(WPARAM)-1,24);
         }
@@ -342,7 +342,7 @@ public:
         RECT rc{}; GetClientRect(hwnd_,&rc);
         target_->Resize(D2D1::SizeU(rc.right,rc.bottom));
         ApplyPageControls();
-        RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+        RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
     }
 
     void Paint() {
@@ -389,7 +389,7 @@ public:
             if (idx>=0&&idx<12) {
                 page_=(Page)idx;
                 ApplyPageControls();
-                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
                 return;
             }
         }
@@ -456,33 +456,13 @@ public:
         };
         for(HWND control:controls) {
             if(control && IsWindowVisible(control)) {
-                InvalidateRect(control,nullptr,TRUE);
+                InvalidateRect(control,nullptr,FALSE);
                 UpdateWindow(control);
             }
         }
         nativeControlsDirty_=false;
     }
 
-    bool DrawOwnerCombo(const DRAWITEMSTRUCT* dis) {
-        if(!dis || dis->CtlType!=ODT_COMBOBOX) return false;
-        HDC dc=dis->hDC;
-        RECT rc=dis->rcItem;
-        const bool selected=(dis->itemState & ODS_SELECTED)!=0;
-        HBRUSH bg=CreateSolidBrush(selected?RGB(18,40,58):RGB(15,32,48));
-        FillRect(dc,&rc,bg);
-        DeleteObject(bg);
-        SetBkMode(dc,TRANSPARENT);
-        SetTextColor(dc,selected?RGB(34,199,255):RGB(238,246,255));
-        if(dis->itemID!=(UINT)-1) {
-            wchar_t buf[512]{};
-            SendMessageW(dis->hwndItem,CB_GETLBTEXT,dis->itemID,(LPARAM)buf);
-            RECT tr=rc;
-            tr.left+=8; tr.right-=8;
-            DrawTextW(dc,buf,-1,&tr,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
-        }
-        if(dis->itemState & ODS_FOCUS) DrawFocusRect(dc,&rc);
-        return true;
-    }
 
     int FindComboText(HWND combo,const std::string& value) {
         const auto target=Widen(value);
@@ -530,7 +510,7 @@ public:
             if(item.first.Contains(x,y)) {
                 CopySimulationMessage(item.second);
                 statusText_=L"Message copied to clipboard";
-                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);
+                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
                 return;
             }
         }
@@ -2231,9 +2211,6 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             SetBkColor(dc,RGB(15,32,48));
             return g_app ? (LRESULT)g_app->EditBrush() : (LRESULT)GetStockObject(BLACK_BRUSH);
         }
-        case WM_DRAWITEM:
-            if(g_app && g_app->DrawOwnerCombo((DRAWITEMSTRUCT*)lp)) return TRUE;
-            break;
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
