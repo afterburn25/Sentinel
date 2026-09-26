@@ -15,8 +15,9 @@ void PersonaProfileStore::Save(const PersonaProfile& p) {
         "INSERT INTO persona_profiles("
         "name,age,location,gender,pronouns,occupation,education,relationship_status,family_context,"
         "personality,social_style,confidence_level,background,interests,writing_style,communication_level,"
-        "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length,"
+        "response_start_min_ms,response_start_max_ms,typing_ms_per_char_min,typing_ms_per_char_max) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(name) DO UPDATE SET "
         "age=excluded.age,location=excluded.location,gender=excluded.gender,pronouns=excluded.pronouns,"
         "occupation=excluded.occupation,education=excluded.education,relationship_status=excluded.relationship_status,"
@@ -26,7 +27,9 @@ void PersonaProfileStore::Save(const PersonaProfile& p) {
         "slang_level=excluded.slang_level,grammar_quality=excluded.grammar_quality,"
         "typo_frequency=excluded.typo_frequency,emoji_level=excluded.emoji_level,"
         "vocabulary_level=excluded.vocabulary_level,capitalization_style=excluded.capitalization_style,"
-        "message_length=excluded.message_length,updated_utc=CURRENT_TIMESTAMP";
+        "message_length=excluded.message_length,response_start_min_ms=excluded.response_start_min_ms,"
+        "response_start_max_ms=excluded.response_start_max_ms,typing_ms_per_char_min=excluded.typing_ms_per_char_min,"
+        "typing_ms_per_char_max=excluded.typing_ms_per_char_max,updated_utc=CURRENT_TIMESTAMP";
     if(sqlite3_prepare_v2(db_.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
         throw std::runtime_error("prepare persona profile save failed");
     int i=1;
@@ -36,6 +39,8 @@ void PersonaProfileStore::Save(const PersonaProfile& p) {
     Bind(s,i++,p.background); Bind(s,i++,p.interests); Bind(s,i++,p.writingStyle); Bind(s,i++,p.communicationLevel);
     Bind(s,i++,p.slangLevel); Bind(s,i++,p.grammarQuality); Bind(s,i++,p.typoFrequency); Bind(s,i++,p.emojiLevel);
     Bind(s,i++,p.vocabularyLevel); Bind(s,i++,p.capitalizationStyle); Bind(s,i++,p.messageLength);
+    sqlite3_bind_int(s,i++,p.responseStartMinMs); sqlite3_bind_int(s,i++,p.responseStartMaxMs);
+    sqlite3_bind_int(s,i++,p.typingMsPerCharMin); sqlite3_bind_int(s,i++,p.typingMsPerCharMax);
     if(sqlite3_step(s)!=SQLITE_DONE){
         std::string e=sqlite3_errmsg(db_.Handle()); sqlite3_finalize(s);
         throw std::runtime_error("persona profile save failed: "+e);
@@ -48,7 +53,8 @@ std::optional<PersonaProfile> PersonaProfileStore::Load(std::string_view name) c
     const char* sql=
         "SELECT name,age,location,gender,pronouns,occupation,education,relationship_status,family_context,"
         "personality,social_style,confidence_level,background,interests,writing_style,communication_level,"
-        "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length "
+        "slang_level,grammar_quality,typo_frequency,emoji_level,vocabulary_level,capitalization_style,message_length,"
+        "response_start_min_ms,response_start_max_ms,typing_ms_per_char_min,typing_ms_per_char_max "
         "FROM persona_profiles WHERE name=?";
     if(sqlite3_prepare_v2(db_.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) return std::nullopt;
     Bind(s,1,std::string(name));
@@ -61,6 +67,8 @@ std::optional<PersonaProfile> PersonaProfileStore::Load(std::string_view name) c
     p.background=Col(s,i++);p.interests=Col(s,i++);p.writingStyle=Col(s,i++);p.communicationLevel=Col(s,i++);
     p.slangLevel=Col(s,i++);p.grammarQuality=Col(s,i++);p.typoFrequency=Col(s,i++);p.emojiLevel=Col(s,i++);
     p.vocabularyLevel=Col(s,i++);p.capitalizationStyle=Col(s,i++);p.messageLength=Col(s,i++);
+    p.responseStartMinMs=sqlite3_column_int(s,i++);p.responseStartMaxMs=sqlite3_column_int(s,i++);
+    p.typingMsPerCharMin=sqlite3_column_int(s,i++);p.typingMsPerCharMax=sqlite3_column_int(s,i++);
     sqlite3_finalize(s);
     return p;
 }
