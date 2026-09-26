@@ -1657,18 +1657,19 @@ private:
 
         AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
         AddButton(L"sim_install_ai",L"Install / Repair AI",rx+154,y+182,132,34,true);
-        TextLine(L"Available model",rx+296,y+180,76,20,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
+        TextLine(L"Available model",rx+18,y+224,112,20,tinyFmt_.Get(),brush_.muted.Get());
 
-        StatusDot(rx+24,y+307,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
-        TextLine(modelStatus_,rx+36,y+294,sideW-54,28,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"Manual model",rx+18,y+278,106,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_model",L"Connect",rx+sideW-110,y+299,92,32,true);
 
-        TextLine(L"Conversation",rx+18,y+326,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(currentConversationTitle_,rx+112,y+323,sideW-130,24,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"sim_previous_chat",L"Previous Chat",rx+18,y+354,142,34,false);
-        AddButton(L"sim_new_chat",L"New Chat",rx+170,y+354,112,34,true);
+        StatusDot(rx+24,y+355,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        TextLine(modelStatus_,rx+36,y+342,sideW-54,28,tinyFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Conversation",rx+18,y+374,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(currentConversationTitle_,rx+112,y+371,sideW-130,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"sim_previous_chat",L"Previous Chat",rx+18,y+402,142,34,false);
+        AddButton(L"sim_new_chat",L"New Chat",rx+170,y+402,112,34,true);
 
         // Suggestion card
         Rounded(rx,y+400,sideW,140,brush_.panel.Get(),brush_.border.Get(),10);
@@ -1740,8 +1741,8 @@ private:
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
 
             MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
-            MoveControl(modelCombo_,(int)(rx+296),(int)(y+201),(int)(sideW-314),150,TRUE);
-            MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
+            MoveControl(modelCombo_,(int)(rx+18),(int)(y+244),(int)(sideW-36),180,TRUE);
+            MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+299),(int)(sideW-140),32,TRUE);
         }
 
         if(page_==Page::Persona) {
