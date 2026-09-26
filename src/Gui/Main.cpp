@@ -31,12 +31,14 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <shlobj.h>
+#include <shellapi.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <filesystem>
 #include <chrono>
 #include <memory>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <fstream>
