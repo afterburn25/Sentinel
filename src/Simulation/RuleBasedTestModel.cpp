@@ -410,6 +410,43 @@ public:
         return prompts[turn%5];
     }
 
+    std::string GenerateBehaviorProfile(
+        int age,
+        std::string_view background,
+        const ModelContext&) override
+    {
+        const auto b=Lower(background);
+        std::string personality="Balanced";
+        std::string social="Balanced";
+        std::string confidence="Medium";
+        std::string writing=age<=17?"Casual":"Friendly";
+        std::string communication="Age-appropriate";
+        std::string slang=age<=17?"Moderate":"Light";
+        std::string grammar=age<=17?"Loose":"Casual";
+        std::string typos=age<=17?"Occasional":"Rare";
+        std::string emoji=age<=17?"Occasional":"Rare";
+
+        if(HasAny(b,{"shy","quiet","reserved"})){personality="Reserved";social="Quiet but responsive";}
+        if(HasAny(b,{"outgoing","social","popular"})){personality="Outgoing";social="Social";}
+        if(HasAny(b,{"confident","independent"})){personality="Confident";confidence="High";}
+        if(HasAny(b,{"sarcastic","dry humor"})){personality="Sarcastic";writing="Sarcastic";}
+        if(HasAny(b,{"playful","joking","funny"})){personality="Playful";writing="Playful";}
+        if(HasAny(b,{"book","reads","academic","honors"})){communication="Advanced";grammar="Careful";}
+        if(HasAny(b,{"texts a lot","online","social media"})){slang=age<=17?"Heavy":"Moderate";emoji="Frequent";}
+
+        return
+            "PERSONALITY="+personality+"\n"
+            "SOCIAL_STYLE="+social+"\n"
+            "CONFIDENCE="+confidence+"\n"
+            "WRITING_STYLE="+writing+"\n"
+            "COMMUNICATION="+communication+"\n"
+            "SLANG="+slang+"\n"
+            "GRAMMAR="+grammar+"\n"
+            "TYPOS="+typos+"\n"
+            "EMOJI="+emoji+"\n"
+            "INTERESTS=keep existing interests";
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
