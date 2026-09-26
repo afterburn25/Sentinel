@@ -196,6 +196,57 @@ bool StartBundledAiService(std::wstring* failure = nullptr) {
     return true;
 }
 
+bool BundledAiPrerequisitesPresent() {
+    const auto aiDir=ExeDir()/L"ai";
+    const auto model=aiDir/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf";
+    if(!std::filesystem::exists(model)) return false;
+
+    for(const auto& root : {aiDir/L"runtime",aiDir/L"runtime_cpu"}) {
+        if(!std::filesystem::exists(root)) continue;
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+            if(entry.is_regular_file() &&
+               _wcsicmp(entry.path().filename().c_str(),L"llama-server.exe")==0)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool RunBundledAiSetup(std::wstring* failure=nullptr) {
+    const auto setup=ExeDir()/L"Setup-Sentinel-AI.cmd";
+    if(!std::filesystem::exists(setup)) {
+        if(failure) *failure=L"Bundled AI installer is missing: "+setup.wstring();
+        return false;
+    }
+
+    std::wstring command=L"cmd.exe /d /c \"\""+setup.wstring()+L"\"\"";
+    STARTUPINFOW si{};
+    si.cb=sizeof(si);
+    PROCESS_INFORMATION pi{};
+    if(!CreateProcessW(
+            nullptr,command.data(),nullptr,nullptr,FALSE,
+            CREATE_NEW_CONSOLE,nullptr,ExeDir().c_str(),&si,&pi)) {
+        if(failure) *failure=L"Could not launch bundled AI setup. Windows error "+std::to_wstring(GetLastError())+L".";
+        return false;
+    }
+
+    const DWORD wait=WaitForSingleObject(pi.hProcess,INFINITE);
+    DWORD exitCode=1;
+    if(wait==WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess,&exitCode);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+
+    if(wait!=WAIT_OBJECT_0 || exitCode!=0) {
+        if(failure) {
+            *failure=L"Bundled AI setup failed";
+            const auto log=ReadTextFileTail(ExeDir()/L"ai"/L"logs"/L"setup.log",2400);
+            if(!log.empty()) *failure+=L". Setup log: "+log;
+        }
+        return false;
+    }
+    return BundledAiPrerequisitesPresent();
+}
+
 std::wstring AuditActionName(int action) {
     switch(action) {
         case 1: return L"Application initialized";
@@ -700,43 +751,7 @@ public:
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
 
-        // Prefer the configured OpenAI-compatible local model at startup. If a
-        // bundled localhost model is configured but not running yet, Sentinel starts
-        // the bundled llama.cpp service itself so opening Sentinel.exe directly works.
-        if(!simSettings_.endpoint.empty() && !simSettings_.model.empty()) {
-            auto connectConfiguredModel=[&]() {
-                auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
-                    simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,simSettings_.maxTokens);
-                sentinel::simulation::ModelContext testContext;
-                testContext.scenario="Sentinel local model startup connection test";
-                testContext.personaSummary="Synthetic test only.";
-                (void)candidate->GenerateInvestigatorSuggestion(testContext);
-                model_=std::move(candidate);
-                modelStatus_=L"Connected automatically: "+Widen(simSettings_.model);
-            };
-
-            try {
-                connectConfiguredModel();
-            } catch(const std::exception& firstError) {
-                bool recovered=false;
-                std::wstring launcherFailure;
-                if(IsLocalModelEndpoint(simSettings_.endpoint) && StartBundledAiService(&launcherFailure)) {
-                    try {
-                        connectConfiguredModel();
-                        recovered=true;
-                    } catch(...) {}
-                }
-                if(!recovered) {
-                    model_=sentinel::simulation::CreateRuleBasedTestModel();
-                    modelStatus_=L"Local model unavailable; built-in fallback active. ";
-                    if(!launcherFailure.empty()) modelStatus_+=launcherFailure;
-                    else modelStatus_+=Widen(firstError.what());
-                }
-            }
-        } else {
-            model_=sentinel::simulation::CreateRuleBasedTestModel();
-            modelStatus_=L"Built-in contextual model";
-        }
+        AutoInitializeLocalAi();
         ResumeOrCreateConversation();
         ApplyPageControls();
         return S_OK;
@@ -2330,6 +2345,116 @@ private:
         CloseClipboard();
     }
 
+    void PopulateModelDropdown(const std::vector<std::string>& models,const std::string& selected) {
+        SendMessageW(modelCombo_,CB_RESETCONTENT,0,0);
+        int selectedIndex=-1;
+        for(size_t i=0;i<models.size();++i) {
+            const auto w=Widen(models[i]);
+            SendMessageW(modelCombo_,CB_ADDSTRING,0,(LPARAM)w.c_str());
+            if(models[i]==selected) selectedIndex=(int)i;
+        }
+        if(selectedIndex<0 && !models.empty()) selectedIndex=0;
+        if(selectedIndex>=0) {
+            SendMessageW(modelCombo_,CB_SETCURSEL,(WPARAM)selectedIndex,0);
+            SetWindowTextW(modelNameEdit_,Widen(models[(size_t)selectedIndex]).c_str());
+        }
+    }
+
+    bool ConnectDiscoveredLocalModel(const std::vector<std::string>& models,std::wstring* failure=nullptr) {
+        if(models.empty()) {
+            if(failure) *failure=L"Local backend returned no models.";
+            return false;
+        }
+
+        std::string chosen=simSettings_.model;
+        if(chosen.empty() || std::find(models.begin(),models.end(),chosen)==models.end()) {
+            auto preferred=std::find(models.begin(),models.end(),"sentinel-chat");
+            chosen=preferred!=models.end()?*preferred:models.front();
+        }
+
+        try {
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                simSettings_.endpoint,chosen,{},simSettings_.temperature,simSettings_.maxTokens);
+            sentinel::simulation::ModelContext testContext;
+            testContext.scenario="Sentinel local model startup connection test";
+            testContext.personaSummary="Startup diagnostic identity.";
+            (void)candidate->GenerateInvestigatorSuggestion(testContext);
+
+            model_=std::move(candidate);
+            simSettings_.model=chosen;
+            PopulateModelDropdown(models,chosen);
+            SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
+            SetWindowTextW(modelNameEdit_,Widen(chosen).c_str());
+            sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+            modelStatus_=L"Connected automatically: "+Widen(chosen);
+            statusText_=L"Local AI loaded automatically";
+            return true;
+        } catch(const std::exception& e) {
+            if(failure) *failure=Widen(e.what());
+            return false;
+        }
+    }
+
+    void AutoInitializeLocalAi() {
+        if(simSettings_.endpoint.empty())
+            simSettings_.endpoint="http://127.0.0.1:1234/v1/chat/completions";
+        if(simSettings_.model.empty())
+            simSettings_.model="sentinel-chat";
+
+        SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
+        SetWindowTextW(modelNameEdit_,Widen(simSettings_.model).c_str());
+
+        if(!IsLocalModelEndpoint(simSettings_.endpoint)) {
+            // Preserve explicitly configured remote/OpenAI-compatible endpoints.
+            try {
+                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+                std::wstring failure;
+                if(ConnectDiscoveredLocalModel(models,&failure)) return;
+                throw std::runtime_error(Narrow(failure));
+            } catch(const std::exception& e) {
+                model_=sentinel::simulation::CreateRuleBasedTestModel();
+                modelStatus_=L"Configured model unavailable; fallback active: "+Widen(e.what());
+                return;
+            }
+        }
+
+        std::wstring setupFailure;
+        if(!BundledAiPrerequisitesPresent()) {
+            modelStatus_=L"First-run local AI setup starting automatically...";
+            statusText_=L"Installing bundled local AI";
+            if(!RunBundledAiSetup(&setupFailure)) {
+                model_=sentinel::simulation::CreateRuleBasedTestModel();
+                modelStatus_=L"Automatic local AI setup failed: "+setupFailure;
+                statusText_=L"Local AI setup failed";
+                return;
+            }
+        }
+
+        // Setup may already have started the server. Discovery is attempted first;
+        // otherwise start the existing bundled backend and retry.
+        try {
+            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+            std::wstring failure;
+            if(ConnectDiscoveredLocalModel(models,&failure)) return;
+        } catch(...) {}
+
+        std::wstring startFailure;
+        if(StartBundledAiService(&startFailure)) {
+            try {
+                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+                std::wstring failure;
+                if(ConnectDiscoveredLocalModel(models,&failure)) return;
+                startFailure=failure;
+            } catch(const std::exception& e) {
+                startFailure=Widen(e.what());
+            }
+        }
+
+        model_=sentinel::simulation::CreateRuleBasedTestModel();
+        modelStatus_=L"Local AI automatic startup failed; fallback active. "+startFailure;
+        statusText_=L"Local AI startup failed";
+    }
+
     void InstallOrRepairLocalAi() {
         const auto setup=ExeDir()/L"Setup-Sentinel-AI.cmd";
         if(!std::filesystem::exists(setup)) {
@@ -2344,7 +2469,7 @@ private:
             modelStatus_=L"Could not launch AI installer. ShellExecute error "+std::to_wstring(rc)+L".";
             statusText_=L"Local AI installer failed to launch";
         } else {
-            modelStatus_=L"AI installer launched. Complete setup, then click Browse Models.";
+            modelStatus_=L"AI installer launched. Sentinel will discover and connect the model automatically on the next start.";
             statusText_=L"Local AI installation / repair started";
         }
         InvalidateRect(hwnd_,nullptr,FALSE);
