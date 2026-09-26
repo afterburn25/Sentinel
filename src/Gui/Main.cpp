@@ -194,6 +194,15 @@ struct BrushSet {
 
 class App {
 public:
+    static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
+        auto* app=reinterpret_cast<App*>(ref);
+        if(msg==WM_KEYDOWN && wp==VK_RETURN) {
+            if(app) app->SendSimulationMessage();
+            return 0;
+        }
+        return DefSubclassProc(hwnd,msg,wp,lp);
+    }
+
     App() : runtime_(std::make_unique<Runtime>()) {}
 
     HRESULT Init(HWND hwnd) {
