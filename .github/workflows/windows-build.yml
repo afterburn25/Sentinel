@@ -55,7 +55,7 @@ jobs:
 
       - name: Test
         shell: pwsh
-        run: ctest --preset windows-msvc-release
+        run: ctest --preset windows-msvc-release --output-on-failure -V
 
       - name: Verify no SQLite DLL dependency
         shell: pwsh
