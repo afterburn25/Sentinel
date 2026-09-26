@@ -958,8 +958,6 @@ private:
         float x=kSidebar+28,y=kHeader+102;
         Text(L"Case Number",x,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Title",x+180,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
-        MoveControl(caseNumberEdit_,(int)x,(int)y,160,34,TRUE);
-        MoveControl(caseTitleEdit_,(int)(x+180),(int)y,300,34,TRUE);
         AddButton(L"new_case",L"+ Create Case",x+500,y,140,34,true);
 
         float tableY=y+54;
@@ -1164,16 +1162,10 @@ private:
             TextLine(L"Synthetic subject is typing...",x+50,transcriptBottom-34,174,26,tinyFmt_.Get(),brush_.muted.Get());
         }
 
-        MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
         UpdateSimulationScrollbar();
 
         // The EDIT control itself is the full composer.  Its formatting rectangle
         // vertically centers the caret/text without shrinking the textbox.
-        const int composerW=(int)(chatW-236);
-        const int composerH=46;
-        MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
-        RECT composerTextRect{10,9,std::max(20,composerW-10),composerH-8};
-        SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
         AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
         // Model / scenario card
@@ -1188,14 +1180,11 @@ private:
         TextLine(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+108,y+82,sideW-126,24,smallFmt_.Get(),brush_.cyan.Get());
 
         TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
 
         AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
         TextLine(L"Available model",rx+158,y+180,110,20,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
 
         TextLine(L"Manual model",rx+18,y+230,106,20,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
         AddButton(L"sim_model",L"Connect",rx+sideW-110,y+251,92,32,true);
 
         StatusDot(rx+24,y+307,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
@@ -1242,6 +1231,71 @@ private:
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
         LayoutNativeControls();
+    }
+
+    void LayoutNativeControls() {
+        if(!hwnd_) return;
+        RECT rc{}; GetClientRect(hwnd_,&rc);
+        const float w=(float)rc.right;
+
+        if(page_==Page::Cases) {
+            const float x=kSidebar+28.0f, y=kHeader+102.0f;
+            MoveControl(caseNumberEdit_,(int)x,(int)y,160,34,TRUE);
+            MoveControl(caseTitleEdit_,(int)(x+180),(int)y,300,34,TRUE);
+        }
+
+        if(page_==Page::Simulation) {
+            const float x=kSidebar+28.0f, y=kHeader+102.0f, gap=14.0f, sideW=390.0f;
+            const float chatW=std::max(560.0f,w-x-sideW-gap-28.0f);
+            const float transcriptTop=y+56.0f;
+            const float transcriptBottom=y+430.0f;
+            const float rx=x+chatW+gap;
+
+            MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
+
+            const int composerW=(int)(chatW-236);
+            const int composerH=46;
+            MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
+            RECT composerTextRect{12,9,std::max(24,composerW-12),composerH-8};
+            SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
+
+            MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
+            MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
+            MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
+        }
+
+        if(page_==Page::Persona) {
+            const float x=kSidebar+28.0f, y=kHeader+104.0f, gap=14.0f;
+            const float contentW=w-x-28.0f;
+            const float colW=(contentW-gap)/2.0f;
+            const float rightX=x+colW+gap;
+
+            const float lx=x+20, lf=x+132, lw=colW-152;
+            float row=y+54;
+            MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
+                MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170); row+=42;
+                MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160); row+=42;
+            MoveControl(personaLocationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
+            MoveControl(personaOccupationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
+            MoveControl(personaEducationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
+    
+            const float rx=rightX+20, rf=rightX+132, rw=colW-152;
+            row=y+54;
+            MoveControl(personaPersonalityCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
+            MoveControl(personaSocialCombo_,(int)rf,(int)row,(int)rw,160); row+=42;
+            MoveControl(personaConfidenceCombo_,(int)rf,(int)row,(int)rw,140); row+=42;
+            MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
+            MoveControl(personaStyleEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
+            MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
+    
+            const float sy=y+396;
+                            }
+
+        if(page_==Page::Agency) {
+            const float x=kSidebar+28.0f, y=kHeader+104.0f, gap=14.0f;
+            const float contentW=w-x-28.0f;
+            const float leftW=(contentW-gap)*0.58f;
+                }
     }
 
     std::wstring EditText(HWND h) const {
@@ -1607,31 +1661,25 @@ private:
         float row=y+54;
 
         TextLine(L"Name",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32);
         row+=42;
 
         TextLine(L"Age",lx,row,46,30,tinyFmt_.Get(),brush_.muted.Get());
         MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
         TextLine(L"Age state",lx+136,row,72,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170);
         row+=42;
 
         TextLine(L"Gender",lx,row,58,30,tinyFmt_.Get(),brush_.muted.Get());
         MoveControl(personaGenderCombo_,(int)(lx+64),(int)row,132,160);
         TextLine(L"Pronouns",lx+210,row,62,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160);
         row+=42;
 
         TextLine(L"Location",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaLocationEdit_,(int)lf,(int)row,(int)lw,32);
         row+=42;
 
         TextLine(L"Occupation",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaOccupationEdit_,(int)lf,(int)row,(int)lw,32);
         row+=42;
 
         TextLine(L"Education",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaEducationEdit_,(int)lf,(int)row,(int)lw,32);
         row+=42;
 
         TextLine(L"Relationship",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
@@ -1645,27 +1693,21 @@ private:
         row=y+54;
 
         TextLine(L"Personality",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaPersonalityCombo_,(int)rf,(int)row,(int)rw,180);
         row+=42;
 
         TextLine(L"Social style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaSocialCombo_,(int)rf,(int)row,(int)rw,160);
         row+=42;
 
         TextLine(L"Confidence",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaConfidenceCombo_,(int)rf,(int)row,(int)rw,140);
         row+=42;
 
         TextLine(L"Interests",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32);
         row+=42;
 
         TextLine(L"Writing style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaStyleEdit_,(int)rf,(int)row,(int)rw,32);
         row+=42;
 
         TextLine(L"Family",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32);
         row+=42;
 
         TextLine(L"Background",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
