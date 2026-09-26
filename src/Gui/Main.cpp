@@ -654,6 +654,7 @@ public:
             else if (b.id==L"agency_toggle") ToggleAgency();
             else if (b.id==L"agency_enqueue") EnqueueAgencySnapshot();
             else if (b.id==L"check_updates") CheckForUpdates();
+            else if (b.id==L"ai_diagnostics") RunAiDiagnostics();
             else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"case:",0)==0) SelectCase((size_t)std::stoul(b.id.substr(5)));
             else if (b.id.rfind(L"ev:",0)==0) SelectEvidence((size_t)std::stoul(b.id.substr(3)));
@@ -846,6 +847,7 @@ private:
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
+    std::wstring aiDiagnostics_=L"Not run";
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -2507,6 +2509,79 @@ private:
         }
     }
 
+    void RunAiDiagnostics() {
+        std::wstringstream report;
+        report << L"Configured endpoint: " << Widen(simSettings_.endpoint) << L"\n";
+        report << L"Configured model: " << Widen(simSettings_.model) << L"\n";
+        report << L"Active adapter: " << Widen(model_?model_->Name():"None") << L"\n";
+
+        const auto aiDir=ExeDir()/L"ai";
+        const std::array<std::filesystem::path,3> runtimeCandidates{
+            aiDir/L"runtime"/L"cuda"/L"llama-server.exe",
+            aiDir/L"runtime"/L"cpu"/L"llama-server.exe",
+            aiDir/L"runtime"/L"llama-server.exe"
+        };
+        bool runtimeFound=false;
+        for(const auto& p:runtimeCandidates) {
+            if(std::filesystem::exists(p)) { runtimeFound=true; break; }
+        }
+        report << L"Bundled llama-server: " << (runtimeFound?L"FOUND":L"MISSING") << L"\n";
+
+        const auto modelDir=aiDir/L"models";
+        bool modelFileFound=false;
+        if(std::filesystem::exists(modelDir)) {
+            for(const auto& entry:std::filesystem::directory_iterator(modelDir)) {
+                if(entry.is_regular_file() && entry.path().extension()==L".gguf") {
+                    modelFileFound=true;
+                    break;
+                }
+            }
+        }
+        report << L"Local GGUF: " << (modelFileFound?L"FOUND":L"MISSING") << L"\n";
+
+        try {
+            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+            report << L"/v1/models: OK (" << models.size() << L" model";
+            if(models.size()!=1) report << L"s";
+            report << L")\n";
+            if(!models.empty()) report << L"First discovered model: " << Widen(models.front()) << L"\n";
+
+            try {
+                auto probe=sentinel::simulation::CreateOpenAICompatibleModel(
+                    simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,64);
+                sentinel::simulation::ModelContext ctx;
+                ctx.scenario="Sentinel AI diagnostic";
+                ctx.personaSummary="Synthetic diagnostic persona.";
+                auto response=probe->GenerateInvestigatorSuggestion(ctx);
+                report << L"Completion probe: OK";
+                if(!response.empty()) report << L" (" << std::min<size_t>(response.size(),120) << L" chars)";
+                report << L"\n";
+            } catch(const std::exception& e) {
+                report << L"Completion probe: FAILED - " << Widen(e.what()) << L"\n";
+            }
+        } catch(const std::exception& first) {
+            report << L"/v1/models: FAILED - " << Widen(first.what()) << L"\n";
+            std::wstring startFailure;
+            if(IsLocalModelEndpoint(simSettings_.endpoint)) {
+                if(StartBundledAiService(&startFailure)) {
+                    try {
+                        auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+                        report << L"Auto-start retry: OK (" << models.size() << L" model(s))\n";
+                    } catch(const std::exception& second) {
+                        report << L"Auto-start retry: FAILED - " << Widen(second.what()) << L"\n";
+                    }
+                } else {
+                    report << L"Bundled service start: FAILED - " << startFailure << L"\n";
+                }
+            }
+        }
+
+        aiDiagnostics_=report.str();
+        statusText_=L"AI diagnostics complete";
+        MessageBoxW(hwnd_,aiDiagnostics_.c_str(),L"Sentinel AI Diagnostics",MB_OK|MB_ICONINFORMATION);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void DrawSettings(float w,float h) {
         PageTitle(L"Settings",L"Secure storage, application information, and update status");
         const float x=kSidebar+28.0f;
@@ -2542,8 +2617,11 @@ private:
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,170,38,false);
-        TextLine(updateStatus_,rx+20,y+190,rightW-40,26,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,150,38,false);
+        AddButton(L"ai_diagnostics",L"AI Diagnostics",rx+180,y+146,140,38,true);
+        TextLine(updateStatus_,rx+20,y+190,rightW-40,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(modelStatus_,rx+20,y+208,rightW-40,18,tinyFmt_.Get(),
+            modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
 
         Rounded(x,y+246,contentW,294,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Release Security",x+18,y+258,260,30,h1Fmt_.Get(),brush_.text.Get());
