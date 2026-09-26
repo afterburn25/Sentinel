@@ -15,6 +15,7 @@
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
+#include "Sentinel/Simulation/TrainingReviewStore.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
@@ -292,6 +293,7 @@ struct Runtime {
     sentinel::channels::JurisdictionRuleStore jurisdictionRules;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
+    sentinel::simulation::TrainingReviewStore trainingReviews;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -305,6 +307,7 @@ struct Runtime {
           jurisdictionRules(db),
           conversationMemory(db),
           personaProfiles(db),
+          trainingReviews(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
@@ -894,6 +897,10 @@ public:
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
+            else if (b.id==L"training_stage") StageLatestTrainingExample();
+            else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
+            else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
+            else if (b.id==L"training_export") ExportApprovedTrainingDataset();
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
@@ -1144,6 +1151,7 @@ private:
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
     int selectedRegistryModel_{-1};
+    std::string selectedTrainingReviewId_;
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
@@ -3440,8 +3448,63 @@ private:
         statusText_=L"Model rollback completed";
     }
 
+    void StageLatestTrainingExample() {
+        try {
+            auto staged=runtime_->trainingReviews.StageLatestReply(currentConversationId_);
+            if(!staged) {
+                statusText_=L"No logged persona reply is available to stage";
+                return;
+            }
+            selectedTrainingReviewId_=staged->id;
+            statusText_=staged->status==sentinel::simulation::TrainingReviewStatus::Pending
+                ? L"Latest persona reply staged for training review"
+                : L"Latest persona reply is already in the review set";
+        } catch(const std::exception& e) {
+            statusText_=L"Unable to stage training example";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Training Review",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ReviewStagedTrainingExample(bool approve) {
+        if(selectedTrainingReviewId_.empty()) {
+            statusText_=L"Stage a persona reply before reviewing it";
+            return;
+        }
+        try {
+            const auto status=approve
+                ? sentinel::simulation::TrainingReviewStatus::Approved
+                : sentinel::simulation::TrainingReviewStatus::Rejected;
+            if(runtime_->trainingReviews.Review(
+                    selectedTrainingReviewId_,status,"local-reviewer",
+                    approve?"Approved in Sentinel Model Lab":"Rejected in Sentinel Model Lab")) {
+                statusText_=approve
+                    ? L"Training example approved for dataset export"
+                    : L"Training example rejected";
+            } else {
+                statusText_=L"Training review item could not be updated";
+            }
+        } catch(const std::exception& e) {
+            statusText_=L"Training review failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Training Review",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ExportApprovedTrainingDataset() {
+        try {
+            auto exportDir=runtime_->root/"exports";
+            std::filesystem::create_directories(exportDir);
+            auto path=exportDir/"sentinel-approved-training.jsonl";
+            const auto count=runtime_->trainingReviews.ExportApprovedJsonl(path);
+            statusText_=L"Exported "+std::to_wstring(count)+L" approved training examples";
+            ShellExecuteW(hwnd_,L"open",exportDir.wstring().c_str(),nullptr,nullptr,SW_SHOWNORMAL);
+        } catch(const std::exception& e) {
+            statusText_=L"Training dataset export failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Training Dataset Export",MB_OK|MB_ICONERROR);
+        }
+    }
+
     void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab",L"Evaluate, approve, activate, and roll back model candidates");
+        PageTitle(L"Model Lab",L"Curate reviewed training examples, evaluate candidates, and control deployment");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
@@ -3512,6 +3575,27 @@ private:
         if(!lastEvaluation_.warnings.empty()) {
             TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
         }
+
+        const float reviewY=y+602;
+        Rounded(x,reviewY,contentW,118,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Reviewed Learning Dataset",x+18,reviewY+10,300,28,h1Fmt_.Get(),brush_.text.Get());
+
+        auto reviewCounts=runtime_->trainingReviews.Counts();
+        TextLine(L"Pending "+std::to_wstring(reviewCounts.pending)+
+                 L"   Approved "+std::to_wstring(reviewCounts.approved)+
+                 L"   Rejected "+std::to_wstring(reviewCounts.rejected),
+                 x+330,reviewY+12,contentW-350,24,smallFmt_.Get(),brush_.muted.Get());
+
+        float tbx=x+18;
+        AddButton(L"training_stage",L"Stage Latest Reply",tbx,reviewY+54,150,36,true); tbx+=160;
+        AddButton(L"training_approve",L"Approve Staged",tbx,reviewY+54,150,36,false); tbx+=160;
+        AddButton(L"training_reject",L"Reject Staged",tbx,reviewY+54,140,36,false); tbx+=150;
+        AddButton(L"training_export",L"Export Approved",tbx,reviewY+54,150,36,false);
+
+        const std::wstring reviewHint=selectedTrainingReviewId_.empty()
+            ? L"No training example staged in this session."
+            : L"Selected review item: "+Widen(selectedTrainingReviewId_);
+        TextLine(reviewHint,x+18,reviewY+94,contentW-36,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawMessaging(float w,float h) {
