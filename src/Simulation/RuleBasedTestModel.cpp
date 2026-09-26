@@ -396,6 +396,20 @@ public:
         return "Okay, now I'm curious. What happened next?";
     }
 
+    std::string GenerateSyntheticInitiative(
+        const ModelContext& context) override
+    {
+        const auto turn=InvestigatorTurnCount(context);
+        const std::string prompts[]={
+            "Random question—what kind of music do you usually listen to?",
+            "What do you usually do when you actually have free time?",
+            "Do you have any pets?",
+            "What's something you can watch over and over without getting tired of it?",
+            "What kind of food do you always end up craving?"
+        };
+        return prompts[turn%5];
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
