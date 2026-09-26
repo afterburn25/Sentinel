@@ -2101,9 +2101,16 @@ private:
             if(!models.empty()) {
                 SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
                 SetWindowTextW(modelNameEdit_,Widen(models[0]).c_str());
+                modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
+                statusText_=L"Model list loaded";
+            } else {
+                SendMessageW(modelCombo_,CB_RESETCONTENT,0,0);
+                const std::wstring none=L"<no local models discovered>";
+                SendMessageW(modelCombo_,CB_ADDSTRING,0,(LPARAM)none.c_str());
+                SendMessageW(modelCombo_,CB_SETCURSEL,0,0);
+                modelStatus_=L"No models returned by /v1/models. The local backend is not running correctly or has no loaded model.";
+                statusText_=L"No local models available";
             }
-            modelStatus_=L"Found "+std::to_wstring(models.size())+L" model(s). Select one and Connect.";
-            statusText_=L"Model list loaded";
         } catch(const std::exception& e) {
             bool recovered=false;
             std::wstring launcherFailure;
