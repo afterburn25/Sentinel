@@ -677,7 +677,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             Text(names[i],66,y+6,145,24,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v1.0.0",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Sentinel v1.0.1",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -1702,7 +1702,7 @@ private:
 
         Rounded(x,y+168,w-x-28,190,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel 1.0.0 Development Release",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
+        Text(L"Sentinel 1.0.1 Development Release",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
         Text(agencyConfig_.enabled?L"Offline-first. Agency sync configuration enabled.":L"Offline-first. No active agency transport.",x+22,y+264,520,24,bodyFmt_.Get(),brush_.muted.Get());
         AddButton(L"check_updates",L"Check for Updates",x+22,y+304,170,38,false);
         Text(updateStatus_,x+210,y+313,w-x-260,22,smallFmt_.Get(),brush_.muted.Get());
