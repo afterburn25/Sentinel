@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS persona_profiles (
     interests TEXT NOT NULL DEFAULT '',
     writing_style TEXT NOT NULL DEFAULT 'Casual',
     communication_level TEXT NOT NULL DEFAULT 'Age-appropriate',
+    cognitive_level TEXT NOT NULL DEFAULT 'Average',
     slang_level TEXT NOT NULL DEFAULT 'Moderate',
     grammar_quality TEXT NOT NULL DEFAULT 'Casual',
     typo_frequency TEXT NOT NULL DEFAULT 'Occasional',
