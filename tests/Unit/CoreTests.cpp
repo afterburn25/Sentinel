@@ -7,6 +7,7 @@
 #include "Sentinel/Storage/MigrationService.hpp"
 #include "Sentinel/Core/CaseRepository.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
 
 #include <array>
 #include <cassert>
@@ -159,6 +160,24 @@ void TestUnifiedChannelCore()
     db.Open(root/"sentinel.db");
     sentinel::MigrationService migrations(db);
     migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::channels::JurisdictionRuleStore rules(db);
+    rules.EnsureBuiltInBaselines();
+
+    auto federal=rules.LatestProfile(sentinel::channels::RuleLayerType::Federal,"US");
+    auto louisiana=rules.LatestProfile(sentinel::channels::RuleLayerType::State,"US","LA");
+    assert(federal.has_value());
+    assert(louisiana.has_value());
+    assert(!federal->AutomationLegallyActive());
+    assert(!louisiana->AutomationLegallyActive());
+
+    rules.SelectForOperation(
+        "unit-operation","US","LA",federal->id,louisiana->id,{},"unit-test");
+    auto stack=rules.SelectedForOperation("unit-operation");
+    assert(stack.has_value());
+    assert(stack->federal.has_value());
+    assert(stack->state.has_value());
+    assert(!stack->fullyActive);
 
     sentinel::channels::ChannelCoreStore store(db);
     const auto subject=store.CreateSubject("case-test","Cross-channel subject");
