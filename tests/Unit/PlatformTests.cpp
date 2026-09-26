@@ -20,7 +20,10 @@
 #include <stdexcept>
 
 static void Require(bool v,const char* msg) {
-    if(!v) throw std::runtime_error(msg);
+    if(!v) {
+        std::cerr<<"TEST FAILURE: "<<msg<<std::endl;
+        throw std::runtime_error(msg);
+    }
 }
 
 int main() {
