@@ -50,10 +50,20 @@ private:
 
 struct CaseIdTag{}; struct EvidenceIdTag{}; struct AuditIdTag{}; struct UserIdTag{};
 struct ConversationIdTag{}; struct MessageIdTag{}; struct PersonaIdTag{}; struct ApprovalIdTag{};
+struct SubjectIdTag{}; struct SubjectIdentityIdTag{}; struct ChannelAccountIdTag{};
+struct ChannelConversationIdTag{}; struct ChannelEventIdTag{}; struct AttachmentIdTag{};
+struct ChannelMigrationIdTag{}; struct AutomationProfileIdTag{}; struct AutomationDecisionIdTag{};
+struct ModelRunIdTag{}; struct PolicyDecisionIdTag{};
 using CaseId=StrongUuid<CaseIdTag>; using EvidenceId=StrongUuid<EvidenceIdTag>;
 using AuditId=StrongUuid<AuditIdTag>; using UserId=StrongUuid<UserIdTag>;
 using ConversationId=StrongUuid<ConversationIdTag>; using MessageId=StrongUuid<MessageIdTag>;
 using PersonaId=StrongUuid<PersonaIdTag>; using ApprovalId=StrongUuid<ApprovalIdTag>;
+using SubjectId=StrongUuid<SubjectIdTag>; using SubjectIdentityId=StrongUuid<SubjectIdentityIdTag>;
+using ChannelAccountId=StrongUuid<ChannelAccountIdTag>; using ChannelConversationId=StrongUuid<ChannelConversationIdTag>;
+using ChannelEventId=StrongUuid<ChannelEventIdTag>; using AttachmentId=StrongUuid<AttachmentIdTag>;
+using ChannelMigrationId=StrongUuid<ChannelMigrationIdTag>; using AutomationProfileId=StrongUuid<AutomationProfileIdTag>;
+using AutomationDecisionId=StrongUuid<AutomationDecisionIdTag>; using ModelRunId=StrongUuid<ModelRunIdTag>;
+using PolicyDecisionId=StrongUuid<PolicyDecisionIdTag>;
 
 [[nodiscard]] std::string ToIso8601Utc(Timestamp tp);
 [[nodiscard]] Timestamp NowUtc();
