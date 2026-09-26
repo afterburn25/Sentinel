@@ -13,6 +13,8 @@ struct NormalizedMessage {
     std::string conversationId;
     std::string sender;
     std::string text;
+    std::string mediaPath;
+    std::string mediaSha256;
     std::chrono::system_clock::time_point timestamp;
     DeliveryState state{DeliveryState::Draft};
     bool inbound{false};
@@ -25,6 +27,11 @@ public:
     virtual bool Connected() const=0;
     virtual std::vector<NormalizedMessage> Poll(const std::string& conversationId)=0;
     virtual NormalizedMessage QueueOperatorApproved(const std::string& conversationId,const std::string& text)=0;
+    virtual NormalizedMessage QueueOperatorApprovedMedia(
+        const std::string& conversationId,
+        const std::string& caption,
+        const std::string& mediaPath,
+        const std::string& mediaSha256)=0;
 };
 
 std::unique_ptr<IMessageAdapter> CreateInMemoryMessageAdapter();
