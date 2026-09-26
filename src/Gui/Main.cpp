@@ -1774,142 +1774,266 @@ private:
     }
 
     void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab",L"Candidate evaluation, approval, activation, and rollback");
-        float x=kSidebar+28,y=kHeader+104;
-        Rounded(x,y,w-x-28,116,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Model Registry",x+18,y+16,260,28,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"model_register",L"Register Current Model",x+22,y+58,190,38,true);
-        AddButton(L"model_eval",L"Evaluate",x+226,y+58,110,38,false);
-        AddButton(L"model_approve",L"Approve",x+350,y+58,110,38,false);
-        AddButton(L"model_activate",L"Activate",x+474,y+58,110,38,false);
-        AddButton(L"model_rollback",L"Rollback",x+598,y+58,110,38,false);
+        PageTitle(L"Model Lab",L"Evaluate, approve, activate, and roll back model candidates");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
 
-        Rounded(x,y+132,w-x-28,322,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Registered Models",x+18,y+148,300,28,h1Fmt_.Get(),brush_.text.Get());
-        float yy=y+190;
-        if(modelRegistry_.Models().empty())
-            Text(L"No models registered. Configure one in Simulation Lab, then register it here.",x+22,yy,w-x-74,24,bodyFmt_.Get(),brush_.muted.Get());
-        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
-            const auto& m=modelRegistry_.Models()[i];
-            bool selected=(int)i==selectedRegistryModel_;
-            Rounded(x+22,yy,w-x-74,48,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),7);
-            Text(Widen(m.modelName),x+36,yy+6,300,20,smallFmt_.Get(),brush_.text.Get());
-            Text(Widen(sentinel::simulation::ToString(m.stage)),x+350,yy+6,120,18,tinyFmt_.Get(),
-                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
-            Text(L"Score "+std::to_wstring(m.evaluationScore)+L"   "+std::to_wstring(m.latencyMs)+L" ms",x+490,yy+6,220,18,tinyFmt_.Get(),brush_.muted.Get());
-            Text(Widen(m.endpoint),x+36,yy+27,w-x-130,16,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{x+22,yy,x+w-x-74,yy+48},L"regmodel:"+std::to_wstring(i)});
-            yy+=58;
+        Rounded(x,y,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Registry Actions",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const float gap=10.0f;
+        const float bw=136.0f;
+        float bx=x+18;
+        AddButton(L"model_register",L"Register Current",bx,y+50,bw,36,true); bx+=bw+gap;
+        AddButton(L"model_eval",L"Evaluate",bx,y+50,bw,36,false); bx+=bw+gap;
+        AddButton(L"model_approve",L"Approve",bx,y+50,bw,36,false); bx+=bw+gap;
+        AddButton(L"model_activate",L"Activate",bx,y+50,bw,36,false); bx+=bw+gap;
+        AddButton(L"model_rollback",L"Rollback",bx,y+50,bw,36,false);
+
+        Rounded(x,y+116,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Registered Models",x+18,y+128,260,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"MODEL",x+34,y+165,280,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+332,y+165,100,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+452,y+165,72,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+544,y+165,80,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+646,y+165,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+191;
+        if(modelRegistry_.Models().empty()) {
+            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
+                x+34,yy+7,contentW-68,38,bodyFmt_.Get(),brush_.muted.Get());
         }
 
-        Rounded(x,y+470,w-x-28,118,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Last Response Evaluation",x+18,y+486,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Score",x+22,y+530,70,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(std::to_wstring(lastEvaluation_.score),x+96,y+526,60,26,bodyFmt_.Get(),
+        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
+            const auto& m=modelRegistry_.Models()[i];
+            const bool selected=(int)i==selectedRegistryModel_;
+            Rounded(x+22,yy,contentW-44,52,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(m.modelName),x+34,yy+4,280,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+332,yy+4,100,22,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(std::to_wstring(m.evaluationScore),x+452,yy+4,72,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+544,yy+4,80,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.endpoint),x+646,yy+4,contentW-680,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"ID "+Widen(m.id),x+34,yy+28,contentW-68,18,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+22,yy,x+contentW-22,yy+52},L"regmodel:"+std::to_wstring(i)});
+            yy+=62;
+        }
+
+        Rounded(x,y+456,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Last Evaluation",x+18,y+468,220,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const float metricY=y+516;
+        Rounded(x+22,metricY,110,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Score",x+34,metricY+4,86,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),x+34,metricY+20,86,22,bodyFmt_.Get(),
             lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
-        Text(lastEvaluation_.policyAllowed?L"Policy allowed":L"Policy blocked",x+180,y+530,140,18,tinyFmt_.Get(),
+
+        Rounded(x+144,metricY,180,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Policy",x+156,metricY+4,156,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked",x+156,metricY+20,156,22,smallFmt_.Get(),
             lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
-        Text(lastEvaluation_.personaConsistent?L"Persona consistent":L"Persona contradiction",x+340,y+530,180,18,tinyFmt_.Get(),
+
+        Rounded(x+336,metricY,220,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Persona consistency",x+348,metricY+4,196,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Contradiction",x+348,metricY+20,196,22,smallFmt_.Get(),
             lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+
+        if(!lastEvaluation_.warnings.empty()) {
+            TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
+        }
     }
 
     void DrawMessaging(float w,float h) {
-        PageTitle(L"Messaging",L"Provider-independent operator-approved messaging core");
-        float x=kSidebar+28,y=kHeader+110;
-        Rounded(x,y,w-x-28,170,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Messaging Adapter",x+18,y+16,260,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Provider",x+22,y+62,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(Widen(messagingAdapter_?messagingAdapter_->ProviderName():"Not configured"),x+140,y+60,380,22,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Connection",x+22,y+96,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        StatusDot(x+146,y+105,4,messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
-        Text(messagingAdapter_&&messagingAdapter_->Connected()?L"Local test adapter online":L"Offline",x+158,y+94,280,22,smallFmt_.Get(),brush_.green.Get());
-        Text(L"Operator control",x+540,y+62,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Human approval required before queueing outbound messages",x+670,y+60,w-x-720,42,smallFmt_.Get(),brush_.cyan.Get());
+        PageTitle(L"Messaging",L"Operator-approved messaging core and local conversation queue");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=14.0f;
+        const float infoW=(contentW-gap)*0.42f;
+        const float queueW=contentW-gap-infoW;
+
+        Rounded(x,y,infoW,238,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Adapter Status",x+18,y+12,infoW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Provider",x+20,y+56,96,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(messagingAdapter_?messagingAdapter_->ProviderName():"Not configured"),
+            x+122,y+54,infoW-142,28,smallFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Connection",x+20,y+94,96,26,tinyFmt_.Get(),brush_.muted.Get());
+        StatusDot(x+130,y+107,4,messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
+        TextLine(messagingAdapter_&&messagingAdapter_->Connected()?L"Local test adapter online":L"Offline",
+            x+142,y+92,infoW-162,28,smallFmt_.Get(),messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
+
+        TextLine(L"Outbound control",x+20,y+132,96,26,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"Messages must pass the operator / supervisor approval path before they are queued.",
+            x+122,y+132,infoW-142,48,smallFmt_.Get(),brush_.cyan.Get());
+
+        Text(L"This development build has no live third-party messaging transport connected.",
+            x+20,y+190,infoW-40,34,tinyFmt_.Get(),brush_.muted.Get());
 
         auto msgs=messagingAdapter_?messagingAdapter_->Poll("local-sim"):std::vector<sentinel::operations::NormalizedMessage>{};
-        Rounded(x,y+188,w-x-28,330,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Conversation: local-sim",x+18,y+204,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Queued / approved messages",x+22,y+248,180,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(std::to_wstring(msgs.size()),x+210,y+244,80,26,bodyFmt_.Get(),brush_.cyan.Get());
-        float yy=y+286;
-        if(msgs.empty()) Text(L"No operator-approved messages queued yet.",x+22,yy,w-x-70,24,bodyFmt_.Get(),brush_.muted.Get());
-        for(size_t i=0;i<msgs.size() && i<5;i++) {
-            Rounded(x+22,yy,w-x-74,44,brush_.sidebar.Get(),brush_.border.Get(),7);
-            Text(Widen(msgs[i].text),x+36,yy+11,w-x-110,22,smallFmt_.Get(),brush_.text.Get());
-            yy+=54;
+        const float qx=x+infoW+gap;
+        Rounded(qx,y,queueW,238,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Conversation Queue",qx+18,y+12,queueW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"local-sim",qx+18,y+50,150,24,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(std::to_wstring(msgs.size())+L" approved / queued",qx+180,y+50,queueW-198,24,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+82;
+        if(msgs.empty()) {
+            Rounded(qx+18,yy,queueW-36,50,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No approved messages queued.",qx+32,yy+6,queueW-64,38,bodyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<msgs.size() && i<3;i++) {
+                Rounded(qx+18,yy,queueW-36,46,brush_.sidebar.Get(),brush_.border.Get(),8);
+                TextLine(Widen(msgs[i].text),qx+30,yy+4,queueW-60,38,smallFmt_.Get(),brush_.text.Get());
+                yy+=54;
+            }
         }
-        AddButton(L"msg_queue",L"Request Approval for Latest Suggestion",x+22,y+468,300,38,true);
-        AddButton(L"sim_preserve",L"Preserve Simulation Transcript",x+338,y+468,250,38,false);
-        Text(L"No external provider is connected in this development build.",x+610,y+478,w-x-660,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x,y+254,contentW,286,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Operator Workflow",x+18,y+266,contentW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const float cardY=y+310;
+        const float stepW=(contentW-76)/3.0f;
+        const wchar_t* stepTitles[]={L"1. Generate",L"2. Approve",L"3. Preserve"};
+        const wchar_t* stepText[]={
+            L"Create a candidate reply in Simulation Lab.",
+            L"Send it through Supervisor for human approval.",
+            L"Preserve the simulation transcript into encrypted case evidence."
+        };
+        for(int i=0;i<3;i++) {
+            float sx=x+20+i*(stepW+18);
+            Rounded(sx,cardY,stepW,112,brush_.sidebar.Get(),brush_.border.Get(),9);
+            TextLine(stepTitles[i],sx+14,cardY+10,stepW-28,24,bodyFmt_.Get(),brush_.cyan.Get());
+            Text(stepText[i],sx+14,cardY+42,stepW-28,54,smallFmt_.Get(),brush_.text.Get());
+        }
+
+        AddButton(L"msg_queue",L"Request Approval",x+20,y+442,180,38,true);
+        AddButton(L"sim_preserve",L"Preserve Transcript",x+214,y+442,190,38,false);
     }
 
     void DrawSupervisor(float w,float h) {
-        PageTitle(L"Supervisor",L"Action-hash approvals and operator oversight");
-        float x=kSidebar+28,y=kHeader+110;
-        size_t pending=0; for(const auto& a:approvals_) if(a.status==sentinel::operations::ApprovalStatus::Pending) ++pending;
-        Rounded(x,y,w-x-28,112,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Pending approvals",x+20,y+18,220,22,bodyFmt_.Get(),brush_.muted.Get());
-        Text(std::to_wstring(pending),x+20,y+46,120,42,bigFmt_.Get(),pending?brush_.yellow.Get():brush_.green.Get());
-        AddButton(L"approval_request",L"Request Latest Suggestion",x+260,y+40,240,40,false);
-        AddButton(L"approval_approve",L"Approve First Pending",x+514,y+40,220,40,true);
+        PageTitle(L"Supervisor",L"Human approval ledger with SHA-256 action hashes");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
 
-        Rounded(x,y+130,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Approval Ledger",x+18,y+146,260,28,h1Fmt_.Get(),brush_.text.Get());
-        float yy=y+190;
-        if(approvals_.empty()) Text(L"No approval requests yet.",x+22,yy,300,24,bodyFmt_.Get(),brush_.muted.Get());
-        for(size_t i=0;i<approvals_.size() && i<6;i++) {
+        size_t pending=0,approved=0,rejected=0;
+        for(const auto& a:approvals_) {
+            if(a.status==sentinel::operations::ApprovalStatus::Pending) ++pending;
+            else if(a.status==sentinel::operations::ApprovalStatus::Approved) ++approved;
+            else ++rejected;
+        }
+
+        const float cardW=(contentW-28)/3.0f;
+        struct M{const wchar_t* label;size_t value;ID2D1Brush* brush;};
+        M ms[]={{L"Pending",pending,brush_.yellow.Get()},{L"Approved",approved,brush_.green.Get()},{L"Rejected",rejected,brush_.red.Get()}};
+        for(int i=0;i<3;i++) {
+            float cx=x+i*(cardW+14);
+            Rounded(cx,y,cardW,92,brush_.panel.Get(),brush_.border.Get(),10);
+            TextLine(ms[i].label,cx+18,y+14,cardW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(ms[i].value),cx+18,y+36,cardW-36,40,bigFmt_.Get(),ms[i].brush);
+        }
+
+        Rounded(x,y+108,contentW,90,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Approval Actions",x+18,y+120,200,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"approval_request",L"Request Latest Suggestion",x+240,y+132,220,38,false);
+        AddButton(L"approval_approve",L"Approve First Pending",x+474,y+132,210,38,true);
+
+        Rounded(x,y+214,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Approval Ledger",x+18,y+226,240,30,h1Fmt_.Get(),brush_.text.Get());
+
+        float yy=y+266;
+        if(approvals_.empty()) {
+            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No approval requests yet.",x+36,yy+6,contentW-72,40,bodyFmt_.Get(),brush_.muted.Get());
+        }
+
+        for(size_t i=0;i<approvals_.size() && i<4;i++) {
             const auto& a=approvals_[i];
-            Rounded(x+22,yy,w-x-74,48,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Rounded(x+22,yy,contentW-44,58,brush_.sidebar.Get(),brush_.border.Get(),8);
             std::wstring state=a.status==sentinel::operations::ApprovalStatus::Pending?L"PENDING":
                 a.status==sentinel::operations::ApprovalStatus::Approved?L"APPROVED":L"REJECTED";
-            Text(state,x+34,yy+8,90,18,tinyFmt_.Get(),a.status==sentinel::operations::ApprovalStatus::Pending?brush_.yellow.Get():brush_.green.Get());
-            Text(Widen(a.action).substr(0,100),x+132,yy+7,w-x-310,20,smallFmt_.Get(),brush_.text.Get());
-            Text(L"Hash "+Widen(a.actionHash),x+132,yy+27,w-x-310,16,tinyFmt_.Get(),brush_.muted.Get());
-            yy+=58;
+            ID2D1Brush* sb=a.status==sentinel::operations::ApprovalStatus::Pending?brush_.yellow.Get():
+                a.status==sentinel::operations::ApprovalStatus::Approved?brush_.green.Get():brush_.red.Get();
+            TextLine(state,x+34,yy+6,90,20,tinyFmt_.Get(),sb);
+            TextLine(Widen(a.action),x+136,yy+4,contentW-172,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"SHA-256 "+Widen(a.actionHash),x+136,yy+30,contentW-172,20,tinyFmt_.Get(),brush_.muted.Get());
+            yy+=68;
         }
     }
 
     void DrawAgency(float w,float h) {
-        PageTitle(L"Agency Server",L"Encrypted synchronization configuration and offline queue");
-        float x=kSidebar+28,y=kHeader+110;
-        Rounded(x,y,w-x-28,220,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Agency Connection",x+18,y+16,280,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Server endpoint",x+22,y+66,130,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(agencyEndpointEdit_,(int)(x+160),(int)(y+58),(int)(w-x-220),32,TRUE);
-        Text(L"Agency ID",x+22,y+110,130,18,tinyFmt_.Get(),brush_.muted.Get());
-        MoveControl(agencyIdEdit_,(int)(x+160),(int)(y+102),300,32,TRUE);
-        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+160,y+154,150,38,true);
-        StatusDot(x+334,y+173,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
-        Text(agencyConfig_.enabled?L"Configuration enabled":L"Offline/local-only",x+346,y+162,220,22,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+        PageTitle(L"Agency Server",L"Encrypted synchronization configuration and offline work queue");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=14.0f;
+        const float leftW=(contentW-gap)*0.58f;
+        const float rightW=contentW-gap-leftW;
+        const float rx=x+leftW+gap;
 
-        Rounded(x,y+238,w-x-28,280,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Encrypted Sync Queue",x+18,y+254,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Pending items",x+22,y+306,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        Text(std::to_wstring(agencyQueue_.PendingCount()),x+150,y+300,90,32,bigFmt_.Get(),brush_.cyan.Get());
-        AddButton(L"agency_enqueue",L"Queue Current Audit Snapshot",x+22,y+356,250,40,false);
-        Text(L"Server transport is intentionally not active until an agency endpoint/authentication contract is configured.",x+22,y+420,w-x-80,44,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"Offline case and evidence access remains fully functional.",x+22,y+472,w-x-80,22,smallFmt_.Get(),brush_.green.Get());
-    }
+        Rounded(x,y,leftW,278,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Agency Connection",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-    static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
-        auto* app=reinterpret_cast<App*>(ref);
-        if(msg==WM_KEYDOWN && wp==VK_RETURN) {
-            if(app) app->SendSimulationMessage();
-            return 0;
+        TextLine(L"Server endpoint",x+20,y+62,116,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(agencyEndpointEdit_,(int)(x+142),(int)(y+62),(int)(leftW-164),32);
+
+        TextLine(L"Agency ID",x+20,y+108,116,30,tinyFmt_.Get(),brush_.muted.Get());
+        MoveControl(agencyIdEdit_,(int)(x+142),(int)(y+108),(int)(leftW-164),32);
+
+        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+20,y+162,150,38,true);
+        StatusDot(x+194,y+181,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
+        TextLine(agencyConfig_.enabled?L"Configuration enabled":L"Offline / local-only",
+            x+206,y+163,leftW-226,36,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+
+        Text(L"Transport remains inactive until an agency endpoint and authentication contract are actually implemented.",
+            x+20,y+218,leftW-40,42,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(rx,y,rightW,278,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Sync Queue",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Pending work items",rx+20,y+64,132,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(agencyQueue_.PendingCount()),rx+158,y+56,90,38,bigFmt_.Get(),brush_.cyan.Get());
+
+        AddButton(L"agency_enqueue",L"Queue Audit Snapshot",rx+20,y+116,190,38,false);
+
+        Rounded(rx+20,y+172,rightW-40,72,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Offline-first",rx+34,y+182,rightW-68,22,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"Case and evidence access stays available even when no agency server is configured.",
+            rx+34,y+207,rightW-68,30,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x,y+294,contentW,246,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Planned Server Responsibilities",x+18,y+306,320,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const wchar_t* items[]={
+            L"Encrypted case and evidence synchronization",
+            L"Central policy and model-profile distribution",
+            L"Workstation registration and role administration",
+            L"Multi-investigator coordination and redundant backup"
+        };
+        float iy=y+354;
+        for(auto* item:items) {
+            StatusDot(x+28,iy+10,3,brush_.cyan.Get());
+            TextLine(item,x+42,iy,contentW-64,22,smallFmt_.Get(),brush_.text.Get());
+            iy+=38;
         }
-        return DefSubclassProc(hwnd,msg,wp,lp);
     }
 
     void CheckForUpdates() {
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.0");
+            auto info=service.Check(url,"1.0.1");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
                 statusText_=L"Sentinel update available";
             } else {
-                updateStatus_=L"Current version 1.0.0 is up to date";
+                updateStatus_=L"Current version 1.0.1 is up to date";
                 statusText_=L"No Sentinel update available";
             }
         } catch(const std::exception& e) {
@@ -1919,21 +2043,59 @@ private:
     }
 
     void DrawSettings(float w,float h) {
-        PageTitle(L"Settings",L"Local secure-store and application configuration");
-        float x=kSidebar+28,y=kHeader+110;
-        Rounded(x,y,w-x-28,150,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Secure Local Store",x+18,y+16,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Location",x+22,y+60,100,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(runtime_->root.wstring(),x+130,y+58,w-x-180,24,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Encryption",x+22,y+94,100,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"AES-256-GCM | DPAPI protected workstation master key",x+130,y+92,w-x-180,24,bodyFmt_.Get(),brush_.green.Get());
+        PageTitle(L"Settings",L"Secure storage, application information, and update status");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=14.0f;
+        const float leftW=(contentW-gap)*0.60f;
+        const float rightW=contentW-gap-leftW;
+        const float rx=x+leftW+gap;
 
-        Rounded(x,y+168,w-x-28,190,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Application",x+18,y+184,300,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"Sentinel 1.0.1 Development Release",x+22,y+230,400,24,bodyFmt_.Get(),brush_.text.Get());
-        Text(agencyConfig_.enabled?L"Offline-first. Agency sync configuration enabled.":L"Offline-first. No active agency transport.",x+22,y+264,520,24,bodyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"check_updates",L"Check for Updates",x+22,y+304,170,38,false);
-        Text(updateStatus_,x+210,y+313,w-x-260,22,smallFmt_.Get(),brush_.muted.Get());
+        Rounded(x,y,leftW,230,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Secure Local Store",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Location",x+20,y+62,90,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(runtime_->root.wstring(),x+118,y+60,leftW-138,30,smallFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Encryption",x+20,y+102,90,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"AES-256-GCM",x+118,y+100,leftW-138,30,smallFmt_.Get(),brush_.green.Get());
+
+        TextLine(L"Key protection",x+20,y+142,90,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Windows DPAPI workstation master key",x+118,y+140,leftW-138,30,smallFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Mode",x+20,y+182,90,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(agencyConfig_.enabled?L"Offline-first + agency sync configuration":L"Offline-first / local-only",
+            x+118,y+180,leftW-138,30,smallFmt_.Get(),brush_.cyan.Get());
+
+        Rounded(rx,y,rightW,230,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Sentinel 1.0.1",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
+
+        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,170,38,false);
+        TextLine(updateStatus_,rx+20,y+190,rightW-40,26,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x,y+246,contentW,294,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Release Security",x+18,y+258,260,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const wchar_t* rows[][2]={
+            {L"Evidence integrity",L"SHA-256 + AES-GCM authentication"},
+            {L"Audit integrity",L"Hash-linked audit ledger"},
+            {L"Update transport",L"HTTPS-only manifest checking"},
+            {L"Outbound messaging",L"Human approval required"},
+            {L"Code signing",L"Pipeline ready; trusted signing identity not configured"}
+        };
+        float yy=y+304;
+        for(auto& row:rows) {
+            TextLine(row[0],x+22,yy,160,26,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(row[1],x+194,yy,contentW-216,26,smallFmt_.Get(),brush_.text.Get());
+            yy+=42;
+        }
     }
 
     void ShowCaseEditors(bool show) {
