@@ -42,6 +42,11 @@ public:
 
     [[nodiscard]] virtual std::string GenerateSyntheticInitiative(
         const ModelContext& context) = 0;
+
+    [[nodiscard]] virtual std::string GenerateBehaviorProfile(
+        int age,
+        std::string_view background,
+        const ModelContext& context) = 0;
 };
 
 std::unique_ptr<IModelAdapter> CreateRuleBasedTestModel();
