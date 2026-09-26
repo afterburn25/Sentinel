@@ -105,13 +105,55 @@ bool IsLocalModelEndpoint(const std::string& endpoint) {
            endpoint.find("localhost") != std::string::npos;
 }
 
+std::wstring ReadTextFileTail(const std::filesystem::path& path,size_t maxChars=1800) {
+    if(!std::filesystem::exists(path)) return {};
+    std::ifstream in(path,std::ios::binary);
+    if(!in) return {};
+    std::string bytes((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+    if(bytes.size()>maxChars) bytes=bytes.substr(bytes.size()-maxChars);
+    return Widen(bytes);
+}
+
 bool StartBundledAiService(std::wstring* failure = nullptr) {
-    const auto script = ExeDir() / L"ai" / L"Start-Sentinel-With-AI.ps1";
+    const auto aiDir = ExeDir() / L"ai";
+    const auto script = aiDir / L"Start-Sentinel-With-AI.ps1";
+    const auto setup = ExeDir() / L"Setup-Sentinel-AI.cmd";
+    const auto model = aiDir / L"models" / L"Qwen3.5-9B-Q4_K_M.gguf";
+    const auto startupLog = aiDir / L"logs" / L"startup.log";
+
     if (!std::filesystem::exists(script)) {
         if (failure) *failure = L"Bundled AI launcher is missing: " + script.wstring();
         return false;
     }
 
+    bool runtimeFound=false;
+    for(const auto& root : {aiDir/L"runtime",aiDir/L"runtime_cpu"}) {
+        if(!std::filesystem::exists(root)) continue;
+        for(const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+            if(entry.is_regular_file() && _wcsicmp(entry.path().filename().c_str(),L"llama-server.exe")==0) {
+                runtimeFound=true;
+                break;
+            }
+        }
+        if(runtimeFound) break;
+    }
+
+    if(!std::filesystem::exists(model)) {
+        if(failure) {
+            *failure=L"Local model is not installed: "+model.wstring()+
+                L". Run "+setup.wstring()+L" once to download/install the local AI backend.";
+        }
+        return false;
+    }
+    if(!runtimeFound) {
+        if(failure) {
+            *failure=L"llama.cpp runtime is not installed under "+aiDir.wstring()+
+                L". Run "+setup.wstring()+L" once to install/repair the local AI backend.";
+        }
+        return false;
+    }
+
+    std::filesystem::create_directories(aiDir/L"logs");
     std::wstring command =
         L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" +
         script.wstring() + L"\" -NoLaunch";
@@ -122,7 +164,7 @@ bool StartBundledAiService(std::wstring* failure = nullptr) {
     if (!CreateProcessW(
             nullptr, command.data(), nullptr, nullptr, FALSE,
             CREATE_NO_WINDOW, nullptr, ExeDir().c_str(), &si, &pi)) {
-        if (failure) *failure = L"Could not start the bundled local AI service.";
+        if (failure) *failure = L"Could not launch PowerShell for the bundled local AI service. Windows error "+std::to_wstring(GetLastError())+L".";
         return false;
     }
 
@@ -133,12 +175,15 @@ bool StartBundledAiService(std::wstring* failure = nullptr) {
     CloseHandle(pi.hProcess);
 
     if (wait != WAIT_OBJECT_0) {
-        if (failure) *failure = L"Timed out while starting the bundled local AI service.";
+        if (failure) *failure = L"Timed out while starting the bundled local AI service. See "+startupLog.wstring();
         return false;
     }
     if (exitCode != 0) {
         if (failure) {
-            *failure = L"Bundled local AI service failed to start. Check the ai\\logs folder or run Setup-Sentinel-AI.cmd once.";
+            auto detail=ReadTextFileTail(startupLog);
+            *failure=L"Bundled local AI service failed (PowerShell exit "+std::to_wstring(exitCode)+L").";
+            if(!detail.empty()) *failure+=L" Startup log: "+detail;
+            else *failure+=L" No startup log was produced.";
         }
         return false;
     }
