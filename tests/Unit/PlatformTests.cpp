@@ -5,6 +5,9 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
+#include "Sentinel/Channels/AutomationEngine.hpp"
+#include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 #include "Sentinel/Update/UpdateService.hpp"
 
@@ -75,6 +78,39 @@ int main() {
     auto msg=adapter->QueueOperatorApproved("conversation-1","hello");
     Require(msg.state==operations::DeliveryState::Queued,"approved message should queue");
     Require(adapter->Poll("conversation-1").size()==1,"queued message should poll");
+
+    channels::AutomationEngine automation;
+    auto ordinary=automation.Decide({
+        channels::AutomationMode::AuthorizedAutomatic,
+        channels::ActionKind::OrdinaryReply,
+        true,
+        true,
+        false});
+    Require(ordinary.decision==channels::AutomationDecisionKind::AutoSend,
+        "authorized ordinary reply should be eligible for automatic sending");
+
+    auto mediaDecision=automation.Decide({
+        channels::AutomationMode::AuthorizedAutomatic,
+        channels::ActionKind::BenignMedia,
+        true,
+        true,
+        false});
+    Require(mediaDecision.decision==channels::AutomationDecisionKind::RequireApproval,
+        "media should remain approval-gated");
+
+    auto localChannel=std::make_unique<channels::LocalSimulationChannelAdapter>(
+        operations::CreateInMemoryMessageAdapter());
+    Require(localChannel->Capabilities().Has(channels::SendText),
+        "local channel should advertise text sending");
+    Require(localChannel->Capabilities().Has(channels::SendImage),
+        "local channel should advertise image sending");
+
+    channels::ChannelAdapterRegistry channelRegistry;
+    channelRegistry.Register(std::move(localChannel));
+    Require(channelRegistry.FindByName("Sentinel Local Simulation")!=nullptr,
+        "channel adapter registry lookup failed");
+    Require(channelRegistry.FindByType(channels::ChannelType::LocalSimulation).size()==1,
+        "channel adapter registry type lookup failed");
 
     auto approval=operations::CreateApprovalRequest("send:conversation-1:hello","investigator");
     Require(approval.status==operations::ApprovalStatus::Pending,"approval should start pending");
