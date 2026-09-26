@@ -132,11 +132,24 @@ std::wstring ModelsPathFromChatPath(std::wstring path) {
     return L"/v1/models";
 }
 
+bool IsLoopbackHost(const std::wstring& host) {
+    std::wstring lower=host;
+    std::transform(lower.begin(),lower.end(),lower.begin(),[](wchar_t ch){ return (wchar_t)towlower(ch); });
+    return lower==L"127.0.0.1" || lower==L"localhost" || lower==L"::1" || lower==L"[::1]";
+}
+
+HINTERNET OpenWinHttpSession(const ParsedUrl& u) {
+    const DWORD access=IsLoopbackHost(u.host)
+        ? WINHTTP_ACCESS_TYPE_NO_PROXY
+        : WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
+    return WinHttpOpen(L"Sentinel/1.0",access,nullptr,nullptr,0);
+}
+
 std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     auto u=ParseUrl(endpoint);
     auto modelsPath=ModelsPathFromChatPath(u.path);
 
-    HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=OpenWinHttpSession(u);
     if(!session) throw std::runtime_error("WinHttpOpen failed");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
 
@@ -157,13 +170,21 @@ std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     std::wstring headers=L"Accept: application/json\r\n";
     if(!apiKey.empty()) headers+=L"Authorization: Bearer "+Widen(apiKey)+L"\r\n";
 
-    BOOL ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
-    if(ok) ok=WinHttpReceiveResponse(request,nullptr);
+    BOOL ok=FALSE;
+    DWORD lastError=ERROR_SUCCESS;
+    for(int attempt=0;attempt<3 && !ok;++attempt) {
+        ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
+        if(ok) ok=WinHttpReceiveResponse(request,nullptr);
+        if(!ok) {
+            lastError=GetLastError();
+            if(attempt<2) Sleep(350);
+        }
+    }
     if(!ok) {
         WinHttpCloseHandle(request);
         WinHttpCloseHandle(connect);
         WinHttpCloseHandle(session);
-        throw std::runtime_error("model discovery request failed");
+        throw std::runtime_error("model discovery request failed (WinHTTP "+std::to_string(lastError)+")");
     }
 
     DWORD status=0,statusSize=sizeof(status);
@@ -295,7 +316,7 @@ private:
         json+="]}";
 
         auto u=ParseUrl(endpoint_);
-        HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+        HINTERNET session=OpenWinHttpSession(u);
         if(!session) throw std::runtime_error("WinHttpOpen failed");
         WinHttpSetTimeouts(session,10000,10000,30000,60000);
 
