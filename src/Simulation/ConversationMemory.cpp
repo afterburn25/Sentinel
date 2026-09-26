@@ -126,7 +126,9 @@ std::vector<ArchivedConversation> ConversationMemoryStore::List(size_t limit) co
     Check(sqlite3_prepare_v2(db,
         "SELECT c.id,c.title,c.persona_name,c.scenario,c.created_utc,c.updated_utc,"
         "(SELECT COUNT(*) FROM simulation_messages m WHERE m.conversation_id=c.id) "
-        "FROM simulation_conversations c ORDER BY c.updated_utc DESC LIMIT ?",
+        "FROM simulation_conversations c "
+        "WHERE EXISTS(SELECT 1 FROM simulation_messages mx WHERE mx.conversation_id=c.id) "
+        "ORDER BY c.updated_utc DESC LIMIT ?",
         -1,&s,nullptr),db,"prepare conversation list");
     sqlite3_bind_int(s,1,(int)std::min<size_t>(limit,500));
     while(sqlite3_step(s)==SQLITE_ROW) {
@@ -233,6 +235,27 @@ std::string ConversationMemoryStore::RecallRelevant(
         if(c.score>0) candidates.push_back(std::move(c));
     }
     sqlite3_finalize(s);
+
+    if(candidates.empty() && explicitRecall) {
+        Check(sqlite3_prepare_v2(db,
+            "SELECT m.row_id,m.conversation_id,m.speaker,m.body,c.updated_utc "
+            "FROM simulation_messages m JOIN simulation_conversations c ON c.id=m.conversation_id "
+            "WHERE m.conversation_id<>? ORDER BY m.row_id DESC LIMIT ?",
+            -1,&s,nullptr),db,"prepare recent memory fallback");
+        sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,2,(int)std::min<size_t>(maxMessages,12));
+        while(sqlite3_step(s)==SQLITE_ROW) {
+            Candidate item;
+            item.score=1;
+            item.row=sqlite3_column_int64(s,0);
+            item.session=ColumnText(s,1);
+            item.speaker=sqlite3_column_int(s,2);
+            item.body=ColumnText(s,3);
+            item.updated=ColumnText(s,4);
+            candidates.push_back(std::move(item));
+        }
+        sqlite3_finalize(s);
+    }
 
     std::stable_sort(candidates.begin(),candidates.end(),[](const Candidate& a,const Candidate& b){
         if(a.score!=b.score) return a.score>b.score;
