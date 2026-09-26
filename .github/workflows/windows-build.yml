@@ -3,7 +3,7 @@ name: Windows Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'feature/**', 'fix/**' ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
