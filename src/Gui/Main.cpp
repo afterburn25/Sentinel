@@ -12,6 +12,7 @@
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
+#include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
@@ -134,6 +135,7 @@ struct Runtime {
     sentinel::WindowsAesGcmCipher cipher;
     sentinel::WindowsDpapiSecretProtector dpapi;
     sentinel::MigrationService migrations;
+    sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -143,6 +145,7 @@ struct Runtime {
         : root(AppDataRoot()),
           cipher(random),
           migrations(db),
+          conversationMemory(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
@@ -355,7 +358,6 @@ public:
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
-        sentinel::simulation::LoadSession(runtime_->root/"simulation-session.tsv",simContext_);
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
@@ -432,7 +434,8 @@ public:
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
-            else if (b.id==L"sim_reset") ResetSimulation();
+            else if (b.id==L"sim_reset" || b.id==L"sim_new_chat") ResetSimulation();
+            else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
             else if (b.id==L"sim_model") ConfigureLocalModel();
             else if (b.id==L"sim_browse_models") BrowseModels();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
@@ -578,6 +581,9 @@ private:
     sentinel::simulation::ModelContext simContext_;
     std::wstring simSuggestion_=L"No suggestion generated yet";
     std::wstring modelStatus_=L"Built-in test model";
+    std::string currentConversationId_;
+    std::wstring currentConversationTitle_=L"New conversation";
+    int archiveCursor_{0};
     int simFirstVisible_{0};
     bool simBotTyping_{false};
     std::string simPendingMessage_;
@@ -1196,16 +1202,21 @@ private:
         StatusDot(rx+24,y+307,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
         TextLine(modelStatus_,rx+36,y+294,sideW-54,28,tinyFmt_.Get(),brush_.text.Get());
 
+        TextLine(L"Conversation",rx+18,y+326,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(currentConversationTitle_,rx+112,y+323,sideW-130,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"sim_previous_chat",L"Previous Chat",rx+18,y+354,142,34,false);
+        AddButton(L"sim_new_chat",L"New Chat",rx+170,y+354,112,34,true);
+
         // Suggestion card
-        Rounded(rx,y+344,sideW,196,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Suggestion",rx+18,y+356,sideW-36,32,h1Fmt_.Get(),brush_.text.Get());
-        Rounded(rx+18,y+394,sideW-36,70,brush_.sidebar.Get(),brush_.border.Get(),8);
-        Text(simSuggestion_,rx+28,y+404,sideW-56,50,tinyFmt_.Get(),brush_.text.Get());
+        Rounded(rx,y+400,sideW,140,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Suggestion",rx+18,y+410,sideW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(rx+18,y+444,sideW-36,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+        Text(simSuggestion_,rx+28,y+451,sideW-56,34,tinyFmt_.Get(),brush_.text.Get());
 
         const float bw=(sideW-52)/3.0f;
-        AddButton(L"sim_suggest",L"Generate",rx+18,y+478,bw,36,false);
-        AddButton(L"sim_reset",L"Reset",rx+26+bw,y+478,bw,36,false);
-        AddButton(L"sim_preserve",L"Preserve",rx+34+bw*2,y+478,bw,36,false);
+        AddButton(L"sim_suggest",L"Generate",rx+18,y+500,bw,32,false);
+        AddButton(L"sim_reset",L"Reset",rx+26+bw,y+500,bw,32,false);
+        AddButton(L"sim_preserve",L"Preserve",rx+34+bw*2,y+500,bw,32,false);
     }
 
     void ShowChatEditor(bool show) {
