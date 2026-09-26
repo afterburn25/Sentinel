@@ -50,6 +50,7 @@ constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 constexpr UINT_PTR kSimReplyTimer = 4101;
+constexpr UINT kRefreshNativeControlsMsg = WM_APP + 41;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
@@ -328,7 +329,8 @@ public:
         if (!target_) return;
         RECT rc{}; GetClientRect(hwnd_,&rc);
         target_->Resize(D2D1::SizeU(rc.right,rc.bottom));
-        InvalidateRect(hwnd_,nullptr,FALSE);
+        ApplyPageControls();
+        RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
     }
 
     void Paint() {
@@ -366,6 +368,7 @@ public:
 
         HRESULT hr=target_->EndDraw();
         if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
+        if(nativeControlsDirty_) PostMessageW(hwnd_,kRefreshNativeControlsMsg,0,0);
     }
 
     void Click(float x,float y) {
@@ -374,7 +377,7 @@ public:
             if (idx>=0&&idx<12) {
                 page_=(Page)idx;
                 ApplyPageControls();
-                InvalidateRect(hwnd_,nullptr,FALSE);
+                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);
                 return;
             }
         }
@@ -428,6 +431,25 @@ public:
         ScreenToClient(hwnd_,&br);
         if(tl.x==x && tl.y==y && (br.x-tl.x)==w && (br.y-tl.y)==h) return;
         SetWindowPos(control,nullptr,x,y,w,h,SWP_NOZORDER|SWP_NOACTIVATE|(repaint?0:SWP_NOREDRAW));
+        nativeControlsDirty_=true;
+    }
+
+    void RefreshVisibleNativeControls() {
+        HWND controls[]={
+            caseNumberEdit_,caseTitleEdit_,chatEdit_,modelEndpointEdit_,modelNameEdit_,modelCombo_,simScroll_,
+            personaNameEdit_,personaAgeEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
+            personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
+            personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,
+            personaSocialCombo_,personaConfidenceCombo_,scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,
+            minDelayEdit_,maxDelayEdit_,ageStateCombo_,agencyEndpointEdit_,agencyIdEdit_
+        };
+        for(HWND control:controls) {
+            if(control && IsWindowVisible(control)) {
+                InvalidateRect(control,nullptr,TRUE);
+                UpdateWindow(control);
+            }
+        }
+        nativeControlsDirty_=false;
     }
 
     bool DrawOwnerCombo(const DRAWITEMSTRUCT* dis) {
@@ -497,7 +519,7 @@ public:
             if(item.first.Contains(x,y)) {
                 CopySimulationMessage(item.second);
                 statusText_=L"Message copied to clipboard";
-                InvalidateRect(hwnd_,nullptr,FALSE);
+                RedrawWindow(hwnd_,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);
                 return;
             }
         }
@@ -568,6 +590,7 @@ private:
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
+    bool nativeControlsDirty_{false};
 
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
@@ -1217,6 +1240,7 @@ private:
         ShowChatEditor(page_==Page::Simulation);
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
+        nativeControlsDirty_=true;
     }
 
     std::wstring EditText(HWND h) const {
@@ -1986,6 +2010,9 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
         case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case kRefreshNativeControlsMsg:
+            if(g_app) g_app->RefreshVisibleNativeControls();
+            return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
