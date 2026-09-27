@@ -4029,15 +4029,17 @@ private:
         const float gap=12.0f;
         const float inspectorW=360.0f;
         const float listW=contentW-inspectorW-gap;
-        const float mainH=354.0f;
+        const float mainH=410.0f;
 
-        // Management workspace.
+        auto profiles=runtime_->personaProfiles.List();
+        personaProfileNames_.clear();
+        for(const auto& stored:profiles) personaProfileNames_.push_back(stored.profile.name);
+
         GlowPanel(x,y,listW,mainH,true,11);
         TextLine(L"Personas & LoRAs",x+18,y+10,260,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Customize. Adapt. Scale.",x+18,y+38,220,20,tinyFmt_.Get(),brush_.cyan.Get());
-        AddButton(L"ml_persona_editor",L"+ New Persona",x+listW-132,y+12,114,28,true);
+        TextLine(L"Customize. Adapt. Reuse.",x+18,y+38,220,20,tinyFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"persona_new",L"+ New Persona",x+listW-132,y+12,114,28,true);
 
-        // Segmented management tabs from the approved concept.
         const wchar_t* subtabs[]={L"Personas",L"LoRAs",L"Assignments",L"Templates"};
         const float tabW=92.0f;
         for(int i=0;i<4;i++) {
@@ -4047,12 +4049,10 @@ private:
             TextLine(subtabs[i],tx+5,y+61,tabW-10,24,tinyFmt_.Get(),i==0?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
-        // Search / filter bar.
         Rounded(x+18,y+96,listW-36,32,brush_.deepPanel.Get(),brush_.border.Get(),8);
         DrawIcon(IconKind::Search,x+30,y+103,16,brush_.muted.Get());
-        TextLine(L"Search personas...",x+54,y+98,180,28,tinyFmt_.Get(),brush_.muted.Get());
-        Badge(L"All Types",x+listW-220,y+100,brush_.blue.Get(),82);
-        Badge(L"All Status",x+listW-126,y+100,brush_.cyan.Get(),92);
+        TextLine(L"Reusable persona library",x+54,y+98,190,28,tinyFmt_.Get(),brush_.muted.Get());
+        Badge(std::to_wstring(profiles.size())+L" Profiles",x+listW-126,y+100,brush_.cyan.Get(),92);
 
         TextLine(L"NAME",x+28,y+140,150,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"TYPE",x+188,y+140,90,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -4060,50 +4060,73 @@ private:
         TextLine(L"BASE MODEL",x+435,y+140,135,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"STATUS",x+listW-98,y+140,78,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        const std::wstring personaName=Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name);
-        const std::wstring type=Widen(simSettings_.persona.personality.empty()?std::string("General"):simSettings_.persona.personality);
         const std::wstring foundation=foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()
             ? Widen(foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].name+" "+foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].version)
             : L"SARA Base";
 
-        Rounded(x+18,y+162,listW-36,48,brush_.panel2.Get(),brush_.cyan.Get(),7);
-        TextLine(personaName,x+28,y+166,150,22,smallFmt_.Get(),brush_.text.Get());
-        TextLine(type,x+188,y+166,90,22,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(assignedPersonaLoRA_,x+288,y+166,135,22,tinyFmt_.Get(),brush_.cyan.Get());
-        TextLine(foundation,x+435,y+166,135,22,tinyFmt_.Get(),brush_.text.Get());
-        Badge(L"ACTIVE",x+listW-94,y+174,brush_.green.Get(),70);
+        float py=y+162;
+        int profileShown=0;
+        for(size_t i=0;i<profiles.size() && profileShown<3;i++,profileShown++) {
+            const auto& stored=profiles[i];
+            const auto& p=stored.profile;
+            const bool active=p.name==simSettings_.persona.name;
+            const int adapterIndex=personaAdapterRegistry_.ResolveActiveIndex(p.name);
+            std::wstring adapter=L"No active LoRA";
+            if(adapterIndex>=0 && adapterIndex<(int)personaAdapterRegistry_.Adapters().size()) {
+                const auto& a=personaAdapterRegistry_.Adapters()[(size_t)adapterIndex];
+                adapter=Widen(a.adapterName+" "+a.version);
+            }
 
-        // Adapter version rows as additional management entries.
-        float ay=y+220;
-        int shown=0;
-        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
+            Rounded(x+18,py,listW-36,38,active?brush_.panel2.Get():brush_.deepPanel.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(Widen(p.name),x+28,py+3,150,28,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(p.personality.empty()?"General":p.personality),x+188,py+3,90,28,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(adapter,x+288,py+3,135,28,tinyFmt_.Get(),adapterIndex>=0?brush_.cyan.Get():brush_.muted.Get());
+            TextLine(foundation,x+435,py+3,135,28,tinyFmt_.Get(),brush_.text.Get());
+            Badge(active?L"ACTIVE":L"SAVED",x+listW-94,py+7,active?brush_.green.Get():brush_.blue.Get(),70);
+            buttons_.push_back({{x+18,py,x+listW-18,py+38},L"persona_profile:"+std::to_wstring(i)});
+            py+=44;
+        }
+        if(profileShown==0) {
+            TextLine(L"No saved persona profiles yet.",x+28,py+8,listW-56,24,tinyFmt_.Get(),brush_.muted.Get());
+            py+=44;
+        }
+
+        const float adapterHeaderY=std::max(py+4,y+294.0f);
+        target_->DrawLine(D2D1::Point2F(x+18,adapterHeaderY),D2D1::Point2F(x+listW-18,adapterHeaderY),brush_.border.Get(),1);
+        TextLine(L"Current Persona LoRA Versions",x+28,adapterHeaderY+7,230,20,smallFmt_.Get(),brush_.cyan.Get());
+
+        float ay=adapterHeaderY+32;
+        int adapterShown=0;
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && adapterShown<2;i++) {
             const auto& a=personaAdapterRegistry_.Adapters()[i];
             if(a.personaName!=simSettings_.persona.name) continue;
             const bool selected=(int)i==selectedPersonaAdapter_;
-            Rounded(x+18,ay,listW-36,34,selected?brush_.panel2.Get():brush_.deepPanel.Get(),
+            Rounded(x+18,ay,listW-36,30,selected?brush_.panel2.Get():brush_.deepPanel.Get(),
                 selected?brush_.blue.Get():brush_.border.Get(),6);
-            TextLine(Widen(a.adapterName+" "+a.version),x+28,ay+3,220,26,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(a.foundationId),x+268,ay+3,160,26,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+442,ay+3,90,26,tinyFmt_.Get(),
+            TextLine(Widen(a.adapterName+" "+a.version),x+28,ay+2,220,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+260,ay+2,94,24,tinyFmt_.Get(),
                 a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(Widen(a.foundationId),x+366,ay+2,listW-494,24,tinyFmt_.Get(),brush_.muted.Get());
             if(a.stage!=sentinel::simulation::AdapterStage::Active)
-                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-112,ay+3,80,26,false);
-            buttons_.push_back({{x+18,ay,x+listW-124,ay+34},L"adapter_select:"+std::to_wstring(i)});
-            ay+=40; ++shown;
+                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-108,ay+2,76,25,false);
+            buttons_.push_back({{x+18,ay,x+listW-120,ay+30},L"adapter_select:"+std::to_wstring(i)});
+            ay+=34;
+            ++adapterShown;
         }
-        if(shown==0)
-            TextLine(L"No persona LoRA versions yet. Create one to start adaptation.",x+28,ay+8,listW-56,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"adapter_new",L"+ New LoRA",x+18,y+316,88,24,false);
-        AddButton(L"adapter_export",L"Export",x+114,y+316,72,24,false);
-        AddButton(L"adapter_rollback",L"Rollback",x+194,y+316,82,24,false);
+        AddButton(L"adapter_new",L"+ New LoRA",x+18,y+374,88,24,false);
+        AddButton(L"adapter_export",L"Export",x+114,y+374,72,24,false);
+        AddButton(L"adapter_rollback",L"Rollback",x+194,y+374,82,24,false);
 
-        // Persona inspector.
         const float rx=x+listW+gap;
         GlowPanel(rx,y,inspectorW,mainH,false,11);
-        TextLine(L"Persona Details",rx+18,y+10,inspectorW-130,28,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"ml_persona_editor",L"Edit",rx+inspectorW-72,y+12,54,24,false);
+        TextLine(L"Persona Details",rx+18,y+10,inspectorW-150,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"persona_delete",L"Delete",rx+inspectorW-134,y+12,58,24,false);
+        AddButton(L"ml_persona_editor",L"Edit",rx+inspectorW-68,y+12,50,24,false);
 
+        const std::wstring personaName=Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name);
+        const std::wstring type=Widen(simSettings_.persona.personality.empty()?std::string("General"):simSettings_.persona.personality);
         target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(rx+44,y+66),22,22),brush_.panel2.Get());
         DrawIcon(IconKind::Chat,rx+31,y+53,26,brush_.cyan.Get());
         TextLine(personaName,rx+80,y+48,inspectorW-98,24,smallFmt_.Get(),brush_.text.Get());
@@ -4126,38 +4149,22 @@ private:
         TextLine(L"Emoji",rx+18,y+302,150,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Mood",rx+184,y+302,150,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        // Bottom resource + recent-activity strip from concept 3.
-        const float bottomY=y+366;
+        const float bottomY=y+422;
         const float resourceW=(contentW-gap)*0.46f;
         const float activityW=contentW-gap-resourceW;
-        GlowPanel(x,bottomY,resourceW,110,false,10);
-        TextLine(L"Workspace Stats",x+14,bottomY+8,resourceW-28,22,smallFmt_.Get(),brush_.text.Get());
-        const wchar_t* labels[]={L"Adapters",L"Datasets",L"Jobs",L"Evals"};
-        const int vals[]={
-            (int)personaAdapterRegistry_.Adapters().size(),
-            (int)trainingData_.Snapshots().size(),
-            (int)trainingJobRegistry_.Jobs().size(),
-            (int)evaluationRuns_.Runs().size()
-        };
-        for(int i=0;i<4;i++) {
-            const float cx=x+48+i*((resourceW-80)/4.0f);
-            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+60),24,24),brush_.border.Get(),4);
-            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+60),20,20),i==3?brush_.green.Get():brush_.cyan.Get(),2);
-            TextLine(std::to_wstring(vals[i]),cx-24,bottomY+48,48,22,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
-            TextLine(labels[i],cx-30,bottomY+82,60,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
-        }
+        GlowPanel(x,bottomY,resourceW,94,false,10);
+        TextLine(L"Persona Library",x+14,bottomY+8,resourceW-28,22,smallFmt_.Get(),brush_.text.Get());
+        TextLine(std::to_wstring(profiles.size())+L" saved profiles",x+18,bottomY+38,resourceW-36,24,bodyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Selecting a profile automatically resolves its assigned LoRA.",x+18,bottomY+64,resourceW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
         const float bx=x+resourceW+gap;
-        GlowPanel(bx,bottomY,activityW,110,false,10);
-        TextLine(L"Recent Activity",bx+14,bottomY+8,activityW-28,22,smallFmt_.Get(),brush_.text.Get());
-        float ry=bottomY+36;
-        StatusDot(bx+20,ry+8,3,brush_.cyan.Get());
-        TextLine(L"Persona profile loaded",bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get()); ry+=22;
-        StatusDot(bx+20,ry+8,3,personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?brush_.green.Get():brush_.muted.Get());
-        TextLine(personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?L"Active LoRA resolved":L"No active LoRA assigned",
-            bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get()); ry+=22;
-        StatusDot(bx+20,ry+8,3,brush_.green.Get());
-        TextLine(L"Runtime stack ready for evaluation",bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get());
+        GlowPanel(bx,bottomY,activityW,94,false,10);
+        TextLine(L"Active Runtime",bx+14,bottomY+8,activityW-28,22,smallFmt_.Get(),brush_.text.Get());
+        StatusDot(bx+20,bottomY+44,3,brush_.green.Get());
+        TextLine(personaName+L" loaded",bx+30,bottomY+35,activityW-44,18,tinyFmt_.Get(),brush_.text.Get());
+        StatusDot(bx+20,bottomY+66,3,personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?brush_.green.Get():brush_.muted.Get());
+        TextLine(personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?L"Persona LoRA resolved":L"No active LoRA assigned",
+            bx+30,bottomY+57,activityW-44,18,tinyFmt_.Get(),brush_.text.Get());
     }
 
     void DrawModelLabFoundationForks(float x,float y,float contentW) {
