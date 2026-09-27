@@ -1384,8 +1384,11 @@ public:
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         simPreparedReply_);
                     LogPersonaConversationEvent(
-                        "reactive_reply",simPendingMessage_,simPreparedReply_,
+                        simPreparedFromRule_?"reactive_reply_rule":"reactive_reply",
+                        simPendingMessage_,simPreparedReply_,
                         simLastStartDelayMs_,simLastTypingDelayMs_);
+                    if(!simPreparedFromRule_)
+                        RecordLearnedPersonaNote(simPreparedReply_,"reactive_persona_claim");
                     const auto source=Widen(model_?model_->Name():"No model");
                     statusText_=L"Response from "+source;
                     if(!simContext_.recalledMemory.empty())
@@ -1404,6 +1407,7 @@ public:
         simReplyPending_=false;
         simPendingMessage_.clear();
         simPreparedReply_.clear();
+        simPreparedFromRule_=false;
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         // One benign proactive nudge is allowed in Simulation after 60 seconds
         // of silence. Live-channel automation remains governed by the operation
