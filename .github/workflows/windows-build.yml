@@ -299,6 +299,19 @@ jobs:
           $installer = "installer-output/SARA-Setup-1.0.18.1.exe"
           if (-not (Test-Path $installer)) { throw "SARA installer output missing" }
 
+      - name: Capture actual SARA installer screenshot
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Capture-SARA-Installer-UI.ps1 -InstallerPath "installer-output/SARA-Setup-1.0.18.1.exe" -OutputPath "ui-screenshots/11-installer.png"
+
+      - name: Upload actual SARA installer screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-1.0.18.1-Actual-Installer-Screenshot
+          path: ui-screenshots/11-installer.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Sign SARA installer with Microsoft Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         uses: azure/artifact-signing-action@v2
