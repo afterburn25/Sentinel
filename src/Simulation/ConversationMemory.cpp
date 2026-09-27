@@ -347,4 +347,48 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
     return out.str();
 }
 
+
+std::string ConversationMemoryStore::RecallPersonaClaims(
+    std::string_view currentConversationId,
+    size_t maxMessages) const
+{
+    if(currentConversationId.empty()) return {};
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
+    Check(sqlite3_prepare_v2(db,
+        "SELECT m.body,c.updated_utc "
+        "FROM simulation_messages m "
+        "JOIN simulation_conversations c ON c.id=m.conversation_id "
+        "WHERE m.speaker=? AND m.conversation_id<>? "
+        "AND c.persona_name=(SELECT persona_name FROM simulation_conversations WHERE id=?) "
+        "ORDER BY m.row_id DESC LIMIT ?",
+        -1,&s,nullptr),db,"prepare persona claim recall");
+
+    sqlite3_bind_int(s,1,(int)ChatTurn::Speaker::SyntheticSubject);
+    sqlite3_bind_text(s,2,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,4,(int)std::min<size_t>(maxMessages,30));
+
+    std::vector<std::pair<std::string,std::string>> items;
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        const auto body=ColumnText(s,0);
+        if(body.empty()) continue;
+        items.push_back({ColumnText(s,1),body});
+    }
+    sqlite3_finalize(s);
+
+    if(items.empty()) return {};
+    std::reverse(items.begin(),items.end());
+
+    std::ostringstream out;
+    out<<"Earlier self-statements made by this same persona. These are continuity memory: "
+          "preserve any benign facts, preferences, anecdotes, routines, opinions, or invented story details already stated. "
+          "Do not repeat them mechanically and do not turn them into identifying information:\n";
+    for(const auto& [when,body]:items)
+        out<<"["<<when<<"] "<<body<<"\n";
+    return out.str();
+}
+
 }
