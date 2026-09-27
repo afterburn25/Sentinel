@@ -71,6 +71,7 @@ SimulationSettings LoadSimulationSettings(const std::filesystem::path& path) {
             else if(k=="scenario.openingContext") s.scenario.openingContext=v;
             else if(k=="scenario.seed") s.scenario.seed=(unsigned int)std::stoul(v);
             else if(k=="ageState") s.ageState=AgeStateFromString(v);
+            else if(k=="learningMode") s.learningMode=(v=="1" || v=="true" || v=="TRUE");
         } catch(...) {}
     }
     if(s.minDelayMs<500) s.minDelayMs=500;
@@ -119,5 +120,6 @@ void SaveSimulationSettings(const std::filesystem::path& path,const SimulationSe
     out<<"scenario.openingContext="<<Escape(s.scenario.openingContext)<<"\n";
     out<<"scenario.seed="<<s.scenario.seed<<"\n";
     out<<"ageState="<<ToString(s.ageState)<<"\n";
+    out<<"learningMode="<<(s.learningMode?1:0)<<"\n";
 }
 }
