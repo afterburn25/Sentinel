@@ -480,6 +480,45 @@ public:
         if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
     }
 
+    std::wstring HoverHelpFor(const std::wstring& id) const {
+        if(id==L"sim_emoji") return L"Emoji";
+        if(id==L"sim_attach") return L"Attach a file";
+        if(id==L"ml_capture") return L"Capture the latest user/SARA pair for human review";
+        if(id==L"ml_approve") return L"Approve the latest reviewed training example";
+        if(id==L"ml_rules_manage") return L"View, add, edit, prioritize, or delete trigger rules";
+        if(id==L"dataset_snapshot") return L"Freeze approved examples into a versioned dataset snapshot";
+        if(id==L"job_new") return L"Queue a new training job from the selected foundation and dataset";
+        if(id==L"foundation_new_fork") return L"Create a versioned SARA Foundation descendant without altering the base";
+        if(id==L"model_activate") return L"Activate the selected approved candidate";
+        if(id==L"model_rollback") return L"Roll back to the previous active model";
+        return {};
+    }
+
+    void Hover(float x,float y) {
+        std::wstring next;
+        for(const auto& b:buttons_) {
+            if(b.rect.Contains(x,y)) { next=b.id; break; }
+        }
+        if(next==hoveredButtonId_) return;
+        hoveredButtonId_=next;
+        hoverHelp_=HoverHelpFor(next);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void Press(float x,float y) {
+        pressedButtonId_.clear();
+        for(const auto& b:buttons_) {
+            if(b.rect.Contains(x,y)) { pressedButtonId_=b.id; break; }
+        }
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void ReleasePress() {
+        if(pressedButtonId_.empty()) return;
+        pressedButtonId_.clear();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
             int idx=(int)((y-kHeader-18)/48);
@@ -791,6 +830,9 @@ private:
     BrushSet brush_;
     bool brushesReady_{false};
     std::vector<Button> buttons_;
+    std::wstring hoveredButtonId_;
+    std::wstring pressedButtonId_;
+    std::wstring hoverHelp_;
 
     void CreateResources() {
         if (!target_) {
@@ -859,15 +901,29 @@ private:
     }
 
     void AddButton(const std::wstring& id,const std::wstring& label,float x,float y,float w,float h,bool primary=false) {
-        Rounded(x,y,w,h,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),7);
-        TextLine(label,x+10,y+1,w-20,h-2,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        const bool hover=hoveredButtonId_==id;
+        const bool pressed=pressedButtonId_==id;
+        ID2D1Brush* fill=primary?brush_.blue.Get():brush_.panel2.Get();
+        ID2D1Brush* stroke=primary?brush_.cyan.Get():brush_.border.Get();
+        if(pressed) fill=brush_.sidebar.Get();
+        else if(hover && !primary) fill=brush_.panel.Get();
+        if(hover) stroke=brush_.cyan.Get();
+        Rounded(x,y,w,h,fill,stroke,7);
+        TextLine(label,x+10,y+1,w-20,h-2,smallFmt_.Get(),hover?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         buttons_.push_back({{x,y,x+w,y+h},id});
     }
 
     void AddIconButton(const std::wstring& id,IconKind icon,float x,float y,float size,bool primary=false) {
-        Rounded(x,y,size,size,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),8);
+        const bool hover=hoveredButtonId_==id;
+        const bool pressed=pressedButtonId_==id;
+        ID2D1Brush* fill=primary?brush_.blue.Get():brush_.panel2.Get();
+        ID2D1Brush* stroke=primary?brush_.cyan.Get():brush_.border.Get();
+        if(pressed) fill=brush_.sidebar.Get();
+        else if(hover && !primary) fill=brush_.panel.Get();
+        if(hover) stroke=brush_.cyan.Get();
+        Rounded(x,y,size,size,fill,stroke,8);
         const float iconSize=size*0.54f;
-        DrawIcon(icon,x+(size-iconSize)/2.0f,y+(size-iconSize)/2.0f,iconSize,brush_.text.Get());
+        DrawIcon(icon,x+(size-iconSize)/2.0f,y+(size-iconSize)/2.0f,iconSize,hover?brush_.cyan.Get():brush_.text.Get());
         buttons_.push_back({{x,y,x+size,y+size},id});
     }
 
@@ -1067,6 +1123,8 @@ private:
 
         StatusDot(w-174,67,4,brush_.green.Get());
         Text(statusText_,w-163,58,153,18,tinyFmt_.Get(),brush_.green.Get());
+        if(!hoverHelp_.empty())
+            TextLine(hoverHelp_,kSidebar+300,56,std::max(180.0f,w-kSidebar-500.0f),20,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
     void PageTitle(const std::wstring& title,const std::wstring& sub) {
@@ -3545,8 +3603,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
+        case WM_MOUSEMOVE: if(g_app) g_app->Hover((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONDOWN: if(g_app) g_app->Press((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
-        case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONUP:
+            if(g_app) {
+                g_app->ReleasePress();
+                g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            }
+            return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
