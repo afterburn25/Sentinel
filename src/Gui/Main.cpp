@@ -1192,6 +1192,10 @@ public:
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
             else if (b.id==L"training_export") ExportApprovedTrainingDataset();
+            else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
+            else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
+            else if (b.id==L"rule_clear") ClearPersonaResponseRules();
+            else if (b.id==L"learning_toggle") ToggleLearningMode();
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
