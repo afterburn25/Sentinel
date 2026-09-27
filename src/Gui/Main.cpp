@@ -2464,55 +2464,76 @@ private:
         }
 
         if(page_==Page::Persona) {
-            const float x=kSidebar+28.0f, y=kHeader+104.0f, gap=14.0f;
-            const float profileW=360.0f;
-            MoveControl(personaProfileCombo_,(int)(x+108),(int)(y-42),(int)profileW,180);
+            const float x=kSidebar+28.0f, y=kHeader+104.0f;
             const float contentW=w-x-28.0f;
-            const float colW=(contentW-gap)/2.0f;
-            const float rightX=x+colW+gap;
 
-            const float lx=x+20, lf=x+132, lw=colW-152;
-            float row=y+54;
-            MoveControl(personaNameEdit_,(int)lf,(int)row,(int)lw,32);
-            RECT personaNameRect{8,6,std::max(20,(int)lw-8),27};
-            SendMessageW(personaNameEdit_,EM_SETRECTNP,0,(LPARAM)&personaNameRect);
-            row+=42;
+            MoveControl(personaProfileCombo_,(int)(x+108),(int)(y-42),360,180);
 
-            MoveControl(personaAgeCombo_,(int)(lx+50),(int)row,72,140);
-            MoveControl(ageStateCombo_,(int)(lx+212),(int)row,(int)(colW-232),170); row+=42;
+            const float py=y+56.0f;
 
-            MoveControl(personaGenderCombo_,(int)(lx+64),(int)row,132,160);
-            MoveControl(personaPronounsCombo_,(int)(lx+278),(int)row,(int)(colW-298),160); row+=42;
+            if(personaTab_==PersonaTab::Profile) {
+                const float left=x+34.0f, right=x+contentW*0.52f;
+                const float field1=left+118.0f, field2=right+126.0f;
+                const int w1=(int)(contentW*0.36f-118.0f);
+                const int w2=(int)(contentW*0.42f-138.0f);
+                float row=py+74.0f;
 
-            MoveControl(personaLocationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
-            MoveControl(personaOccupationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
-            MoveControl(personaEducationEdit_,(int)lf,(int)row,(int)lw,32); row+=42;
-            MoveControl(personaRelationshipCombo_,(int)lf,(int)row,(int)lw,180);
+                MoveControl(personaNameEdit_,(int)field1,(int)row,w1,34); 
+                MoveControl(personaAgeCombo_,(int)field2,(int)row,w2,170); row+=52;
 
-            const float rx=rightX+20, rf=rightX+132, rw=colW-152;
-            row=y+54;
-            MoveControl(personaPersonalityCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
-            MoveControl(personaSocialCombo_,(int)rf,(int)row,(int)rw,160); row+=42;
-            MoveControl(personaConfidenceCombo_,(int)rf,(int)row,(int)rw,140); row+=42;
-            MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
-            MoveControl(personaWritingStyleCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
-            MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
-            MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,74);
+                MoveControl(personaGenderCombo_,(int)field1,(int)row,w1,170);
+                MoveControl(personaPronounsCombo_,(int)field2,(int)row,w2,170); row+=52;
 
-            const float sy=y+396;
-            MoveControl(scenarioNameEdit_,(int)(x+92),(int)(sy+50),210,32);
-            MoveControl(scenarioObjectiveEdit_,(int)(x+390),(int)(sy+50),(int)std::max(220.0f,contentW-690),32);
-            MoveControl(scenarioSeedEdit_,(int)(x+72),(int)(sy+92),74,32);
-            MoveControl(minDelayEdit_,(int)(x+250),(int)(sy+92),86,32);
-            MoveControl(maxDelayEdit_,(int)(x+370),(int)(sy+92),86,32);
+                MoveControl(personaLocationEdit_,(int)field1,(int)row,w1,34);
+                MoveControl(personaOccupationEdit_,(int)field2,(int)row,w2,34); row+=52;
 
-            const float ty=sy+158;
-            MoveControl(personaCommunicationCombo_,(int)(x+112),(int)(ty+44),145,150);
-            MoveControl(personaCognitiveCombo_,(int)(x+347),(int)(ty+44),120,150);
-            MoveControl(personaSlangCombo_,(int)(x+547),(int)(ty+44),145,150);
-            MoveControl(personaGrammarCombo_,(int)(x+112),(int)(ty+84),145,150);
-            MoveControl(personaTypoCombo_,(int)(x+327),(int)(ty+84),140,150);
-            MoveControl(personaEmojiCombo_,(int)(x+547),(int)(ty+84),145,150);
+                MoveControl(personaEducationEdit_,(int)field1,(int)row,w1,34);
+                MoveControl(personaRelationshipCombo_,(int)field2,(int)row,w2,170); row+=52;
+
+                MoveControl(personaFamilyEdit_,(int)field1,(int)row,w1,34);
+                MoveControl(personaInterestsEdit_,(int)field2,(int)row,w2,34);
+            }
+            else if(personaTab_==PersonaTab::Bio) {
+                MoveControl(personaBackgroundEdit_,
+                    (int)(x+42),(int)(py+176),(int)(contentW-84),(int)std::max(260.0f,(float)rc.bottom-(py+222)));
+            }
+            else if(personaTab_==PersonaTab::Behavior) {
+                const float col1=x+34.0f, col2=x+contentW*0.50f+10.0f;
+                const float field1=col1+150.0f, field2=col2+150.0f;
+                const int fw=(int)(contentW*0.36f);
+                float row=py+78.0f;
+
+                MoveControl(personaPersonalityCombo_,(int)field1,(int)row,fw,180);
+                MoveControl(personaSocialCombo_,(int)field2,(int)row,fw,180); row+=54;
+
+                MoveControl(personaConfidenceCombo_,(int)field1,(int)row,fw,160);
+                MoveControl(personaWritingStyleCombo_,(int)field2,(int)row,fw,180); row+=54;
+
+                MoveControl(personaCommunicationCombo_,(int)field1,(int)row,fw,180);
+                MoveControl(personaCognitiveCombo_,(int)field2,(int)row,fw,180); row+=54;
+
+                MoveControl(personaSlangCombo_,(int)field1,(int)row,fw,180);
+                MoveControl(personaGrammarCombo_,(int)field2,(int)row,fw,180); row+=54;
+
+                MoveControl(personaTypoCombo_,(int)field1,(int)row,fw,180);
+                MoveControl(personaEmojiCombo_,(int)field2,(int)row,fw,180);
+            }
+            else if(personaTab_==PersonaTab::Scenario) {
+                const float left=x+34.0f;
+                const float labelW=116.0f;
+                const float fieldX=left+labelW;
+                const int mainW=(int)(contentW-190.0f);
+                float row=py+82.0f;
+
+                MoveControl(scenarioNameEdit_,(int)fieldX,(int)row,mainW,34); row+=58;
+                MoveControl(scenarioObjectiveEdit_,(int)fieldX,(int)row,mainW,34); row+=58;
+
+                MoveControl(scenarioSeedEdit_,(int)fieldX,(int)row,150,34);
+                MoveControl(ageStateCombo_,(int)(x+contentW*0.42f+104),(int)row,(int)(contentW*0.36f),180); row+=58;
+
+                MoveControl(minDelayEdit_,(int)fieldX,(int)row,160,34);
+                MoveControl(maxDelayEdit_,(int)(x+contentW*0.42f+116),(int)row,160,34);
+            }
         }
 
         if(page_==Page::ModelLab) {
