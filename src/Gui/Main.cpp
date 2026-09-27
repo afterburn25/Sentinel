@@ -572,6 +572,7 @@ public:
             else if (b.id==L"ml_approve") ApproveTrainingCapture();
             else if (b.id==L"ml_training_mode") {
                 trainingMode_=(TrainingMode)(((int)trainingMode_+1)%5);
+                ResolvePersonaAdapter();
                 statusText_=L"Training mode changed to "+TrainingModeName();
             }
             else if (b.id==L"ml_persona_editor") {
@@ -2282,10 +2283,26 @@ private:
     }
 
     void ResolvePersonaAdapter() {
+        simContext_.foundationId.clear();
+        simContext_.foundationName.clear();
+        simContext_.adapterId.clear();
+        simContext_.adapterName.clear();
+        simContext_.trainingMode=Narrow(TrainingModeName());
+
+        int fi=foundationRegistry_.ActiveIndex();
+        if(fi<0 && !foundationRegistry_.Models().empty()) fi=0;
+        if(fi>=0 && fi<(int)foundationRegistry_.Models().size()) {
+            const auto& f=foundationRegistry_.Models()[(size_t)fi];
+            simContext_.foundationId=f.id;
+            simContext_.foundationName=f.name+" "+f.version;
+        }
+
         int idx=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
         if(idx>=0 && idx<(int)personaAdapterRegistry_.Adapters().size()) {
             const auto& a=personaAdapterRegistry_.Adapters()[(size_t)idx];
             assignedPersonaLoRA_=Widen(a.adapterName+" "+a.version);
+            simContext_.adapterId=a.id;
+            simContext_.adapterName=a.adapterName+" "+a.version;
         } else {
             assignedPersonaLoRA_=L"No active LoRA";
         }
@@ -2389,7 +2406,10 @@ private:
         if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
         foundationRegistry_.Activate((size_t)selectedFoundation_);
         foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
-        if(foundationRegistry_.ActiveIndex()==selectedFoundation_) statusText_=L"Foundation fork activated";
+        if(foundationRegistry_.ActiveIndex()==selectedFoundation_) {
+            ResolvePersonaAdapter();
+            statusText_=L"Foundation fork activated";
+        }
         else statusText_=L"Approve a non-base foundation fork before activation";
     }
 
@@ -2397,6 +2417,7 @@ private:
         if(foundationRegistry_.Rollback()) {
             selectedFoundation_=foundationRegistry_.ActiveIndex();
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+            ResolvePersonaAdapter();
             statusText_=L"Foundation rollback completed";
         } else statusText_=L"No prior foundation version is available for rollback";
     }
