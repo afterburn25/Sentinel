@@ -2163,11 +2163,12 @@ private:
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0) {
             const float x=kSidebar+28.0f, top=kHeader+18.0f, bodyY=top+116.0f;
+            const float mainY=bodyY+82.0f;
             const float contentW=w-x-28.0f, gap=12.0f, rightW=350.0f;
             const float leftW=contentW-rightW-gap;
             const float rx=x+leftW+gap;
-            MoveControl(trainingReviewTargetEdit_,(int)(rx+18),(int)(bodyY+142),(int)(rightW-36),70,TRUE);
-            RECT reviewRect{10,8,std::max(24,(int)rightW-56),62};
+            MoveControl(trainingReviewTargetEdit_,(int)(rx+18),(int)(mainY+146),(int)(rightW-36),72,TRUE);
+            RECT reviewRect{10,8,std::max(24,(int)rightW-56),64};
             SendMessageW(trainingReviewTargetEdit_,EM_SETRECTNP,0,(LPARAM)&reviewRect);
         }
 
@@ -4112,98 +4113,140 @@ private:
 
     void DrawModelLabDatasets(float x,float y,float contentW) {
         const float gap=12.0f;
+        const float pipelineH=70.0f;
+        const float mainY=y+pipelineH+12.0f;
         const float rightW=350.0f;
         const float leftW=contentW-rightW-gap;
+        const float mainH=300.0f;
 
-        GlowPanel(x,y,leftW,382,true,11);
-        TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Reviewed training examples and lineage-aware dataset snapshots.",x+18,y+40,leftW-260,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"dataset_import",L"Import",x+leftW-232,y+14,70,30,false);
-        AddButton(L"dataset_snapshot",L"Create Snapshot",x+leftW-152,y+14,134,30,true);
+        // Training pipeline.
+        GlowPanel(x,y,contentW,pipelineH,true,11);
+        TextLine(L"Training Pipeline",x+18,y+8,220,24,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"dataset_import",L"Import",x+contentW-198,y+10,72,26,false);
+        AddButton(L"dataset_snapshot",L"+ Snapshot",x+contentW-116,y+10,98,26,true);
 
-        TextLine(L"EXAMPLE",x+28,y+78,100,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"PERSONA",x+140,y+78,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+302,y+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"INPUT / TARGET",x+406,y+78,leftW-434,18,tinyFmt_.Get(),brush_.muted.Get());
+        const wchar_t* stages[]={L"Capture",L"Review",L"Dataset",L"Training",L"Evaluation",L"Deployment"};
+        const wchar_t* stageSub[]={L"Collect",L"Approve",L"Build",L"Train",L"Validate",L"Deploy"};
+        const float startX=x+260;
+        const float stageW=(contentW-286)/6.0f;
+        for(int i=0;i<6;i++) {
+            const float cx=startX+i*stageW;
+            const bool done=i==0?trainingCaptured_>0:
+                i==1?trainingApproved_>0:
+                i==2?!trainingData_.Snapshots().empty():
+                i==3?!trainingJobRegistry_.Jobs().empty():
+                i==4?!evaluationRuns_.Runs().empty():
+                modelRegistry_.ActiveIndex()>=0;
+            const bool current=(i==1 && trainingReviewPending_>0) ||
+                               (i==2 && trainingReviewPending_==0 && trainingApproved_>0 && trainingData_.Snapshots().empty());
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx+22,y+34),12,12),
+                done?brush_.green.Get():(current?brush_.cyan.Get():brush_.border.Get()),2);
+            if(done) target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx+22,y+34),6,6),brush_.green.Get());
+            else if(current) target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx+22,y+34),5,5),brush_.cyan.Get());
+            if(i<5)
+                target_->DrawLine(D2D1::Point2F(cx+35,y+34),D2D1::Point2F(cx+stageW+9,y+34),
+                    done?brush_.cyan.Get():brush_.border.Get(),1.5f);
+            TextLine(stages[i],cx-8,y+49,60,16,tinyFmt_.Get(),done?brush_.green.Get():current?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
 
-        float yy=y+102;
+        // Review queue table.
+        GlowPanel(x,mainY,leftW,mainH,true,11);
+        TextLine(L"Current Step: Review",x+18,mainY+10,260,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Review, correct, approve, or reject captured training examples.",x+18,mainY+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        Badge(L"Pending "+std::to_wstring(trainingReviewPending_),x+18,mainY+66,brush_.blue.Get(),96);
+        Badge(L"Approved "+std::to_wstring(trainingApproved_),x+124,mainY+66,brush_.green.Get(),104);
+        Badge(L"Rejected "+std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Rejected)),
+            x+238,mainY+66,brush_.red.Get(),104);
+
+        TextLine(L"EXAMPLE",x+28,mainY+104,leftW-348,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SOURCE",x+leftW-306,mainY+104,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+leftW-204,mainY+104,72,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ACTIONS",x+leftW-122,mainY+104,94,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=mainY+128;
         int shown=0;
-        for(size_t i=trainingData_.Examples().size(); i>0 && shown<4; --i,++shown) {
-            const size_t exampleIndex=i-1;
-            const auto& e=trainingData_.Examples()[exampleIndex];
-            const bool selected=(int)exampleIndex==selectedTrainingExample_;
-            Rounded(x+18,yy,leftW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),8);
-            TextLine(Widen(e.id),x+28,yy+4,100,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(e.persona),x+140,yy+4,150,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(sentinel::simulation::ToString(e.state)),x+302,yy+4,92,22,tinyFmt_.Get(),
+        for(size_t i=trainingData_.Examples().size();i>0 && shown<4;--i,++shown) {
+            const size_t idx=i-1;
+            const auto& e=trainingData_.Examples()[idx];
+            const bool selected=(int)idx==selectedTrainingExample_;
+            Rounded(x+18,yy,leftW-36,38,selected?brush_.panel2.Get():brush_.deepPanel.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),6);
+            std::wstring example=Widen(e.input);
+            if(example.size()>58) example=example.substr(0,55)+L"...";
+            TextLine(example,x+28,yy+3,leftW-356,30,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(e.category),x+leftW-306,yy+3,92,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(sentinel::simulation::ToString(e.state)),x+leftW-204,yy+3,72,30,tinyFmt_.Get(),
                 e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
-                e.state==sentinel::simulation::TrainingExampleState::Review?brush_.yellow.Get():brush_.muted.Get());
-            TextLine(Widen(e.input),x+406,yy+2,leftW-434,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(e.targetResponse),x+406,yy+28,leftW-434,20,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{x+18,yy,x+leftW-18,yy+58},L"training_example:"+std::to_wstring(exampleIndex)});
-            yy+=66;
+                e.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get());
+            if(e.state==sentinel::simulation::TrainingExampleState::Review) {
+                AddButton(L"training_review_approve",L"✓",x+leftW-118,yy+6,34,26,true);
+                AddButton(L"training_review_reject",L"×",x+leftW-76,yy+6,34,26,false);
+            }
+            buttons_.push_back({{x+18,yy,x+leftW-130,yy+38},L"training_example:"+std::to_wstring(idx)});
+            yy+=44;
         }
-        if(shown==0) {
-            Rounded(x+18,yy,leftW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No captured examples yet. Use Train → Capture for Review.",x+34,yy+10,leftW-68,40,bodyFmt_.Get(),brush_.muted.Get());
-        }
+        if(shown==0)
+            TextLine(L"No examples are waiting for review. Capture examples from Train to populate this queue.",
+                x+34,yy+16,leftW-68,44,smallFmt_.Get(),brush_.muted.Get());
 
+        // Example / snapshot inspector.
         const float rx=x+leftW+gap;
-        GlowPanel(rx,y,rightW,382,false,11);
-        TextLine(selectedTrainingExample_>=0?L"Review Inspector":L"Dataset Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        GlowPanel(rx,mainY,rightW,mainH,false,11);
+        TextLine(selectedTrainingExample_>=0?L"Example Preview":L"Dataset Snapshot",rx+18,mainY+10,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
 
         if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
-            const auto& selected=trainingData_.Examples()[(size_t)selectedTrainingExample_];
-            Badge(Widen(sentinel::simulation::ToString(selected.state)),rx+rightW-110,y+16,
-                selected.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
-                selected.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get(),92);
-            TextLine(L"Category",rx+18,y+52,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.category),rx+98,y+48,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
-            TextLine(L"Captured",rx+18,y+78,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.createdUtc.empty()?"Legacy record":selected.createdUtc),rx+98,y+74,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Input",rx+18,y+108,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.input),rx+98,y+104,rightW-116,26,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Target response",rx+18,y+132,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
-            AddButton(L"training_review_save",L"Save Edit",rx+18,y+222,92,28,false);
-            AddButton(L"training_review_approve",L"Approve",rx+120,y+222,92,28,true);
-            AddButton(L"training_review_reject",L"Reject",rx+222,y+222,92,28,false);
+            const auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+            Badge(Widen(sentinel::simulation::ToString(e.state)),rx+rightW-106,mainY+14,
+                e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
+                e.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get(),88);
+
+            Rounded(rx+18,mainY+54,rightW-36,72,brush_.deepPanel.Get(),brush_.border.Get(),8);
+            TextLine(L"USER",rx+28,mainY+58,rightW-56,16,tinyFmt_.Get(),brush_.cyan.Get());
+            Text(Widen(e.input),rx+28,mainY+76,rightW-56,44,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"TARGET RESPONSE",rx+18,mainY+134,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+
+            AddButton(L"training_review_save",L"Save Edit",rx+18,mainY+228,88,28,false);
+            AddButton(L"training_review_approve",L"Approve",rx+116,mainY+228,88,28,true);
+            AddButton(L"training_review_reject",L"Reject",rx+214,mainY+228,88,28,false);
+            TextLine(L"Category: "+Widen(e.category),rx+18,mainY+266,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
         } else if(selectedDatasetSnapshot_>=0 && selectedDatasetSnapshot_<(int)trainingData_.Snapshots().size()) {
-            const auto& selected=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
-            Badge(L"SNAPSHOT",rx+rightW-108,y+16,brush_.cyan.Get(),90);
-            TextLine(L"Name",rx+18,y+54,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.name),rx+98,y+50,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
-            TextLine(L"ID",rx+18,y+82,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.id),rx+98,y+78,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Created",rx+18,y+110,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.createdUtc.empty()?"Legacy snapshot":selected.createdUtc),rx+98,y+106,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Parent",rx+18,y+138,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(selected.parentId.empty()?"Root / no parent":selected.parentId),rx+98,y+134,rightW-116,24,tinyFmt_.Get(),brush_.cyan.Get());
-            TextLine(L"Examples",rx+18,y+166,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(std::to_wstring(selected.exampleIds.size()),rx+98,y+162,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
-            AddButton(L"dataset_export",L"Export Snapshot",rx+18,y+206,130,30,true);
+            const auto& s=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+            Badge(L"SNAPSHOT",rx+rightW-106,mainY+14,brush_.cyan.Get(),88);
+            TextLine(Widen(s.name),rx+18,mainY+58,rightW-36,28,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"ID",rx+18,mainY+98,70,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(s.id),rx+92,mainY+94,rightW-110,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Examples",rx+18,mainY+128,70,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(s.exampleIds.size()),rx+92,mainY+124,rightW-110,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Parent",rx+18,mainY+158,70,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(s.parentId.empty()?"Root snapshot":s.parentId),rx+92,mainY+154,rightW-110,24,tinyFmt_.Get(),brush_.text.Get());
+            AddButton(L"dataset_export",L"Export Snapshot",rx+18,mainY+206,126,30,true);
         } else {
-            Text(L"Select a training example to review it, or select a dataset snapshot below to inspect lineage and export it.",
-                rx+18,y+54,rightW-36,70,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"Select an example to inspect and revise it, or select a dataset snapshot below.",
+                rx+18,mainY+62,rightW-36,60,smallFmt_.Get(),brush_.muted.Get());
         }
 
-        target_->DrawLine(D2D1::Point2F(rx+18,y+266),D2D1::Point2F(rx+rightW-18,y+266),brush_.border.Get(),1);
-        TextLine(L"Dataset Snapshots",rx+18,y+276,rightW-36,24,smallFmt_.Get(),brush_.cyan.Get());
-        float sy=y+306;
+        // Snapshot history strip.
+        const float bottomY=mainY+312;
+        GlowPanel(x,bottomY,contentW,104,false,10);
+        TextLine(L"Dataset Snapshots",x+16,bottomY+8,180,22,smallFmt_.Get(),brush_.text.Get());
+        float sx=x+16;
         int sshown=0;
-        for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<2; --i,++sshown) {
-            const size_t snapshotIndex=i-1;
-            const auto& s=trainingData_.Snapshots()[snapshotIndex];
-            const bool selected=(int)snapshotIndex==selectedDatasetSnapshot_;
-            if(selected) Rounded(rx+14,sy-2,rightW-28,22,brush_.panel2.Get(),brush_.cyan.Get(),5);
-            TextLine(Widen(s.name),rx+18,sy,rightW-120,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(s.exampleIds.size())+L" examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            buttons_.push_back({{rx+14,sy-2,rx+rightW-14,sy+20},L"dataset_select:"+std::to_wstring(snapshotIndex)});
-            sy+=24;
+        for(size_t i=trainingData_.Snapshots().size();i>0 && sshown<4;--i,++sshown) {
+            const size_t idx=i-1;
+            const auto& s=trainingData_.Snapshots()[idx];
+            const float cardW=(contentW-80)/4.0f;
+            Rounded(sx,bottomY+34,cardW,54,(int)idx==selectedDatasetSnapshot_?brush_.panel2.Get():brush_.deepPanel.Get(),
+                (int)idx==selectedDatasetSnapshot_?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(s.name),sx+10,bottomY+37,cardW-20,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(s.exampleIds.size())+L" approved examples",sx+10,bottomY+58,cardW-20,18,tinyFmt_.Get(),brush_.cyan.Get());
+            buttons_.push_back({{sx,bottomY+34,sx+cardW,bottomY+88},L"dataset_select:"+std::to_wstring(idx)});
+            sx+=cardW+12;
         }
-        if(sshown==0) TextLine(L"No snapshots yet.",rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Captured "+std::to_wstring(trainingData_.Examples().size())+L"  •  Approved "+
-            std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)),
-            rx+18,y+354,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        if(sshown==0)
+            TextLine(L"No dataset snapshots yet. Approve examples, then create your first snapshot.",
+                x+18,bottomY+42,contentW-36,34,smallFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawModelLabJobs(float x,float y,float contentW) {
