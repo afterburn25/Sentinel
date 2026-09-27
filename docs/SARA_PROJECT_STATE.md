@@ -312,3 +312,57 @@ Installer:
 - `SARA-Setup-1.0.18.exe` SHA-256 `67caa997fda660db4a9ed587da1b71b7819145a7aa8363a7bb4df93fb9b23a79`
 
 Artifact Signing remains configured but secrets are absent, so this is an unsigned development build.
+
+
+## Visual baseline restoration directive
+
+**Effective immediately, SARA 1.0.15 is the approved visual/UX baseline.**
+
+Later 1.0.16+ functional work must not remove or regress visual elements that were correct in the approved 1.0.15 build.
+
+The approved design originates from the earlier "Continue Sentinel Installer Work" development session and retained SARA visual assets.
+
+Required visual baseline:
+
+- Dark futuristic / neon navy-black application shell.
+- Cyan / teal / electric-blue gradients and controlled glow.
+- Rounded premium cards/panels, cleaner typography, strong spacing/alignment.
+- Main SARA transparent logo: the first approved logo concept.
+- Setup/startup/shortcut icon: approved fingerprint/circuit icon.
+- Branded left navigation rail with SARA identity.
+- Premium window chrome and coherent visual treatment across every workspace.
+- Model Lab must use the approved hybrid structure:
+  - branded left navigation
+  - top context/tabs
+  - central conversational Trainer
+  - right Training Context / inspector/status column
+  - polished Datasets, Personas & LoRAs, Foundation Forks, Jobs, Evaluation, Deployment workspaces
+- Simulation/Trainer composer remains the real full-height Windows edit control with correctly centered caret/text.
+- Composer toolbar uses smiley-face emoji icon, paperclip attachment icon, and Send with matching spacing/hover/pressed treatment.
+- No overlapping boxes, clipped controls, utility-form appearance, or visual regression back to the old flat Direct2D layout.
+
+Splash screen requirements:
+
+- Restore the exact approved SARA splash artwork.
+- Native-resolution PNG; no blur, flashing, or altered artwork.
+- Only the progress bar already present in the artwork is animated.
+- Earlier approved behavior uses a 7-second minimum display.
+- Splash remains visible until application initialization is complete.
+- Direct transition from splash into the main app.
+- The chosen SARA fingerprint/circuit + speech-bubble visual identity must remain intact.
+
+Installer visual baseline:
+
+- Dark rounded "SARA Setup" window.
+- SARA logo in installer chrome.
+- Upgrade-existing-installation wording when prior SARA/Sentinel install is detected.
+- Clear preserved-data messaging.
+- Bright-blue Upgrade/Install primary action.
+- Existing user data remains preserved.
+
+Restoration rule:
+
+1. Recover and compare the actual SARA 1.0.15 installer/resources.
+2. Restore splash/logo/icon/window-shell behavior before further feature expansion.
+3. Reapply 1.0.16–1.0.19 Model Lab functionality into that approved visual system.
+4. No future release may silently replace the approved visual baseline with a simpler utility layout.
