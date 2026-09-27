@@ -123,6 +123,9 @@ int DimensionScore(
     const EvaluationRun& run,
     EvaluationDimension dimension);
 
+std::string BuildEvaluationRunReport(
+    const EvaluationRun& run);
+
 std::string BuildCandidateComparisonReport(
     const EvaluationRun& left,
     const EvaluationRun& right);
