@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 
 public static class SaraRecoveryUiNative {
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    public delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT {
@@ -30,6 +31,12 @@ public static class SaraRecoveryUiNative {
 
     [DllImport("user32.dll", CharSet=CharSet.Unicode)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumChildWindows(IntPtr hWnd, EnumChildProc proc, IntPtr lParam);
 
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
@@ -54,6 +61,44 @@ public static class SaraRecoveryUiNative {
 }
 "@
 
+
+function Get-SaraStartupFailure {
+    param([int]$ProcessId)
+
+    $script:failureWindow = [IntPtr]::Zero
+    $callback = [SaraRecoveryUiNative+EnumWindowsProc]{
+        param([IntPtr]$hwnd, [IntPtr]$lParam)
+
+        [uint32]$windowPid = 0
+        [void][SaraRecoveryUiNative]::GetWindowThreadProcessId($hwnd, [ref]$windowPid)
+        if ($windowPid -ne $ProcessId) { return $true }
+
+        $title = New-Object Text.StringBuilder 512
+        [void][SaraRecoveryUiNative]::GetWindowText($hwnd, $title, $title.Capacity)
+        if ($title.ToString() -eq "Sentinel Startup Failed") {
+            $script:failureWindow = $hwnd
+            return $false
+        }
+        return $true
+    }
+
+    [void][SaraRecoveryUiNative]::EnumWindows($callback, [IntPtr]::Zero)
+    if ($script:failureWindow -eq [IntPtr]::Zero) { return $null }
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $childCallback = [SaraRecoveryUiNative+EnumChildProc]{
+        param([IntPtr]$child, [IntPtr]$lParam)
+        $text = New-Object Text.StringBuilder 2048
+        [void][SaraRecoveryUiNative]::GetWindowText($child, $text, $text.Capacity)
+        $value = $text.ToString().Trim()
+        if ($value) { $script:startupFailureParts.Add($value) }
+        return $true
+    }
+    $script:startupFailureParts = $parts
+    [void][SaraRecoveryUiNative]::EnumChildWindows($script:failureWindow, $childCallback, [IntPtr]::Zero)
+    return ($parts -join " | ")
+}
+
 function Find-SaraWindow {
     param(
         [int]$ProcessId,
@@ -64,6 +109,17 @@ function Find-SaraWindow {
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
+        if ($ClassName -eq "SARANativeWindow") {
+            $startupFailure = Get-SaraStartupFailure -ProcessId $ProcessId
+            if ($startupFailure) {
+                throw "SARA startup failed before the main window opened: $startupFailure"
+            }
+        }
+
+        if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue | Where-Object { $_.HasExited }) {
+            throw "SARA process exited before window class '$ClassName' became ready."
+        }
+
         $script:matchedWindow = [IntPtr]::Zero
         $callback = [SaraRecoveryUiNative+EnumWindowsProc]{
             param([IntPtr]$hwnd, [IntPtr]$lParam)
