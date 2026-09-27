@@ -182,17 +182,29 @@ EvaluationRun& EvaluationRunRegistry::Create(
     }
 
     int previous=-1;
+    const EvaluationRun* previousRun=nullptr;
     for(size_t i=runs_.size();i>0;--i) {
         if(runs_[i-1].candidateId==run.candidateId) {
-            previous=runs_[i-1].overallScore;
+            previousRun=&runs_[i-1];
+            previous=previousRun->overallScore;
             break;
         }
     }
     run.previousOverallScore=previous;
-    if(previous>=0) {
+    if(previousRun) {
         run.regressionDelta=run.overallScore-previous;
         if(run.regressionDelta<=-5)
             run.warnings.push_back("Overall score regressed by "+std::to_string(-run.regressionDelta)+" points from the previous run.");
+
+        for(const auto& current:run.dimensions) {
+            const int oldScore=DimensionScore(*previousRun,current.dimension);
+            if(oldScore<0) continue;
+            const int delta=current.score-oldScore;
+            if(delta<=-10) {
+                run.warnings.push_back(
+                    ToString(current.dimension)+" regressed by "+std::to_string(-delta)+" points from the previous run.");
+            }
+        }
     }
 
     runs_.push_back(std::move(run));
