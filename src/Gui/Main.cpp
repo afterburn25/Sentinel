@@ -292,6 +292,12 @@ public:
         personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
         personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
         personaBackgroundEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
+        personaIntelligenceCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
+        personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
+        personaGrammarCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
+        personaTypoCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1036,GetModuleHandleW(nullptr),nullptr);
+        personaEmojiCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1037,GetModuleHandleW(nullptr),nullptr);
+        personaMoodCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -314,7 +320,8 @@ public:
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
-            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_};
+            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,personaIntelligenceCombo_,personaSlangCombo_,
+            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,modelCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -367,6 +374,12 @@ public:
         const wchar_t* confidenceItems[]={
             L"Very low",L"Low",L"Medium",L"High",L"Very high"
         };
+        const wchar_t* intelligenceItems[]={L"Simple",L"Average",L"High",L"Very high"};
+        const wchar_t* slangItems[]={L"None",L"Low",L"Medium",L"High",L"Very high"};
+        const wchar_t* grammarItems[]={L"Polished",L"Natural",L"Casual",L"Loose"};
+        const wchar_t* typoItems[]={L"None",L"Low",L"Medium",L"High"};
+        const wchar_t* emojiItems[]={L"None",L"Low",L"Medium",L"High",L"Very high"};
+        const wchar_t* moodItems[]={L"Neutral",L"Warm",L"Playful",L"Guarded",L"Serious",L"Excited"};
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
@@ -383,6 +396,12 @@ public:
         fillCombo(personaPersonalityCombo_,personalityItems,std::size(personalityItems));
         fillCombo(personaSocialCombo_,socialItems,std::size(socialItems));
         fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
+        fillCombo(personaIntelligenceCombo_,intelligenceItems,std::size(intelligenceItems));
+        fillCombo(personaSlangCombo_,slangItems,std::size(slangItems));
+        fillCombo(personaGrammarCombo_,grammarItems,std::size(grammarItems));
+        fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
+        fillCombo(personaEmojiCombo_,emojiItems,std::size(emojiItems));
+        fillCombo(personaMoodCombo_,moodItems,std::size(moodItems));
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
@@ -506,6 +525,7 @@ public:
                 page_=Page::Persona;
                 statusText_=L"Persona editor opened";
             }
+            else if (b.id==L"ml_style_save") SaveProfileEditors();
             else if (b.id==L"adapter_new") CreatePersonaAdapter();
             else if (b.id.rfind(L"adapter_activate:",0)==0) ActivatePersonaAdapter((size_t)std::stoul(b.id.substr(17)));
             else if (b.id==L"adapter_rollback") RollbackPersonaAdapter();
@@ -700,6 +720,7 @@ private:
     HWND personaNameEdit_{},personaAgeCombo_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
     HWND personaOccupationEdit_{},personaEducationEdit_{},personaFamilyEdit_{},personaBackgroundEdit_{};
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
+    HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
     std::unique_ptr<Runtime> runtime_;
@@ -1450,6 +1471,9 @@ private:
             if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
         }
         ShowPersonaEditors(page_==Page::Persona);
+        const bool showStyleCombos=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas;
+        HWND styleCombos[]={personaIntelligenceCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_};
+        for(HWND h:styleCombos) if(h) ShowWindow(h,showStyleCombos?SW_SHOW:SW_HIDE);
         ShowAgencyEditors(page_==Page::Agency);
         LayoutNativeControls();
     }
@@ -1496,6 +1520,20 @@ private:
             MoveControl(chatEdit_,(int)(x+16),(int)(y+430),composerW,composerH,TRUE);
             RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
+        }
+
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
+            const float x=kSidebar+28.0f, y=kHeader+102.0f;
+            const float contentW=w-x-28.0f, gap=12.0f, inspectorW=360.0f;
+            const float listW=contentW-inspectorW-gap;
+            const float rx=x+listW+gap;
+            const int comboW=150, comboH=130;
+            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(y+318),comboW,comboH,TRUE);
+            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(y+318),comboW,comboH,TRUE);
+            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(y+356),comboW,comboH,TRUE);
+            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(y+356),comboW,comboH,TRUE);
+            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(y+394),comboW,comboH,TRUE);
+            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(y+394),comboW,comboH,TRUE);
         }
 
         if(page_==Page::Persona) {
@@ -1574,6 +1612,12 @@ private:
         SendMessageW(personaPersonalityCombo_,CB_SETCURSEL,FindComboText(personaPersonalityCombo_,simSettings_.persona.personality),0);
         SendMessageW(personaSocialCombo_,CB_SETCURSEL,FindComboText(personaSocialCombo_,simSettings_.persona.socialStyle),0);
         SendMessageW(personaConfidenceCombo_,CB_SETCURSEL,FindComboText(personaConfidenceCombo_,simSettings_.persona.confidenceLevel),0);
+        SendMessageW(personaIntelligenceCombo_,CB_SETCURSEL,FindComboText(personaIntelligenceCombo_,simSettings_.persona.intelligenceLevel),0);
+        SendMessageW(personaSlangCombo_,CB_SETCURSEL,FindComboText(personaSlangCombo_,simSettings_.persona.slangLevel),0);
+        SendMessageW(personaGrammarCombo_,CB_SETCURSEL,FindComboText(personaGrammarCombo_,simSettings_.persona.grammarQuality),0);
+        SendMessageW(personaTypoCombo_,CB_SETCURSEL,FindComboText(personaTypoCombo_,simSettings_.persona.typoTendency),0);
+        SendMessageW(personaEmojiCombo_,CB_SETCURSEL,FindComboText(personaEmojiCombo_,simSettings_.persona.emojiTendency),0);
+        SendMessageW(personaMoodCombo_,CB_SETCURSEL,FindComboText(personaMoodCombo_,simSettings_.persona.mood),0);
 
         SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
         SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
@@ -1602,6 +1646,12 @@ private:
             simSettings_.persona.background=Narrow(EditText(personaBackgroundEdit_));
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
             simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
+            simSettings_.persona.intelligenceLevel=ComboText(personaIntelligenceCombo_);
+            simSettings_.persona.slangLevel=ComboText(personaSlangCombo_);
+            simSettings_.persona.grammarQuality=ComboText(personaGrammarCombo_);
+            simSettings_.persona.typoTendency=ComboText(personaTypoCombo_);
+            simSettings_.persona.emojiTendency=ComboText(personaEmojiCombo_);
+            simSettings_.persona.mood=ComboText(personaMoodCombo_);
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
@@ -2668,12 +2718,15 @@ private:
         TextLine(Widen(simSettings_.persona.writingStyle),rx+118,y+148,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
 
         target_->DrawLine(D2D1::Point2F(rx+18,y+184),D2D1::Point2F(rx+inspectorW-18,y+184),brush_.border.Get(),1);
-        TextLine(L"Automatic Runtime Resolution",rx+18,y+196,inspectorW-36,24,smallFmt_.Get(),brush_.cyan.Get());
-        TextLine(L"1  SARA Foundation",rx+18,y+232,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"2  Persona LoRA",rx+18,y+258,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"3  Behavior Profile",rx+18,y+284,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"4  Conversation Memory",rx+18,y+310,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"5  Current Context",rx+18,y+336,inspectorW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Style Tuning",rx+18,y+196,inspectorW-140,24,smallFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"ml_style_save",L"Save Style",rx+inspectorW-112,y+194,94,28,true);
+        TextLine(L"Intelligence",rx+18,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Slang",rx+184,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Grammar",rx+18,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Typos",rx+184,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Emoji",rx+18,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Mood",rx+184,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Foundation → LoRA → Behavior → Memory → Context",rx+18,y+350,inspectorW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
     void DrawModelLabFoundationForks(float x,float y,float contentW) {
