@@ -231,6 +231,9 @@ void TestSaraEvaluationSuite()
     assert(loaded.Runs()[0].cases.size()==2);
     assert(loaded.Runs()[1].regressionDelta==second.regressionDelta);
     assert(DimensionScore(loaded.Runs()[0],EvaluationDimension::MemoryRecall)==100);
+    auto singleReport=BuildEvaluationRunReport(loaded.Runs()[0]);
+    assert(singleReport.find("SARA EVALUATION RUN REPORT")!=std::string::npos);
+    assert(singleReport.find("NAMED CASES")!=std::string::npos);
     auto report=BuildCandidateComparisonReport(loaded.Runs()[0],loaded.Runs()[1]);
     assert(report.find("SARA EVALUATION COMPARISON")!=std::string::npos);
     assert(report.find("MEMORY")!=std::string::npos);
