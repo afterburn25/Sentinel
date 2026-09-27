@@ -569,6 +569,15 @@ public:
             out<<rule.id<<" | "<<rule.name<<" | pattern="<<rule.pattern<<" | priority="<<rule.priority
                <<" | "<<(rule.terminal?"terminal":"continue")<<" | responses="<<rule.responses.size()<<"\n";
 
+        out<<"\nRECENT PERSONA CONVERSATION\n";
+        size_t historyStart=simContext_.history.size()>20?simContext_.history.size()-20:0;
+        for(size_t i=historyStart;i<simContext_.history.size();++i) {
+            const auto& turn=simContext_.history[i];
+            const char* speaker=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator?"Investigator":
+                turn.speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject?"SARA":"Model Suggestion";
+            out<<speaker<<": "<<turn.text<<"\n";
+        }
+
         out<<"\nRECENT TRAINING EXAMPLES\n";
         size_t start=trainingData_.Examples().size()>10?trainingData_.Examples().size()-10:0;
         for(size_t i=start;i<trainingData_.Examples().size();++i) {
