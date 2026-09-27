@@ -14,6 +14,7 @@
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -389,6 +390,7 @@ public:
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
         trainingJobRegistry_.Load(runtime_->root/"training-jobs.tsv");
+        triggerRules_.Load(runtime_->root/"trigger-rules.tsv");
         if(foundationRegistry_.Models().empty()) {
             foundationRegistry_.EnsureBase(simSettings_.model.empty()?"Original Base Model":simSettings_.model,"base");
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
@@ -614,7 +616,16 @@ public:
             UpdateWindow(hwnd_);
 
             try {
-                if(model_) {
+                auto triggerMatch=triggerRules_.Match(simPendingMessage_,simContext_.personaSummary,simContext_.history.size());
+                if(triggerMatch && !triggerMatch->response.empty()) {
+                    simPreparedReply_=triggerMatch->response;
+                    lastTriggerMatch_=Widen(triggerMatch->ruleName);
+                    if(!triggerMatch->terminal && model_) {
+                        auto generated=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                        if(!generated.empty()) simPreparedReply_+=" "+generated;
+                    }
+                } else if(model_) {
+                    lastTriggerMatch_=L"None";
                     simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
                 }
             } catch(const std::exception& e) {
@@ -708,6 +719,7 @@ private:
     sentinel::simulation::ModelRegistry modelRegistry_;
     sentinel::simulation::FoundationRegistry foundationRegistry_;
     sentinel::simulation::TrainingJobRegistry trainingJobRegistry_;
+    sentinel::simulation::TriggerRuleRegistry triggerRules_;
     int selectedRegistryModel_{-1};
     int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
@@ -715,6 +727,7 @@ private:
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
+    std::wstring lastTriggerMatch_=L"None";
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
