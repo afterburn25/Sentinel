@@ -44,6 +44,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 #include <chrono>
 #include <cctype>
 #include <memory>
@@ -1304,6 +1305,8 @@ public:
 
             simInitiativeSent_=true;
             try {
+                simContext_.variationSeed=(unsigned int)(
+                    std::hash<std::string>{}(currentConversationId_) & 0xffffffffu);
                 simContext_.learningMode=simSettings_.learningMode;
                 const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
                     currentConversationId_,10);
@@ -2354,7 +2357,7 @@ private:
             const float x=kSidebar+28.0f, y=kHeader+104.0f;
             const float contentW=w-x-28.0f;
             MoveControl(responseRuleTriggerEdit_,(int)(x+88),(int)(y+108),220,30,TRUE);
-            MoveControl(responseRuleResponseEdit_,(int)(x+382),(int)(y+108),(int)std::max(260.0f,contentW-760.0f),30,TRUE);
+            MoveControl(responseRuleResponseEdit_,(int)(x+382),(int)(y+108),(int)std::max(180.0f,contentW-880.0f),30,TRUE);
         }
 
         if(page_==Page::Agency) {
@@ -3183,6 +3186,8 @@ private:
         if(message.empty()) return;
         auto utf8=Narrow(message);
         if(currentConversationId_.empty()) ResetSimulation();
+        simContext_.variationSeed=(unsigned int)(
+            std::hash<std::string>{}(currentConversationId_) & 0xffffffffu);
         simContext_.learningMode=simSettings_.learningMode;
         simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
             utf8,currentConversationId_,12);
