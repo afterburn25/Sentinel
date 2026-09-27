@@ -2738,6 +2738,219 @@ private:
         sqlite3_finalize(s);
     }
 
+
+    sentinel::simulation::TrainingMode SelectedTrainingMode() const {
+        int sel=(int)SendMessageW(trainerModeCombo_,CB_GETCURSEL,0,0);
+        switch(sel) {
+            case 1: return sentinel::simulation::TrainingMode::Correction;
+            case 2: return sentinel::simulation::TrainingMode::PersonaLora;
+            case 3: return sentinel::simulation::TrainingMode::FoundationSft;
+            case 4: return sentinel::simulation::TrainingMode::Preference;
+            default: return sentinel::simulation::TrainingMode::Behavior;
+        }
+    }
+
+    void RefreshTrainerFoundationList(const std::string& selectId={}) {
+        if(!trainerFoundationCombo_) return;
+        trainerFoundations_=runtime_->trainer.ListFoundations();
+        SendMessageW(trainerFoundationCombo_,CB_RESETCONTENT,0,0);
+        int selected=0;
+        for(size_t i=0;i<trainerFoundations_.size();++i) {
+            const auto& foundation=trainerFoundations_[i];
+            const auto label=Widen(foundation.name+" v"+std::to_string(foundation.version)+" ["+foundation.status+"]");
+            SendMessageW(trainerFoundationCombo_,CB_ADDSTRING,0,(LPARAM)label.c_str());
+            if(!selectId.empty() && foundation.id==selectId) selected=(int)i;
+        }
+        if(!trainerFoundations_.empty())
+            SendMessageW(trainerFoundationCombo_,CB_SETCURSEL,(WPARAM)selected,0);
+    }
+
+    std::optional<sentinel::simulation::ModelFoundation> SelectedFoundation() const {
+        int sel=(int)SendMessageW(trainerFoundationCombo_,CB_GETCURSEL,0,0);
+        if(sel<0 || sel>=(int)trainerFoundations_.size()) return std::nullopt;
+        return trainerFoundations_[(size_t)sel];
+    }
+
+    void CreateFoundationForkFromTrainer() {
+        const auto name=Narrow(EditText(trainerForkNameEdit_));
+        const auto trainable=Narrow(EditText(trainerBasePathEdit_));
+        auto parent=SelectedFoundation();
+        if(name.empty() || !parent) {
+            statusText_=L"Enter a fork name and select a parent foundation";
+            return;
+        }
+        try {
+            auto fork=runtime_->trainer.CreateFork(
+                name,parent->id,parent->sourceModel,trainable,{});
+            RefreshTrainerFoundationList(fork.id);
+            statusText_=L"Created foundation fork: "+Widen(fork.name);
+        } catch(const std::exception& e) {
+            statusText_=L"Foundation fork failed: "+Widen(e.what());
+        }
+    }
+
+    void BindCurrentPersonaLoraFromTrainer() {
+        auto foundation=SelectedFoundation();
+        const auto loraName=Narrow(EditText(trainerLoraNameEdit_));
+        const auto loraPath=Narrow(EditText(trainerLoraPathEdit_));
+        if(!foundation || loraName.empty() || loraPath.empty()) {
+            statusText_=L"Select a foundation and enter LoRA name/path";
+            return;
+        }
+        try {
+            auto binding=runtime_->trainer.BindPersonaLora(
+                simSettings_.persona.name,foundation->id,loraName,loraPath,1.0);
+            statusText_=L"Bound "+Widen(binding.loraName)+L" to "+Widen(binding.personaName);
+            ApplyPersonaRuntimeBinding();
+        } catch(const std::exception& e) {
+            statusText_=L"LoRA binding failed: "+Widen(e.what());
+        }
+    }
+
+    void QueueTrainerJobFromControls() {
+        const auto mode=SelectedTrainingMode();
+        auto foundation=SelectedFoundation();
+        const auto dataset=Narrow(EditText(trainerDatasetEdit_));
+        const auto output=Narrow(EditText(trainerOutputEdit_));
+        const auto basePath=Narrow(EditText(trainerBasePathEdit_));
+        const auto target=Narrow(EditText(trainerForkNameEdit_)).empty()
+            ? simSettings_.persona.name
+            : Narrow(EditText(trainerForkNameEdit_));
+
+        if(mode==sentinel::simulation::TrainingMode::Behavior) {
+            ApplyTrainerBehaviorInstruction();
+            return;
+        }
+
+        if(!foundation) {
+            statusText_=L"Select a foundation before queueing training";
+            return;
+        }
+
+        try {
+            auto job=runtime_->trainer.QueueJob(
+                mode,target,simSettings_.persona.name,foundation->id,
+                dataset,basePath,output,
+                "{\"source\":\"SARA Conversational Trainer\"}");
+            statusText_=L"Training job queued: "+Widen(job.id);
+        } catch(const std::exception& e) {
+            statusText_=L"Training job could not be queued: "+Widen(e.what());
+        }
+    }
+
+    void ApplyTrainerBehaviorInstruction() {
+        const auto instruction=Narrow(EditText(trainerInstructionEdit_));
+        if(instruction.empty()) {
+            statusText_=L"Enter a trainer instruction first";
+            return;
+        }
+        if(!model_) {
+            statusText_=L"No model available for conversational training";
+            return;
+        }
+
+        try {
+            sentinel::simulation::ModelContext ctx=simContext_;
+            ctx.personaSummary=BuildPersonaSummary();
+            const std::string trainingBackground=
+                simSettings_.persona.background+
+                "\nExisting persona: "+BuildPersonaSummary()+
+                "\nTrainer instruction: "+instruction+
+                "\nChange only the behavior/style controls necessary to satisfy the trainer instruction.";
+
+            const auto result=model_->GenerateBehaviorProfile(
+                simSettings_.persona.age,trainingBackground,ctx);
+
+            auto apply=[&](HWND combo,const std::string& key){
+                const auto v=ProfileLineValue(result,key);
+                if(v.empty()) return;
+                SendMessageW(combo,CB_SETCURSEL,(WPARAM)FindComboText(combo,v),0);
+            };
+            apply(personaPersonalityCombo_,"PERSONALITY");
+            apply(personaSocialCombo_,"SOCIAL_STYLE");
+            apply(personaConfidenceCombo_,"CONFIDENCE");
+            apply(personaWritingStyleCombo_,"WRITING_STYLE");
+            apply(personaCommunicationCombo_,"COMMUNICATION");
+            apply(personaCognitiveCombo_,"COGNITIVE");
+            apply(personaSlangCombo_,"SLANG");
+            apply(personaGrammarCombo_,"GRAMMAR");
+            apply(personaTypoCombo_,"TYPOS");
+            apply(personaEmojiCombo_,"EMOJI");
+
+            SaveProfileEditors();
+            RecordLearnedPersonaNote(
+                "TRAINER BEHAVIOR INSTRUCTION: "+instruction,
+                "trainer_behavior_instruction");
+            statusText_=L"Trainer instruction applied to "+Widen(simSettings_.persona.name);
+        } catch(const std::exception& e) {
+            statusText_=L"Trainer instruction failed: "+Widen(e.what());
+        }
+    }
+
+    bool WriteActiveRuntimeConfig(
+        const std::filesystem::path& modelPath,
+        const std::filesystem::path& loraPath,
+        const std::string& alias)
+    {
+        try {
+            std::filesystem::create_directories(runtime_->root);
+            std::ofstream out(runtime_->root/"active-runtime.ini",std::ios::trunc);
+            if(!out) return false;
+            out<<"model="<<modelPath.string()<<"\n";
+            out<<"lora="<<loraPath.string()<<"\n";
+            out<<"alias="<<alias<<"\n";
+            return true;
+        } catch(...) {
+            return false;
+        }
+    }
+
+    void ApplyPersonaRuntimeBinding() {
+        const auto defaultModel=ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf";
+        std::filesystem::path modelPath=defaultModel;
+        std::filesystem::path loraPath;
+        std::string alias="sentinel-chat";
+
+        auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
+        if(binding) {
+            auto foundation=runtime_->trainer.GetFoundation(binding->foundationId);
+            if(foundation && !foundation->runtimeGgufPath.empty())
+                modelPath=std::filesystem::path(foundation->runtimeGgufPath);
+            loraPath=std::filesystem::path(binding->loraPath);
+            alias="sara-"+simSettings_.persona.name;
+            std::replace(alias.begin(),alias.end(),' ','-');
+            trainerRuntimeStatus_=L"Persona LoRA: "+Widen(binding->loraName);
+        } else {
+            trainerRuntimeStatus_=L"No persona LoRA bound; using SARA foundation";
+        }
+
+        if(!WriteActiveRuntimeConfig(modelPath,loraPath,alias)) {
+            trainerRuntimeStatus_=L"Could not write active runtime configuration";
+            return;
+        }
+
+        // Only restart when the configured files are actually present. This
+        // lets investigators define future LoRA bindings before training has
+        // produced the adapter file.
+        if(!std::filesystem::exists(modelPath) ||
+           (!loraPath.empty() && !std::filesystem::exists(loraPath))) {
+            if(!loraPath.empty())
+                trainerRuntimeStatus_+=L" | adapter file not created yet";
+            return;
+        }
+
+        std::wstring failure;
+        if(StartBundledAiService(&failure,true)) {
+            try {
+                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+                std::wstring connectFailure;
+                ConnectDiscoveredLocalModel(models,&connectFailure);
+            } catch(...) {}
+        } else {
+            trainerRuntimeStatus_=L"Persona runtime switch failed: "+failure;
+        }
+    }
+
     std::string BuildPersonaSummary() const {
         const auto& p=simSettings_.persona;
         return p.name+", age "+std::to_string(p.age)+
