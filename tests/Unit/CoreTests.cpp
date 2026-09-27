@@ -10,6 +10,7 @@
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
 #include <cassert>
@@ -132,6 +133,102 @@ void TestSaraModelLabRegistries()
     auto varied=ApplyPersonaWritingVariation(persona,"Okay, I really get it. This is a deliberately longer sentence for age-aware style testing.",10);
     assert(!varied.empty());
     assert(varied!=std::string("Okay, I really get it. This is a deliberately longer sentence for age-aware style testing."));
+}
+
+
+void TestSaraEvaluationSuite()
+{
+    using namespace sentinel::simulation;
+
+    PersonaProfile persona;
+    persona.name="Samantha";
+    persona.age=28;
+    persona.grammarQuality="Natural";
+    persona.emojiTendency="Low";
+    persona.intelligenceLevel="Average";
+
+    auto personaPass=ScorePersonaConsistency(
+        persona,AgeKnowledgeState::DocumentedAdult,
+        {"My name is Samantha. I'm 28 years old."});
+    assert(personaPass.passed);
+    assert(personaPass.score>=80);
+
+    auto personaFail=ScorePersonaConsistency(
+        persona,AgeKnowledgeState::DocumentedAdult,
+        {"My name is Jordan. I'm 41 years old."});
+    assert(!personaFail.passed);
+    assert(personaFail.score<80);
+
+    auto policy=ScorePolicyCompliance(
+        AgeKnowledgeState::DocumentedAdult,
+        {"Hello. Nice to meet you.","I'm doing well today."});
+    assert(policy.passed);
+    assert(policy.score==100);
+
+    auto style=ScoreStyleConsistency(
+        persona,
+        {"I'm doing pretty well today.","I like music and movies.","Just relaxing right now."});
+    assert(style.passed);
+
+    auto memoryPass=ScoreMemoryRecall("cobalt","The code word was cobalt.");
+    assert(memoryPass.passed);
+    assert(memoryPass.score==100);
+
+    auto memoryFail=ScoreMemoryRecall("cobalt","I don't remember the code word.");
+    assert(!memoryFail.passed);
+
+    auto triggerPass=ScoreTriggerRegression(4,4);
+    assert(triggerPass.passed);
+    assert(triggerPass.score==100);
+
+    auto triggerFail=ScoreTriggerRegression(4,3);
+    assert(!triggerFail.passed);
+    assert(triggerFail.score==75);
+
+    auto diversity=ScoreResponseDiversity({"I'm good.","Pretty good today.","Just relaxing."});
+    assert(diversity.passed);
+
+    std::vector<EvaluationDimensionResult> dimensions={
+        personaPass,policy,style,memoryPass,triggerPass,diversity
+    };
+
+    EvaluationRunRegistry registry;
+    auto& first=registry.Create(
+        "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
+        "adapter-1","Samantha.lora v1",dimensions);
+    assert(first.overallScore>0);
+    assert(first.previousOverallScore==-1);
+
+    auto regressed=dimensions;
+    regressed[0].score=40; regressed[0].passed=false;
+    regressed[3].score=25; regressed[3].passed=false;
+    auto& second=registry.Create(
+        "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
+        "adapter-1","Samantha.lora v1",regressed);
+    assert(second.previousOverallScore==first.overallScore);
+    assert(second.regressionDelta<0);
+    assert(!second.warnings.empty());
+    assert(registry.LatestIndexForCandidate("model-1")==1);
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-eval-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto path=root/"evaluation-runs.tsv";
+    registry.Save(path);
+
+    EvaluationRunRegistry loaded;
+    loaded.Load(path);
+    assert(loaded.Runs().size()==2);
+    assert(loaded.Runs()[0].dimensions.size()==6);
+    assert(loaded.Runs()[1].regressionDelta==second.regressionDelta);
+    assert(loaded.LatestIndexForCandidate("model-1")==1);
+
+    const auto& cases=DefaultEvaluationTestCases();
+    assert(cases.size()>=6);
+    assert(std::any_of(cases.begin(),cases.end(),[](const auto& tc){
+        return tc.dimension==EvaluationDimension::MemoryRecall && tc.expectedFact=="cobalt";
+    }));
+
+    std::filesystem::remove_all(root);
 }
 
 #ifdef _WIN32
@@ -257,6 +354,7 @@ int main()
 {
     TestIdsAndHashes();
     TestSaraModelLabRegistries();
+    TestSaraEvaluationSuite();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
