@@ -203,6 +203,10 @@ jobs:
           if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
+          if (-not (Test-Path "$root/assets/SARA-Splash.png")) { throw "Approved SARA splash missing from package" }
+          if (-not (Test-Path "$root/assets/SARA-Logo.png")) { throw "Approved SARA logo missing from package" }
+          if (-not (Test-Path "$root/assets/SARA-Icon.png")) { throw "Approved SARA icon missing from package" }
+          python -c "from PIL import Image; import hashlib; p=r'$root/assets/SARA-Splash.png'; raw=open(p,'rb').read(); im=Image.open(p); assert im.size==(1672,941); assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Packaged approved SARA splash verified')"
 
       - name: Build SARA installer
         shell: pwsh
