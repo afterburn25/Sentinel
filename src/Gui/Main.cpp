@@ -4066,6 +4066,10 @@ private:
     }
 
     void AutoInitializeLocalAi() {
+        // Recovery invariant: startup must never perform a model download, runtime
+        // installation, service launch, or network discovery on the UI thread.
+        // Those operations can take seconds or minutes and previously trapped the
+        // application behind the topmost splash screen.
         if(simSettings_.endpoint.empty())
             simSettings_.endpoint="http://127.0.0.1:1234/v1/chat/completions";
         if(simSettings_.model.empty())
@@ -4074,55 +4078,26 @@ private:
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
         SetWindowTextW(modelNameEdit_,Widen(simSettings_.model).c_str());
 
-        if(!IsLocalModelEndpoint(simSettings_.endpoint)) {
-            // Preserve explicitly configured remote/OpenAI-compatible endpoints.
-            try {
-                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
-                std::wstring failure;
-                if(ConnectDiscoveredLocalModel(models,&failure)) return;
-                throw std::runtime_error(Narrow(failure));
-            } catch(const std::exception& e) {
-                model_=sentinel::simulation::CreateRuleBasedTestModel();
-                modelStatus_=L"Configured model unavailable; fallback active: "+Widen(e.what());
-                return;
-            }
-        }
-
-        std::wstring setupFailure;
-        if(!BundledAiPrerequisitesPresent()) {
-            modelStatus_=L"First-run local AI setup starting automatically...";
-            statusText_=L"Installing bundled local AI";
-            if(!RunBundledAiSetup(&setupFailure)) {
-                model_=sentinel::simulation::CreateRuleBasedTestModel();
-                modelStatus_=L"Automatic local AI setup failed: "+setupFailure;
-                statusText_=L"Local AI setup failed";
-                return;
-            }
-        }
-
-        // Setup may already have started the server. Discovery is attempted first;
-        // otherwise start the existing bundled backend and retry.
-        try {
-            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
-            std::wstring failure;
-            if(ConnectDiscoveredLocalModel(models,&failure)) return;
-        } catch(...) {}
-
-        std::wstring startFailure;
-        if(StartBundledAiService(&startFailure)) {
-            try {
-                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
-                std::wstring failure;
-                if(ConnectDiscoveredLocalModel(models,&failure)) return;
-                startFailure=failure;
-            } catch(const std::exception& e) {
-                startFailure=Widen(e.what());
-            }
-        }
-
+        // Always establish an immediately available fallback so the desktop can
+        // finish App::Init and reveal the main window.
         model_=sentinel::simulation::CreateRuleBasedTestModel();
-        modelStatus_=L"Local AI automatic startup failed; fallback active. "+startFailure;
-        statusText_=L"Local AI startup failed";
+
+        if(IsLocalModelEndpoint(simSettings_.endpoint)) {
+            if(BundledAiPrerequisitesPresent()) {
+                modelStatus_=L"Local AI is installed. Use Connect/Browse Models to attach the runtime.";
+                statusText_=L"Local AI ready to connect";
+            } else {
+                modelStatus_=
+                    L"Local AI model/runtime is missing or incomplete. SARA started safely in built-in mode. "
+                    L"Run Install / Repair Local AI to restore the verified local model.";
+                statusText_=L"Local AI repair required";
+            }
+        } else {
+            modelStatus_=
+                L"Configured external model connection is deferred until after startup. "
+                L"Use Connect/Browse Models when ready.";
+            statusText_=L"Model connection deferred";
+        }
     }
 
     void InstallOrRepairLocalAi() {
