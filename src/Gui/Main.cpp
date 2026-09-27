@@ -3091,6 +3091,20 @@ private:
         simSuggestion_=L"No suggestion generated yet";
         simPendingMessage_=utf8;
         simPreparedReply_.clear();
+        simPreparedFromRule_=false;
+
+        if(auto rule=FindPersonaResponseRule(utf8)) {
+            const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+                simSettings_.ageState,*rule);
+            if(policy.allowed) {
+                simPreparedReply_=*rule;
+                simPreparedFromRule_=true;
+                statusText_=L"Investigator response rule matched";
+            } else {
+                statusText_=L"Matched response rule was blocked by active policy";
+            }
+        }
+
         simReplyPending_=true;
         simBotTyping_=false;
         simInitiativeSent_=false;
