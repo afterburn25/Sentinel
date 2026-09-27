@@ -740,6 +740,7 @@ public:
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
+        LoadOperatingJurisdiction();
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         if(messagingAdapter_) {
             runtime_->channelAdapters.Register(
@@ -747,7 +748,6 @@ public:
             EnsureLocalChannelConversation();
         }
         agencyConfig_.workstationId="local-workstation";
-        LoadOperatingJurisdiction();
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
         personaAdapterRegistry_.Load(runtime_->root/"persona-adapters.tsv");
@@ -3034,6 +3034,7 @@ private:
             "local-operator");
 
         RefreshJurisdictionStatus();
+        EnsureLocalChannelConversation();
         if(!stateProfile) {
             statusText_=L"State selected; no rules profile installed, automation remains review-only";
         } else if(stateProfile->AutomationLegallyActive()) {
