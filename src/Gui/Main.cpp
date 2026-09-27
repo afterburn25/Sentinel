@@ -3640,12 +3640,12 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.7");
+            auto info=service.Check(url,"1.0.16");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
                 statusText_=L"Sentinel update available";
             } else {
-                updateStatus_=L"Current version 1.0.7 is up to date";
+                updateStatus_=L"Current version 1.0.16 is up to date";
                 statusText_=L"No Sentinel update available";
             }
         } catch(const std::exception& e) {
@@ -3684,7 +3684,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Sentinel 1.0.7",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"SARA 1.0.16",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
