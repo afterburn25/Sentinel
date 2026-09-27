@@ -678,7 +678,7 @@ public:
         SendMessageW(hwnd,EM_GETSEL,(WPARAM)&selStart,(LPARAM)&selEnd);
 
         const int textLen=GetWindowTextLengthW(hwnd);
-        int x=8;
+        int x=4;
         int y=7;
 
         if(selEnd < (DWORD)textLen) {
@@ -715,7 +715,7 @@ public:
             }
         }
 
-        SetCaretPos(std::max(8,x),std::max(7,y));
+        SetCaretPos(std::max(4,x),std::max(7,y));
     }
 
     static LRESULT CALLBACK ChatEditSubclassProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR ref) {
@@ -738,6 +738,10 @@ public:
 
         if(msg==WM_KEYDOWN && wp==VK_RETURN) {
             if(app) app->SendSimulationMessage();
+            return 0;
+        }
+
+        if(msg==WM_CHAR && (wp==L'\r' || wp==L'\n')) {
             return 0;
         }
 
@@ -1010,7 +1014,7 @@ public:
         SetWindowTheme(modelNameEdit_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(modelCombo_,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(simScroll_,L"DarkMode_Explorer",nullptr);
-        SendMessageW(chatEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
+        SendMessageW(chatEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(4,8));
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
@@ -1190,7 +1194,7 @@ public:
                 ApplyPageControls();
                 if(page_==Page::Simulation && chatEdit_) {
                     SetFocus(chatEdit_);
-                    SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+                    SendMessageW(chatEdit_,EM_SETSEL,0,0);
                 }
                 InvalidateRect(hwnd_,nullptr,FALSE);
                 return;
@@ -1498,7 +1502,7 @@ public:
         if(!simInitiativeSent_) SetTimer(hwnd_,kSimEngagementTimer,60000,nullptr);
         ScrollSimulationToBottom();
         SetFocus(chatEdit_);
-        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+        SendMessageW(chatEdit_,EM_SETSEL,0,0);
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
@@ -3585,7 +3589,7 @@ private:
             SetWindowTextW(chatEdit_,L"");
             if(page_==Page::Simulation) {
                 SetFocus(chatEdit_);
-                SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+                SendMessageW(chatEdit_,EM_SETSEL,0,0);
             }
         }
         ScrollSimulationToBottom();
@@ -3634,7 +3638,7 @@ private:
             if(chatEdit_) {
                 SetWindowTextW(chatEdit_,L"");
                 SetFocus(chatEdit_);
-                SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+                SendMessageW(chatEdit_,EM_SETSEL,0,0);
             }
             ScrollSimulationToBottom();
             statusText_=L"Previous conversation loaded";
@@ -3731,7 +3735,8 @@ private:
         if(!simPreparedFromRule_)
             statusText_=L"Message delivered";
         SetFocus(chatEdit_);
-        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+        SendMessageW(chatEdit_,EM_SETSEL,0,0);
+        PositionVisibleChatCaret(chatEdit_);
         InvalidateRect(chatEdit_,nullptr,FALSE);
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
