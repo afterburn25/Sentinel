@@ -888,6 +888,7 @@ public:
     App() : runtime_(std::make_unique<Runtime>()) {}
     ~App() {
         if(chatFont_) DeleteObject(chatFont_);
+        if(uiFont_) DeleteObject(uiFont_);
     }
 
     HRESULT Init(HWND hwnd) {
@@ -969,27 +970,49 @@ public:
         personaGrammarCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1036,GetModuleHandleW(nullptr),nullptr);
         personaTypoCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1037,GetModuleHandleW(nullptr),nullptr);
         personaEmojiCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
-        SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+        SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+        uiFont_=CreateFontW(
+            -18,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+            DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
         chatFont_=CreateFontW(
             -21,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
             DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
         SendMessageW(chatEdit_,WM_SETFONT,(WPARAM)(chatFont_?chatFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
         SendMessageW(chatEdit_,EM_SETLIMITTEXT,4000,0);
-        SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
-        SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+        SendMessageW(modelEndpointEdit_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+        SendMessageW(modelNameEdit_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+        SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             responseRuleTriggerEdit_,responseRuleResponseEdit_,
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
         for(HWND e:advancedEdits) {
-            SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+            SendMessageW(e,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
+        HWND centeredEdits[]={
+            caseNumberEdit_,caseTitleEdit_,modelEndpointEdit_,modelNameEdit_,
+            personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
+            personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,
+            responseRuleTriggerEdit_,responseRuleResponseEdit_,
+            trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,
+            trainerDatasetEdit_,trainerOutputEdit_,
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,
+            agencyEndpointEdit_,agencyIdEdit_
+        };
+        for(HWND e:centeredEdits) {
+            if(!e) continue;
+            LONG_PTR style=GetWindowLongPtrW(e,GWL_STYLE);
+            SetWindowLongPtrW(e,GWL_STYLE,style|ES_CENTER);
+            SetWindowPos(e,nullptr,0,0,0,0,
+                SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_FRAMECHANGED);
+        }
+
         SendMessageW(personaBackgroundEdit_,EM_SETLIMITTEXT,16000,0);
         SendMessageW(personaBackgroundEdit_,EM_SETCUEBANNER,TRUE,
             (LPARAM)L"Write the persona's background, home life, family dynamics, routines, school life, habits, memories, likes, dislikes, and ordinary history...");
@@ -998,10 +1021,10 @@ public:
             personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
             personaWritingStyleCombo_,personaProfileCombo_,trainerModeCombo_,trainerFoundationCombo_};
         for(HWND combo:personaCombos) {
-            SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
+            SendMessageW(combo,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
-            SendMessageW(combo,CB_SETITEMHEIGHT,0,24);
-            SendMessageW(combo,CB_SETITEMHEIGHT,(WPARAM)-1,24);
+            SendMessageW(combo,CB_SETITEMHEIGHT,0,28);
+            SendMessageW(combo,CB_SETITEMHEIGHT,(WPARAM)-1,28);
         }
         SendMessageW(caseNumberEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
         SendMessageW(caseTitleEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
@@ -1568,6 +1591,7 @@ private:
     bool responseRuleExactWording_{false};
 
     HFONT chatFont_{};
+    HFONT uiFont_{};
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     ComPtr<IDWriteFactory> writeFactory_;
