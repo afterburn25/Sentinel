@@ -1279,6 +1279,7 @@ public:
             else if (b.id==L"trainer_create_fork") CreateFoundationForkFromTrainer();
             else if (b.id==L"trainer_bind_lora") BindCurrentPersonaLoraFromTrainer();
             else if (b.id==L"trainer_queue") QueueTrainerJobFromControls();
+            else if (b.id==L"trainer_run_latest") RunLatestQueuedTrainerJob();
             else if (b.id==L"trainer_apply_instruction") ApplyTrainerBehaviorInstruction();
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
@@ -2998,6 +2999,41 @@ private:
         } catch(const std::exception& e) {
             statusText_=L"Training job could not be queued: "+Widen(e.what());
         }
+    }
+
+    void RunLatestQueuedTrainerJob() {
+        const auto jobs=runtime_->trainer.ListJobs(20);
+        auto it=std::find_if(jobs.begin(),jobs.end(),[](const auto& job){
+            return job.state=="QUEUED";
+        });
+        if(it==jobs.end()) {
+            statusText_=L"No queued trainer job is waiting to run";
+            return;
+        }
+
+        const auto script=ExeDir()/L"trainer"/L"Run-SARA-Training.ps1";
+        if(!std::filesystem::exists(script)) {
+            statusText_=L"Trainer worker script is missing from this installation";
+            return;
+        }
+
+        const auto dbPath=runtime_->root/"sentinel.db";
+        std::wstring params=
+            L"-NoProfile -ExecutionPolicy Bypass -File \""+script.wstring()+
+            L"\" -Database \""+dbPath.wstring()+
+            L"\" -JobId \""+Widen(it->id)+L"\"";
+
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",L"powershell.exe",params.c_str(),
+            (ExeDir()/L"trainer").c_str(),SW_SHOWNORMAL);
+
+        if(rc<=32) {
+            statusText_=L"Unable to launch SARA Trainer worker";
+            return;
+        }
+
+        statusText_=L"Trainer worker launched for "+Widen(it->id)+
+            L" | progress will update in the Training Job list";
     }
 
     void ApplyTrainerBehaviorInstruction() {
@@ -5063,10 +5099,11 @@ private:
         TextLine(L"Dataset",x+18,y+426,94,24,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Output",x+530,y+426,92,24,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"trainer_queue",L"Queue Selected Mode",x+18,y+484,178,34,true);
+        AddButton(L"trainer_run_latest",L"Run Latest Queued",x+204,y+484,160,34,false);
 
         auto jobs=runtime_->trainer.ListJobs(3);
         float jy=y+484;
-        float jx=x+214;
+        float jx=x+376;
         if(jobs.empty()) {
             TextLine(L"No training jobs queued yet.",jx,jy,contentW-232,34,smallFmt_.Get(),brush_.muted.Get());
         } else {
