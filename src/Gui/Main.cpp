@@ -2355,6 +2355,59 @@ private:
         return value;
     }
 
+    static std::string NormalizeRuleText(std::string_view input) {
+        std::string out;
+        bool pendingSpace=false;
+        for(unsigned char ch:input) {
+            if(std::isalnum(ch)) {
+                if(pendingSpace && !out.empty()) out.push_back(' ');
+                out.push_back((char)std::tolower(ch));
+                pendingSpace=false;
+            } else if(std::isspace(ch)) {
+                pendingSpace=true;
+            } else {
+                // Ignore punctuation entirely so "what's", "whats", and
+                // "what's?" normalize consistently for rule matching.
+            }
+        }
+        return out;
+    }
+
+    struct PersonaResponseRuleView {
+        long long id{};
+        std::string matchType;
+        std::string trigger;
+        std::string response;
+        bool enabled{};
+    };
+
+    std::vector<PersonaResponseRuleView> PersonaResponseRules(size_t limit=8) const {
+        std::vector<PersonaResponseRuleView> out;
+        sqlite3_stmt* s{};
+        const char* sql=
+            "SELECT id,match_type,trigger_text,response_text,enabled "
+            "FROM persona_response_rules WHERE persona_name=? "
+            "ORDER BY priority DESC,id ASC LIMIT ?";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+            return out;
+        sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,50));
+        while(sqlite3_step(s)==SQLITE_ROW) {
+            PersonaResponseRuleView item;
+            item.id=sqlite3_column_int64(s,0);
+            const auto* mt=(const char*)sqlite3_column_text(s,1);
+            const auto* tr=(const char*)sqlite3_column_text(s,2);
+            const auto* rp=(const char*)sqlite3_column_text(s,3);
+            item.matchType=mt?mt:"";
+            item.trigger=tr?tr:"";
+            item.response=rp?rp:"";
+            item.enabled=sqlite3_column_int(s,4)!=0;
+            out.push_back(std::move(item));
+        }
+        sqlite3_finalize(s);
+        return out;
+    }
+
     int PersonaResponseRuleCount() const {
         sqlite3_stmt* s{};
         int count=0;
@@ -2378,16 +2431,16 @@ private:
             return std::nullopt;
 
         sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
-        const auto normalized=LowerAscii(input);
+        const auto normalized=NormalizeRuleText(input);
         std::optional<std::string> found;
         while(sqlite3_step(s)==SQLITE_ROW) {
             const auto* mt=(const char*)sqlite3_column_text(s,0);
             const auto* tr=(const char*)sqlite3_column_text(s,1);
             const auto* rp=(const char*)sqlite3_column_text(s,2);
             if(!mt || !tr || !rp) continue;
-            const auto trigger=LowerAscii(tr);
+            const auto trigger=NormalizeRuleText(tr);
             const std::string type=mt;
-            if((type=="exact" && normalized==trigger) ||
+            if((type=="exact" && !trigger.empty() && normalized==trigger) ||
                (type=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)) {
                 found=std::string(rp);
                 break;
