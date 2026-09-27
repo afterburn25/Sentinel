@@ -2454,6 +2454,22 @@ private:
             : L"Learning mode disabled";
     }
 
+    void RecordLearnedPersonaNote(const std::string& text,const char* sourceKind) {
+        if(!simSettings_.learningMode || text.empty()) return;
+        sqlite3_stmt* s{};
+        const char* sql=
+            "INSERT INTO persona_learned_notes(persona_name,conversation_id,source_kind,note_text) "
+            "VALUES(?,?,?,?)";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)==SQLITE_OK) {
+            sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,2,currentConversationId_.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,3,sourceKind,-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,4,text.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_step(s);
+        }
+        sqlite3_finalize(s);
+    }
+
     std::string BuildPersonaSummary() const {
         const auto& p=simSettings_.persona;
         return p.name+", age "+std::to_string(p.age)+
