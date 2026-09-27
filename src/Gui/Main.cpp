@@ -2454,14 +2454,14 @@ private:
 
     void ResumeOrCreateConversation() {
         try {
-            auto conversations=runtime_->conversationMemory.List(50);
+            auto conversations=runtime_->conversationMemory.ListForPersona(simSettings_.persona.name,50);
             if(conversations.empty()) {
                 sentinel::simulation::ModelContext legacy=simContext_;
                 if(sentinel::simulation::LoadSession(runtime_->root/"simulation-session.tsv",legacy)
                     && !legacy.history.empty()) {
                     const std::string title="Recovered previous conversation";
                     currentConversationId_=runtime_->conversationMemory.StartConversation(
-                        title,legacy.personaSummary,legacy.scenario);
+                        title,simSettings_.persona.name,legacy.personaSummary,legacy.scenario);
                     for(const auto& turn:legacy.history) {
                         runtime_->conversationMemory.Append(currentConversationId_,turn.speaker,turn.text);
                     }
@@ -2514,7 +2514,7 @@ private:
             ? ("Conversation with "+simSettings_.persona.name)
             : simSettings_.scenario.name;
         currentConversationId_=runtime_->conversationMemory.StartConversation(
-            title,simContext_.personaSummary,simContext_.scenario);
+            title,simSettings_.persona.name,simContext_.personaSummary,simContext_.scenario);
         currentConversationTitle_=Widen(title);
         archiveCursor_=0;
 
@@ -2624,7 +2624,7 @@ private:
         auto utf8=Narrow(message);
         if(currentConversationId_.empty()) ResetSimulation();
         simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
-            utf8,currentConversationId_,12);
+            utf8,currentConversationId_,simSettings_.persona.name,12);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
         runtime_->conversationMemory.Append(
             currentConversationId_,
