@@ -3453,6 +3453,15 @@ private:
             lower.find("send me a picture")!=std::string::npos ||
             lower.find("send a photo")!=std::string::npos ||
             lower.find("send me a photo")!=std::string::npos ||
+            lower.find("do you have a pic")!=std::string::npos ||
+            lower.find("do you have any pic")!=std::string::npos ||
+            lower.find("do you have a picture")!=std::string::npos ||
+            lower.find("do you have any picture")!=std::string::npos ||
+            lower.find("do you have a photo")!=std::string::npos ||
+            lower.find("do you have any photo")!=std::string::npos ||
+            lower.find("got any pics")!=std::string::npos ||
+            lower.find("got a pic")!=std::string::npos ||
+            lower.find("got any pictures")!=std::string::npos ||
             lower.find("selfie")!=std::string::npos;
         if(!wantsImage) return false;
 
