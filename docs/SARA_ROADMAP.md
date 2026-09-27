@@ -144,24 +144,24 @@ Last updated: 2026-09-27
 ## 1.0.17 — Dataset & Adapter Management
 
 ### Dataset management
-- [ ] Add snapshot creation timestamp and parent lineage.
-- [ ] Add selectable dataset snapshot browser/details.
-- [ ] Add dataset export.
-- [ ] Add dataset import with duplicate-safe IDs.
-- [ ] Show example count, approval provenance, and lineage.
+- [x] Add snapshot creation timestamp and parent lineage.
+- [x] Add selectable dataset snapshot browser/details.
+- [x] Add dataset export.
+- [x] Add dataset import with duplicate-safe IDs.
+- [x] Show example count, approval provenance, and lineage.
 
 ### Persona adapter management
-- [ ] Add adapter version selection.
-- [ ] Add active-vs-selected adapter comparison.
-- [ ] Show foundation compatibility and lifecycle history.
-- [ ] Add adapter export metadata.
+- [x] Add adapter version selection.
+- [x] Add active-vs-selected adapter comparison.
+- [x] Show foundation compatibility and adapter lifecycle state/history context.
+- [x] Add adapter export metadata.
 
 ### Training run history
-- [ ] Add created/start/completed timestamps to training jobs.
-- [ ] Preserve completed job history.
-- [ ] Show dataset/foundation lineage used by each job.
-- [ ] Add job history/detail inspector.
+- [x] Add created/start/completed timestamps to training jobs.
+- [x] Preserve completed job history.
+- [x] Show dataset/foundation lineage used by each job.
+- [x] Add job history/detail inspector.
 
 ### UI
-- [ ] Keep 1.0.17 inside the approved hybrid Model Lab design.
-- [ ] Preserve no-overlap/minimum-window guarantees.
+- [x] Keep 1.0.17 inside the approved hybrid Model Lab design.
+- [x] Preserve no-overlap/minimum-window guarantees.
