@@ -92,6 +92,15 @@ These line numbers are approximate and will move as the source is refactored.
 
 ## UI direction
 
+The approved 1.0.16 direction is a **hybrid UI** combining the strongest parts of the explored concepts:
+
+- **Executive Dashboard** for the main Model Lab overview and at-a-glance health/status.
+- **Conversational Trainer** for the Train workspace, with a large central chat/correction flow.
+- **Personas & LoRAs Management** patterns for persona tables, adapter assignment, version/status management, and detail inspection.
+- **Training Pipeline / Command Center** patterns for Jobs, Evaluation, Deployment, version history, and rollback.
+
+This is not a single mockup copied verbatim. The production UI should use one coherent visual system while each workspace uses the interaction pattern best suited to its job.
+
 The Trainer redesign should look like a premium, modern desktop application rather than a utility form.
 
 Target characteristics:
@@ -121,3 +130,19 @@ For every meaningful future discussion or implementation change, update the repo
 - migration/compatibility notes when relevant.
 
 A future development session should be able to reconstruct current state from the repository without depending on chat history.
+
+
+## Approved Model Lab information architecture
+
+- **Overview** — executive control center with model/persona context, metrics, recent jobs, evaluation summary, and deployment status.
+- **Train** — conversational trainer first; large chat/correction workspace with review/capture controls.
+- **Datasets** — dataset browser, snapshots, quality, lineage, import/export.
+- **Personas & LoRAs** — persona list/table, adapter versions, foundation assignment, status, quick inspector.
+- **Foundation Forks** — immutable base models plus versioned SARA forks.
+- **Jobs** — active/recent training jobs, progress, resource use, logs.
+- **Evaluation** — candidate comparison, quality metrics, regression results.
+- **Deployment** — approved packages, active version, rollout, rollback, version history.
+
+Shared top context should expose **Foundation / Persona / Assigned LoRA / Training Mode** where relevant.
+
+The selected visual language is dark navy/charcoal with cyan/electric-blue primary accents and restrained purple secondary accents. It should be polished and futuristic without becoming visually noisy.
