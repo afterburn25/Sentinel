@@ -78,16 +78,43 @@ void TestSaraModelLabRegistries()
     assert(!data.Examples()[0].createdUtc.empty());
     data.SetState(0,TrainingExampleState::Approved);
     assert(data.Count(TrainingExampleState::Approved)==1);
-    auto& snapshot=data.CreateSnapshot("dataset-1");
-    assert(snapshot.exampleIds.size()==1);
+    data.CreateSnapshot("dataset-1");
+    assert(data.Snapshots()[0].exampleIds.size()==1);
+    assert(!data.Snapshots()[0].createdUtc.empty());
+    const auto firstSnapshotId=data.Snapshots()[0].id;
+
+    data.CreateSnapshot("dataset-2");
+    assert(data.Snapshots()[1].parentId==firstSnapshotId);
+    assert(!data.Snapshots()[1].createdUtc.empty());
+
+    const auto exchangeRoot=std::filesystem::temp_directory_path()/("sara-dataset-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(exchangeRoot);
+    const auto datasetFile=exchangeRoot/"dataset.sara-dataset";
+    data.ExportSnapshot(1,datasetFile);
+    assert(std::filesystem::exists(datasetFile));
+
+    TrainingDataRegistry importedData;
+    importedData.ImportSnapshot(datasetFile);
+    assert(importedData.Snapshots().size()==1);
+    assert(importedData.Examples().size()==1);
+    assert(importedData.Snapshots()[0].exampleIds.size()==1);
+    importedData.ImportSnapshot(datasetFile);
+    assert(importedData.Snapshots().size()==2);
+    assert(importedData.Examples().size()==2);
+    assert(importedData.Snapshots()[1].id!=importedData.Snapshots()[0].id);
+    assert(importedData.Examples()[1].id!=importedData.Examples()[0].id);
+    std::filesystem::remove_all(exchangeRoot);
 
     TrainingJobRegistry jobs;
-    auto& job=jobs.Create("SARA Foundation 1.0",snapshot.id);
-    assert(job.state=="QUEUED");
+    jobs.Create("SARA Foundation 1.0",firstSnapshotId);
+    assert(jobs.Jobs()[0].state=="QUEUED");
+    assert(!jobs.Jobs()[0].createdUtc.empty());
     jobs.SetState(0,"RUNNING",35);
     assert(jobs.Jobs()[0].progress==35);
+    assert(!jobs.Jobs()[0].startedUtc.empty());
     jobs.SetState(0,"COMPLETED",100);
     assert(jobs.Jobs()[0].state=="COMPLETED");
+    assert(!jobs.Jobs()[0].completedUtc.empty());
 
     TriggerRuleRegistry rules;
     rules.Add("priority-low","hello",{"low"},200,true);
