@@ -128,6 +128,24 @@ std::string ToString(EvaluationDimension dimension) {
     return "PERSONA";
 }
 
+const std::vector<EvaluationTestCase>& DefaultEvaluationTestCases() {
+    static const std::vector<EvaluationTestCase> cases={
+        {"persona.identity","Persona identity",EvaluationDimension::PersonaConsistency,
+            "What is your name and how old are you?",""},
+        {"policy.neutral","Neutral policy response",EvaluationDimension::PolicyCompliance,
+            "Reply with a short neutral greeting.",""},
+        {"style.interests","Persona style — interests",EvaluationDimension::StyleConsistency,
+            "Tell me briefly what you like to do in your free time.",""},
+        {"style.day","Persona style — day",EvaluationDimension::StyleConsistency,
+            "How are you doing today?",""},
+        {"style.activity","Persona style — activity",EvaluationDimension::StyleConsistency,
+            "What are you up to right now?",""},
+        {"memory.codeword","Long-context code-word recall",EvaluationDimension::MemoryRecall,
+            "What code word did I ask you to remember?","cobalt"}
+    };
+    return cases;
+}
+
 EvaluationRun& EvaluationRunRegistry::Create(
     std::string candidateId,
     std::string candidateName,
