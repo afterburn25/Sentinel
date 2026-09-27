@@ -1196,6 +1196,7 @@ public:
             else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
             else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
+            else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
             else if (b.id.rfind(L"rule_delete:",0)==0)
                 DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
@@ -1455,6 +1456,8 @@ private:
     std::string simPendingMessage_;
     std::string simPreparedReply_;
     bool simPreparedFromRule_{false};
+    std::string simRuleMeaning_;
+    std::string simRuleResponseMode_;
     int simLastStartDelayMs_{0};
     int simLastTypingDelayMs_{0};
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
@@ -1474,6 +1477,7 @@ private:
     std::string operatingStateCode_;
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
+    bool responseRuleExactWording_{false};
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -2380,6 +2384,7 @@ private:
         std::string matchType;
         std::string trigger;
         std::string response;
+        std::string responseMode{"persona_variation"};
         bool enabled{};
     };
 
@@ -2387,7 +2392,7 @@ private:
         std::vector<PersonaResponseRuleView> out;
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT id,match_type,trigger_text,response_text,enabled "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled "
             "FROM persona_response_rules WHERE persona_name=? "
             "ORDER BY priority DESC,id ASC LIMIT ?";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
@@ -2403,7 +2408,9 @@ private:
             item.matchType=mt?mt:"";
             item.trigger=tr?tr:"";
             item.response=rp?rp:"";
-            item.enabled=sqlite3_column_int(s,4)!=0;
+            const auto* rm=(const char*)sqlite3_column_text(s,4);
+            item.responseMode=rm?rm:"persona_variation";
+            item.enabled=sqlite3_column_int(s,5)!=0;
             out.push_back(std::move(item));
         }
         sqlite3_finalize(s);
@@ -2423,10 +2430,11 @@ private:
         return count;
     }
 
-    std::optional<std::string> FindPersonaResponseRule(const std::string& input) const {
+    std::optional<PersonaResponseRuleView> FindPersonaResponseRule(const std::string& input) const {
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT match_type,trigger_text,response_text FROM persona_response_rules "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled "
+            "FROM persona_response_rules "
             "WHERE persona_name=? AND enabled=1 "
             "ORDER BY CASE match_type WHEN 'exact' THEN 0 ELSE 1 END, priority DESC, id ASC";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
@@ -2434,20 +2442,29 @@ private:
 
         sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
         const auto normalized=NormalizeRuleText(input);
-        std::optional<std::string> found;
+        std::optional<PersonaResponseRuleView> found;
+
         while(sqlite3_step(s)==SQLITE_ROW) {
-            const auto* mt=(const char*)sqlite3_column_text(s,0);
-            const auto* tr=(const char*)sqlite3_column_text(s,1);
-            const auto* rp=(const char*)sqlite3_column_text(s,2);
-            if(!mt || !tr || !rp) continue;
-            const auto trigger=NormalizeRuleText(tr);
-            const std::string type=mt;
-            if((type=="exact" && !trigger.empty() && normalized==trigger) ||
-               (type=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)) {
-                found=std::string(rp);
+            PersonaResponseRuleView item;
+            item.id=sqlite3_column_int64(s,0);
+            const auto* mt=(const char*)sqlite3_column_text(s,1);
+            const auto* tr=(const char*)sqlite3_column_text(s,2);
+            const auto* rp=(const char*)sqlite3_column_text(s,3);
+            const auto* rm=(const char*)sqlite3_column_text(s,4);
+            item.matchType=mt?mt:"";
+            item.trigger=tr?tr:"";
+            item.response=rp?rp:"";
+            item.responseMode=rm?rm:"persona_variation";
+            item.enabled=sqlite3_column_int(s,5)!=0;
+
+            const auto trigger=NormalizeRuleText(item.trigger);
+            if((item.matchType=="exact" && !trigger.empty() && normalized==trigger) ||
+               (item.matchType=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)) {
+                found=item;
                 break;
             }
         }
+
         sqlite3_finalize(s);
         return found;
     }
@@ -2472,8 +2489,8 @@ private:
         sqlite3_stmt* s{};
         const char* sql=
             "INSERT INTO persona_response_rules("
-            "persona_name,match_type,trigger_text,response_text,enabled,priority"
-            ") VALUES(?,?,?,?,1,100)";
+            "persona_name,match_type,trigger_text,response_text,response_mode,enabled,priority"
+            ") VALUES(?,?,?,?,?,1,100)";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
             statusText_=L"Unable to prepare response rule";
             return;
@@ -2482,6 +2499,8 @@ private:
         sqlite3_bind_text(s,2,matchType.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(s,3,trigger.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(s,4,response.c_str(),-1,SQLITE_TRANSIENT);
+        const std::string responseMode=responseRuleExactWording_?"exact":"persona_variation";
+        sqlite3_bind_text(s,5,responseMode.c_str(),-1,SQLITE_TRANSIENT);
         const int rc=sqlite3_step(s);
         sqlite3_finalize(s);
 
@@ -2494,6 +2513,13 @@ private:
         } else {
             statusText_=L"Response rule could not be saved";
         }
+    }
+
+    void ToggleResponseRuleWordingMode() {
+        responseRuleExactWording_=!responseRuleExactWording_;
+        statusText_=responseRuleExactWording_
+            ? L"Response rule wording set to Exact"
+            : L"Response rule wording set to Persona Variation";
     }
 
     void ClearPersonaResponseRules() {
