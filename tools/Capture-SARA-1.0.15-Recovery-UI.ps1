@@ -292,7 +292,9 @@ try {
     Click-SaraClient -Window $main -X 100 -Y 416
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "05-model-lab.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 460
+    # Once Model Lab is active, its dedicated sidebar begins at y=138.
+    # Train is the second Model Lab row, centered near y=186.
+    Click-SaraClient -Window $main -X 100 -Y 186
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-trainer.png")
 
     @"
