@@ -300,6 +300,10 @@ public:
         personaMoodCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
+        ruleNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1040,GetModuleHandleW(nullptr),nullptr);
+        rulePatternEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
+        ruleResponsesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
+        rulePriorityEdit_=CreateWindowExW(0,L"EDIT",L"100",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1043,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         chatFont_=CreateFontW(
@@ -313,7 +317,8 @@ public:
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
-            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
+            ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -515,6 +520,13 @@ public:
                 modelLabSection_=(ModelLabSection)std::clamp((int)std::stol(b.id.substr(6)),0,7);
                 statusText_=L"Model Lab workspace changed";
             }
+            else if (b.id==L"ml_rules_manage") OpenRuleEditor();
+            else if (b.id==L"ml_rule_cancel") CloseRuleEditor();
+            else if (b.id==L"ml_rule_new") NewTriggerRuleDraft();
+            else if (b.id==L"ml_rule_save") SaveTriggerRuleDraft();
+            else if (b.id==L"ml_rule_delete") DeleteSelectedTriggerRule();
+            else if (b.id==L"ml_rule_terminal") { ruleEditorTerminal_=!ruleEditorTerminal_; statusText_=ruleEditorTerminal_?L"Rule set to stop generation":L"Rule set to continue generation"; }
+            else if (b.id.rfind(L"trigger:",0)==0) SelectTriggerRule((int)std::stol(b.id.substr(8)));
             else if (b.id==L"ml_capture") CaptureLatestTrainingExample();
             else if (b.id==L"ml_approve") ApproveTrainingCapture();
             else if (b.id==L"ml_training_mode") {
@@ -723,6 +735,7 @@ private:
     HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
+    HWND ruleNameEdit_{},rulePatternEdit_{},ruleResponsesEdit_{},rulePriorityEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     ModelLabSection modelLabSection_{ModelLabSection::Overview};
@@ -766,6 +779,9 @@ private:
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
     std::wstring lastTriggerMatch_=L"None";
+    bool ruleEditorOpen_{false};
+    bool ruleEditorTerminal_{true};
+    int selectedTriggerRule_{-1};
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -1471,6 +1487,9 @@ private:
             if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
         }
         ShowPersonaEditors(page_==Page::Persona);
+        const bool showRuleEditor=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train && ruleEditorOpen_;
+        HWND ruleControls[]={ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
+        for(HWND h:ruleControls) if(h) ShowWindow(h,showRuleEditor?SW_SHOW:SW_HIDE);
         const bool showStyleCombos=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas;
         HWND styleCombos[]={personaIntelligenceCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_};
         for(HWND h:styleCombos) if(h) ShowWindow(h,showStyleCombos?SW_SHOW:SW_HIDE);
@@ -1510,16 +1529,26 @@ private:
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train) {
-            const float x=kSidebar+28.0f, y=kHeader+102.0f;
+            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float bodyY=top+116.0f;
             const float contentW=w-x-28.0f;
             const float rightW=340.0f;
             const float gap=12.0f;
             const float leftW=contentW-rightW-gap;
-            const int composerW=std::max(220,(int)(leftW-212));
-            const int composerH=44;
-            MoveControl(chatEdit_,(int)(x+16),(int)(y+430),composerW,composerH,TRUE);
-            RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
-            SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
+            if(ruleEditorOpen_) {
+                if(chatEdit_) ShowWindow(chatEdit_,SW_HIDE);
+                MoveControl(ruleNameEdit_,(int)(x+142),(int)(bodyY+74),(int)(leftW-164),30,TRUE);
+                MoveControl(rulePatternEdit_,(int)(x+142),(int)(bodyY+116),(int)(leftW-164),30,TRUE);
+                MoveControl(ruleResponsesEdit_,(int)(x+142),(int)(bodyY+158),(int)(leftW-164),94,TRUE);
+                MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
+            } else {
+                if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
+                const int composerW=std::max(220,(int)(leftW-212));
+                const int composerH=44;
+                MoveControl(chatEdit_,(int)(x+16),(int)(bodyY+292),composerW,composerH,TRUE);
+                RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
+                SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
+            }
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
@@ -2306,6 +2335,102 @@ private:
         } else statusText_=L"No prior foundation version is available for rollback";
     }
 
+    static std::vector<std::string> SplitRuleResponses(const std::string& text) {
+        std::vector<std::string> out;
+        size_t start=0;
+        while(start<=text.size()) {
+            auto pos=text.find("||",start);
+            auto item=text.substr(start,pos==std::string::npos?std::string::npos:pos-start);
+            while(!item.empty() && (item.front()==' ' || item.front()=='\r' || item.front()=='\n')) item.erase(item.begin());
+            while(!item.empty() && (item.back()==' ' || item.back()=='\r' || item.back()=='\n')) item.pop_back();
+            if(!item.empty()) out.push_back(item);
+            if(pos==std::string::npos) break;
+            start=pos+2;
+        }
+        return out;
+    }
+
+    void LoadTriggerRuleEditor(int index) {
+        if(index<0 || index>=(int)triggerRules_.Rules().size()) return;
+        const auto& rule=triggerRules_.Rules()[(size_t)index];
+        SetWindowTextW(ruleNameEdit_,Widen(rule.name).c_str());
+        SetWindowTextW(rulePatternEdit_,Widen(rule.pattern).c_str());
+        std::string joined;
+        for(size_t i=0;i<rule.responses.size();++i) { if(i) joined+=" || "; joined+=rule.responses[i]; }
+        SetWindowTextW(ruleResponsesEdit_,Widen(joined).c_str());
+        SetWindowTextW(rulePriorityEdit_,std::to_wstring(rule.priority).c_str());
+        ruleEditorTerminal_=rule.terminal;
+    }
+
+    void OpenRuleEditor() {
+        ruleEditorOpen_=true;
+        if(selectedTriggerRule_>=0) LoadTriggerRuleEditor(selectedTriggerRule_);
+        else NewTriggerRuleDraft();
+        ApplyPageControls();
+        statusText_=L"Trigger rule manager opened";
+    }
+
+    void CloseRuleEditor() {
+        ruleEditorOpen_=false;
+        ApplyPageControls();
+        statusText_=L"Trigger rule manager closed";
+    }
+
+    void NewTriggerRuleDraft() {
+        selectedTriggerRule_=-1;
+        SetWindowTextW(ruleNameEdit_,L"");
+        SetWindowTextW(rulePatternEdit_,L"");
+        SetWindowTextW(ruleResponsesEdit_,L"");
+        SetWindowTextW(rulePriorityEdit_,L"100");
+        ruleEditorTerminal_=true;
+        ruleEditorOpen_=true;
+        ApplyPageControls();
+        if(ruleNameEdit_) SetFocus(ruleNameEdit_);
+    }
+
+    void SelectTriggerRule(int index) {
+        if(index<0 || index>=(int)triggerRules_.Rules().size()) return;
+        selectedTriggerRule_=index;
+        ruleEditorOpen_=true;
+        LoadTriggerRuleEditor(index);
+        ApplyPageControls();
+        statusText_=L"Trigger rule selected";
+    }
+
+    void SaveTriggerRuleDraft() {
+        auto name=Narrow(EditText(ruleNameEdit_));
+        auto pattern=Narrow(EditText(rulePatternEdit_));
+        auto responses=SplitRuleResponses(Narrow(EditText(ruleResponsesEdit_)));
+        int priority=100;
+        try { priority=std::stoi(Narrow(EditText(rulePriorityEdit_))); } catch(...) {}
+        priority=std::clamp(priority,0,9999);
+        if(name.empty() || pattern.empty() || responses.empty()) {
+            statusText_=L"Rule name, pattern, and at least one response are required";
+            return;
+        }
+        if(selectedTriggerRule_>=0 && selectedTriggerRule_<(int)triggerRules_.Rules().size()) {
+            auto& rule=triggerRules_.Rules()[(size_t)selectedTriggerRule_];
+            rule.name=name; rule.pattern=pattern; rule.responses=responses; rule.priority=priority; rule.terminal=ruleEditorTerminal_;
+        } else {
+            triggerRules_.Add(name,pattern,responses,priority,ruleEditorTerminal_);
+            selectedTriggerRule_=(int)triggerRules_.Rules().size()-1;
+        }
+        triggerRules_.Save(runtime_->root/"trigger-rules.tsv");
+        statusText_=L"Trigger rule saved and active";
+    }
+
+    void DeleteSelectedTriggerRule() {
+        if(selectedTriggerRule_<0 || selectedTriggerRule_>=(int)triggerRules_.Rules().size()) {
+            statusText_=L"Select a trigger rule first";
+            return;
+        }
+        triggerRules_.Remove((size_t)selectedTriggerRule_);
+        triggerRules_.Save(runtime_->root/"trigger-rules.tsv");
+        selectedTriggerRule_=-1;
+        NewTriggerRuleDraft();
+        statusText_=L"Trigger rule deleted";
+    }
+
     std::wstring TrainingModeName() const {
         switch(trainingMode_) {
             case TrainingMode::BehaviorTuning: return L"Behavior Tuning";
@@ -2579,6 +2704,24 @@ private:
         const float panelH=382.0f;
 
         Rounded(x,y,leftW,panelH,brush_.panel.Get(),brush_.border.Get(),10);
+        if(ruleEditorOpen_) {
+            TextLine(L"Trigger Rule Manager",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Rules execute before normal generation. Terminal rules stop generic fall-through.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_new",L"New Rule",x+leftW-274,y+14,78,28,false);
+            AddButton(L"ml_rule_cancel",L"Back to Trainer",x+leftW-186,y+14,168,28,false);
+
+            TextLine(L"Name",x+20,y+74,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Match pattern",x+20,y+116,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Responses",x+20,y+158,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Use || between alternate responses",x+20,y+184,108,58,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Priority",x+20,y+264,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_terminal",ruleEditorTerminal_?L"Terminal: YES":L"Terminal: NO",x+270,y+264,116,30,false);
+            AddButton(L"ml_rule_save",L"Save Rule",x+20,y+318,110,34,true);
+            AddButton(L"ml_rule_delete",L"Delete",x+142,y+318,90,34,false);
+
+            float listY=y+74;
+            const float listX=x+leftW+12;
+        } else {
         TextLine(L"Conversational Trainer",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Talk to SARA, correct behavior, and capture reviewed training examples.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
         Badge(L"LIVE",x+leftW-76,y+14,brush_.green.Get(),58);
@@ -2617,6 +2760,7 @@ private:
         AddButton(L"ml_approve",L"Approve Latest",x+178,y+344,118,28,false);
         TextLine(L"Nothing silently changes production weights.",x+310,y+344,leftW-328,28,tinyFmt_.Get(),brush_.muted.Get());
 
+        }
         const float rx=x+leftW+gap;
         Rounded(rx,y,rightW,184,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Review Queue",rx+16,y+10,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
@@ -2634,7 +2778,8 @@ private:
         TextLine(assignedPersonaLoRA_,rx+18,y+258,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(rx,y+296,rightW,86,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Trigger Rules",rx+16,y+304,rightW-32,24,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Trigger Rules",rx+16,y+304,rightW-132,24,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_rules_manage",L"Manage",rx+rightW-104,y+304,86,24,false);
         TextLine(L"Last match: "+lastTriggerMatch_,rx+16,y+330,rightW-32,18,tinyFmt_.Get(),brush_.cyan.Get());
         float ry=y+350;
         int rshown=0;
@@ -2643,6 +2788,7 @@ private:
             TextLine(Widen(rule.name)+L"  ["+Widen(rule.pattern)+L"]",rx+18,ry,rightW-112,16,tinyFmt_.Get(),brush_.text.Get());
             TextLine(std::to_wstring(rule.priority)+(rule.terminal?L" • stop":L" • continue"),rx+rightW-98,ry,80,16,tinyFmt_.Get(),
                 rule.terminal?brush_.yellow.Get():brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{rx+16,ry,rx+rightW-16,ry+16},L"trigger:"+std::to_wstring(i)});
             ry+=16;
         }
         if(triggerRules_.Rules().empty()) {
