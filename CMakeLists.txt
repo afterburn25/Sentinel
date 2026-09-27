@@ -77,7 +77,7 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         winhttp
         comctl32
     )
-    target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE)
+    target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE SARA_VERSION_STR="${PROJECT_VERSION}")
     set_target_properties(Sentinel PROPERTIES OUTPUT_NAME "SARA")
 endif()
 
