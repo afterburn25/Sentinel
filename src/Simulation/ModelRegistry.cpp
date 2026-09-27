@@ -25,6 +25,52 @@ std::string ToString(FoundationStage stage) {
     return "CANDIDATE";
 }
 
+TrainingJob& TrainingJobRegistry::Create(std::string baseModel,std::string dataset) {
+    TrainingJob job;
+    job.id="job-"+std::to_string(jobs_.size()+1);
+    job.baseModel=std::move(baseModel);
+    job.dataset=std::move(dataset);
+    job.state="QUEUED";
+    job.progress=0;
+    jobs_.push_back(std::move(job));
+    return jobs_.back();
+}
+
+void TrainingJobRegistry::SetState(size_t index,std::string state,int progress) {
+    if(index>=jobs_.size()) return;
+    jobs_[index].state=std::move(state);
+    jobs_[index].progress=std::clamp(progress,0,100);
+}
+
+std::vector<TrainingJob>& TrainingJobRegistry::Jobs(){ return jobs_; }
+const std::vector<TrainingJob>& TrainingJobRegistry::Jobs() const{ return jobs_; }
+
+void TrainingJobRegistry::Save(const std::filesystem::path& path) const {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path,std::ios::trunc);
+    for(const auto& j:jobs_)
+        out<<j.id<<"\t"<<j.baseModel<<"\t"<<j.dataset<<"\t"<<j.state<<"\t"<<j.progress<<"\n";
+}
+
+void TrainingJobRegistry::Load(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    if(!in) return;
+    jobs_.clear();
+    std::string line;
+    while(std::getline(in,line)) {
+        std::vector<std::string> p; size_t start=0;
+        for(;;) {
+            auto pos=line.find('\t',start);
+            if(pos==std::string::npos) { p.push_back(line.substr(start)); break; }
+            p.push_back(line.substr(start,pos-start)); start=pos+1;
+        }
+        if(p.size()!=5) continue;
+        try {
+            jobs_.push_back({p[0],p[1],p[2],p[3],std::clamp(std::stoi(p[4]),0,100)});
+        } catch(...) {}
+    }
+}
+
 FoundationModel& FoundationRegistry::EnsureBase(std::string name,std::string version) {
     for(auto& m:models_) if(m.immutableBase && m.name==name && m.version==version) return m;
     FoundationModel m;
