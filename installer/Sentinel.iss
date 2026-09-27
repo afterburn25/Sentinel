@@ -513,20 +513,49 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurPageID = wpReady then
+  if IsUpgrade then
   begin
-    if IsUpgrade then
+    WizardForm.Caption := 'SARA Upgrade';
+
+    if CurPageID = wpWelcome then
     begin
-      WizardForm.NextButton.Caption := '&Upgrade';
-      WizardForm.ReadyLabel.Caption :=
-        'Setup is ready to upgrade the existing SARA installation.';
+      WizardForm.PageNameLabel.Caption := 'SARA Upgrade';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'A previous SARA/Sentinel installation was detected.';
     end
-    else
+    else if CurPageID = wpSelectDir then
     begin
-      WizardForm.NextButton.Caption := '&Install';
+      WizardForm.PageNameLabel.Caption := 'Confirm Upgrade Location';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'SARA will be upgraded in the existing installation folder.';
+    end
+    else if CurPageID = wpReady then
+    begin
+      WizardForm.PageNameLabel.Caption := 'Ready to Upgrade';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'Setup is ready to upgrade your existing SARA installation.';
       WizardForm.ReadyLabel.Caption :=
-        'Setup is ready to install SARA on this computer.';
+        'Click Upgrade to update SARA while preserving your existing data and valid local AI model.';
+      WizardForm.NextButton.Caption := '&Upgrade';
+    end
+    else if CurPageID = wpInstalling then
+    begin
+      WizardForm.PageNameLabel.Caption := 'Upgrading SARA';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'Please wait while Setup upgrades SARA on your computer.';
+    end
+    else if CurPageID = wpFinished then
+    begin
+      WizardForm.PageNameLabel.Caption := 'SARA Upgrade Complete';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'The existing SARA installation has been upgraded.';
     end;
+  end
+  else if CurPageID = wpReady then
+  begin
+    WizardForm.NextButton.Caption := '&Install';
+    WizardForm.ReadyLabel.Caption :=
+      'Setup is ready to install SARA on this computer.';
   end;
 end;
 
