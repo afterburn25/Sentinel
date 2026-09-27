@@ -51,3 +51,57 @@ PolicyDecision EvaluateSimulationPolicy(AgeKnowledgeState state,const std::strin
     return d;
 }
 }
+
+std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::string text,size_t variationSeed) {
+    auto level=Lower(persona.slangLevel);
+    auto grammar=Lower(persona.grammarQuality);
+    auto typos=Lower(persona.typoTendency);
+    auto emoji=Lower(persona.emojiTendency);
+    auto mood=Lower(persona.mood);
+    auto intelligence=Lower(persona.intelligenceLevel);
+
+    if(level=="high" || level=="very high") {
+        if(variationSeed%3==0 && text.find("really")!=std::string::npos) {
+            auto pos=text.find("really");
+            text.replace(pos,6,"fr");
+        }
+        if(variationSeed%4==1 && text.find("Okay")!=std::string::npos) text.replace(text.find("Okay"),4,"Yeah");
+    }
+
+    if(intelligence=="simple" || intelligence=="low") {
+        if(text.size()>140) {
+            auto p=text.find('.',80);
+            if(p!=std::string::npos) text=text.substr(0,p+1);
+        }
+    } else if(intelligence=="high" || intelligence=="very high") {
+        if(text.find("I don't know")!=std::string::npos && variationSeed%2==0)
+            text.replace(text.find("I don't know"),12,"I'm not entirely sure");
+    }
+
+    if(grammar=="casual" || grammar=="loose") {
+        if(!text.empty() && variationSeed%3==1) text[0]=(char)std::tolower((unsigned char)text[0]);
+        if(variationSeed%4==0) {
+            auto p=text.find("I'm");
+            if(p!=std::string::npos) text.replace(p,3,"im");
+        }
+    }
+
+    if((typos=="medium" || typos=="high") && text.size()>18) {
+        size_t p=8+(variationSeed%(text.size()-8));
+        if(p<text.size()-1 && std::isalpha((unsigned char)text[p]) && std::isalpha((unsigned char)text[p+1]) && variationSeed%3==0)
+            std::swap(text[p],text[p+1]);
+    }
+
+    if(mood=="playful" && variationSeed%3==0) text+=" lol";
+    else if(mood=="warm" && variationSeed%4==0) text+=" :)";
+    else if(mood=="guarded" && text.size()>90) {
+        auto p=text.find('.');
+        if(p!=std::string::npos) text=text.substr(0,p+1);
+    }
+
+    if((emoji=="medium" && variationSeed%5==0) || (emoji=="high" && variationSeed%2==0) || emoji=="very high") {
+        static const char* marks[]={" 🙂"," 😅"," 👀"," 😂"," 🤷"};
+        text+=marks[variationSeed%5];
+    }
+    return text;
+}
