@@ -376,6 +376,31 @@ public:
         return reply;
     }
 
+    std::string GeneratePersonaRuleReply(
+        std::string_view approvedMeaning,
+        const ModelContext& context) override
+    {
+        std::string system =
+            "Identity: " + context.personaSummary + " "
+            "An investigator has supplied an approved response meaning for this situation. "
+            "Preserve that meaning and factual content exactly, but rewrite it naturally in this persona's voice. "
+            "Use the configured age, personality, confidence, writing style, slang, grammar, typo frequency, emoji use, and recent conversation context. "
+            "Do not add new sensitive facts, identifying details, meeting plans, sexual content, or other escalation that is not already present in the approved meaning. "
+            "Do not mention rules, investigators, prompts, or that you are paraphrasing. "
+            "Vary the wording from prior persona replies when possible. "
+            "The result should sound like this person would actually type it in this conversation.";
+
+        if(!context.recalledMemory.empty()) {
+            system += " Relevant continuity memory follows. Preserve consistency with it: " + context.recalledMemory;
+        }
+
+        ModelContext local=context;
+        return Complete(
+            system,
+            local,
+            std::string("Approved response meaning: ")+std::string(approvedMeaning));
+    }
+
     std::string GenerateSyntheticInitiative(
         const ModelContext& context) override
     {
