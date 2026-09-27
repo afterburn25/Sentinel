@@ -29,7 +29,7 @@ Last updated: 2026-09-27
 - [x] Add versioned foundation-model fork registry.
 - [x] Track foundation parent/version lineage.
 - [x] Add foundation rollback; side-by-side comparison UI still pending.
-- [ ] Preserve immutable original base models.
+- [x] Preserve immutable original base models.
 - [x] Add persistent persona adapter registry.
 - [x] Preserve adapter-to-foundation compatibility/version metadata.
 - [x] Add adapter training/staging/active/archived states and rollback.
@@ -43,22 +43,22 @@ Last updated: 2026-09-27
 - [x] Capture training-session corrections without mutating production weights.
 - [x] Capture user input + original model response + correction/target as a persistent training candidate.
 - [x] Preserve core correction provenance: input, original response, correction/target, persona, foundation, adapter, source conversation, and review state. Timestamp/reviewer fields remain follow-up work.
-- [ ] Add correction categories and metadata.
+- [x] Add correction categories plus timestamp/reviewer metadata with backward-compatible persistence.
 - [x] Add review queue (initial in-memory capture/review counters; persistence pending).
-- [ ] Approve/reject/edit training candidates.
+- [x] Approve, reject, and edit training candidates in the Datasets review inspector.
 - [x] Promote approved examples into persistent versioned dataset snapshots.
 - [x] Track source conversation/persona/foundation/adapter provenance for training records; reviewer/timestamp enrichment remains follow-up work.
 
 ### Training workflow
-- [ ] Captured
-- [ ] Review
-- [ ] Approved
-- [ ] Dataset
+- [x] Captured
+- [x] Review
+- [x] Approved
+- [x] Dataset
 - [x] Training Job (persistent job records and Jobs workspace implemented; external trainer handoff pending)
-- [ ] Candidate
-- [ ] Evaluation
-- [ ] Deployment
-- [ ] Rollback
+- [x] Candidate model registry/evaluation state
+- [x] Evaluation
+- [x] Deployment
+- [x] Rollback
 
 ### Persona runtime
 - [x] Foundation model resolution.
@@ -85,17 +85,17 @@ Last updated: 2026-09-27
 - [x] Generate deterministic phrasing variation from response pools and persona style.
 - [x] Add reusable trigger phrasing pools; broader runtime randomness controls remain available through model temperature/config.
 - [x] Condition output on configured persona behavior/style context.
-- [ ] Condition variation on age-appropriate writing style.
+- [x] Condition writing variation on age as a light style influence while explicit persona settings remain authoritative.
 - [x] Condition response variation on intelligence/language level.
 - [x] Support slang, grammar quality, typo tendency, emoji tendency, and mood when configured.
 - [x] Incorporate persisted conversation memory and recent history into response generation.
 
 ### Logging / diagnostics
-- [ ] Keep persona message logs.
-- [ ] Log rule/trigger matches.
+- [x] Keep persona conversation history in persistent conversation memory and include recent turns in diagnostics export.
+- [x] Persist trigger matches to trigger-matches.tsv with conversation/persona/rule/input/response details.
 - [x] Persist model/foundation/adapter registries and include resolved identities in runtime requests.
 - [x] Persist captured training corrections and approval state; reviewer identity/timestamps remain follow-up work.
-- [ ] Add diagnostics export suitable for debugging persona behavior.
+- [x] Add Model Lab diagnostics export with runtime stack, persona style, rules, datasets, jobs, evaluation, recent conversation, and training examples.
 
 ## Follow-on milestones
 
