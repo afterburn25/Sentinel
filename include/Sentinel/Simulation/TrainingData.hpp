@@ -18,6 +18,9 @@ struct TrainingExample {
     std::string originalResponse;
     std::string correction;
     std::string targetResponse;
+    std::string category{"Behavior"};
+    std::string createdUtc;
+    std::string reviewer;
     TrainingExampleState state{TrainingExampleState::Captured};
 };
 
@@ -31,7 +34,8 @@ class TrainingDataRegistry {
 public:
     TrainingExample& Capture(
         std::string persona,std::string foundationId,std::string adapterId,std::string sourceConversationId,
-        std::string input,std::string originalResponse,std::string correction,std::string targetResponse);
+        std::string input,std::string originalResponse,std::string correction,std::string targetResponse,
+        std::string category="Behavior");
     void SetState(size_t index,TrainingExampleState state);
     DatasetSnapshot& CreateSnapshot(std::string name);
     std::vector<TrainingExample>& Examples();
