@@ -2336,6 +2336,54 @@ private:
         return value;
     }
 
+    static std::string LowerAscii(std::string value) {
+        std::transform(value.begin(),value.end(),value.begin(),
+            [](unsigned char ch){ return (char)std::tolower(ch); });
+        return value;
+    }
+
+    int PersonaResponseRuleCount() const {
+        sqlite3_stmt* s{};
+        int count=0;
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),
+            "SELECT COUNT(*) FROM persona_response_rules WHERE persona_name=? AND enabled=1",
+            -1,&s,nullptr)==SQLITE_OK) {
+            sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            if(sqlite3_step(s)==SQLITE_ROW) count=sqlite3_column_int(s,0);
+        }
+        sqlite3_finalize(s);
+        return count;
+    }
+
+    std::optional<std::string> FindPersonaResponseRule(const std::string& input) const {
+        sqlite3_stmt* s{};
+        const char* sql=
+            "SELECT match_type,trigger_text,response_text FROM persona_response_rules "
+            "WHERE persona_name=? AND enabled=1 "
+            "ORDER BY CASE match_type WHEN 'exact' THEN 0 ELSE 1 END, priority DESC, id ASC";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+            return std::nullopt;
+
+        sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        const auto normalized=LowerAscii(input);
+        std::optional<std::string> found;
+        while(sqlite3_step(s)==SQLITE_ROW) {
+            const auto* mt=(const char*)sqlite3_column_text(s,0);
+            const auto* tr=(const char*)sqlite3_column_text(s,1);
+            const auto* rp=(const char*)sqlite3_column_text(s,2);
+            if(!mt || !tr || !rp) continue;
+            const auto trigger=LowerAscii(tr);
+            const std::string type=mt;
+            if((type=="exact" && normalized==trigger) ||
+               (type=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)) {
+                found=std::string(rp);
+                break;
+            }
+        }
+        sqlite3_finalize(s);
+        return found;
+    }
+
     std::string BuildPersonaSummary() const {
         const auto& p=simSettings_.persona;
         return p.name+", age "+std::to_string(p.age)+
