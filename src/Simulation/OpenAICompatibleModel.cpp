@@ -388,6 +388,8 @@ public:
             "Do not add new sensitive facts, identifying details, meeting plans, sexual content, or other escalation that is not already present in the approved meaning. "
             "Do not mention rules, investigators, prompts, or that you are paraphrasing. "
             "Vary the wording from prior persona replies when possible. "
+            "Use conversation variation style " + std::to_string(context.variationSeed%7) +
+            " as a silent phrasing cue so the same approved meaning can sound different in different conversations. "
             "The result should sound like this person would actually type it in this conversation.";
 
         if(!context.recalledMemory.empty()) {
