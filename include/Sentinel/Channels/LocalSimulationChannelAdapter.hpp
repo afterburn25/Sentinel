@@ -7,8 +7,8 @@ namespace sentinel::channels {
 
 class LocalSimulationChannelAdapter final : public IChannelAdapter {
 public:
-    explicit LocalSimulationChannelAdapter(std::unique_ptr<operations::IMessageAdapter> legacy)
-        : legacy_(std::move(legacy)) {}
+    explicit LocalSimulationChannelAdapter(operations::IMessageAdapter& legacy)
+        : legacy_(&legacy) {}
 
     std::string AdapterName() const override { return "SARA Local Simulation"; }
     ChannelType Type() const override { return ChannelType::LocalSimulation; }
@@ -21,7 +21,7 @@ public:
     bool SetTyping(std::string_view,bool) override { return false; }
 
 private:
-    std::unique_ptr<operations::IMessageAdapter> legacy_;
+    operations::IMessageAdapter* legacy_{};
 };
 
 }
