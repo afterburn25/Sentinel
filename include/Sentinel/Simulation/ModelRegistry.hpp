@@ -1,4 +1,6 @@
 #pragma once
+#include <string_view>
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
