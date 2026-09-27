@@ -10,6 +10,7 @@
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
+#include "Sentinel/Simulation/PersonaProfileStore.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
@@ -250,6 +251,70 @@ void TestSaraEvaluationSuite()
     std::filesystem::remove_all(root);
 }
 
+
+void TestReusablePersonaProfiles()
+{
+    using namespace sentinel::simulation;
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-personas-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"persona-test.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    PersonaProfileStore store(db);
+    PersonaProfile samantha;
+    samantha.name="Samantha";
+    samantha.age=24;
+    samantha.location="Lafayette";
+    samantha.personality="Playful";
+    samantha.intelligenceLevel="High";
+    samantha.slangLevel="Medium";
+    samantha.grammarQuality="Natural";
+    samantha.typoTendency="Low";
+    samantha.emojiTendency="High";
+    samantha.mood="Warm";
+    samantha.lockedFacts={"likes music","prefers short messages"};
+
+    store.Save(samantha,1400,5200);
+    assert(store.Count()==1);
+
+    auto loaded=store.Load("Samantha");
+    assert(loaded.has_value());
+    assert(loaded->profile.name=="Samantha");
+    assert(loaded->profile.location=="Lafayette");
+    assert(loaded->profile.lockedFacts.size()==2);
+    assert(loaded->minDelayMs==1400);
+    assert(loaded->maxDelayMs==5200);
+
+    PersonaProfile nikki=samantha;
+    nikki.name="Nikki";
+    nikki.personality="Confident";
+    store.Save(nikki,2200,6400);
+    assert(store.Count()==2);
+
+    auto profiles=store.List();
+    assert(profiles.size()==2);
+    assert(std::any_of(profiles.begin(),profiles.end(),[](const auto& item){return item.profile.name=="Samantha";}));
+    assert(std::any_of(profiles.begin(),profiles.end(),[](const auto& item){return item.profile.name=="Nikki";}));
+
+    samantha.mood="Guarded";
+    store.Save(samantha,1800,5600);
+    loaded=store.Load("Samantha");
+    assert(loaded.has_value());
+    assert(loaded->profile.mood=="Guarded");
+    assert(loaded->minDelayMs==1800);
+
+    assert(store.Delete("Nikki"));
+    assert(store.Count()==1);
+    assert(!store.Load("Nikki").has_value());
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -374,6 +439,7 @@ int main()
     TestIdsAndHashes();
     TestSaraModelLabRegistries();
     TestSaraEvaluationSuite();
+    TestReusablePersonaProfiles();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
