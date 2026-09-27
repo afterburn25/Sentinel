@@ -1089,7 +1089,7 @@ public:
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
         };
         SendMessageW(personaAgeCombo_,CB_RESETCONTENT,0,0);
-        for(int age=13;age<=90;++age) {
+        for(int age=8;age<=17;++age) {
             auto label=std::to_wstring(age);
             SendMessageW(personaAgeCombo_,CB_ADDSTRING,0,(LPARAM)label.c_str());
         }
@@ -2813,7 +2813,7 @@ private:
         const auto background=Narrow(EditText(personaBackgroundEdit_));
         if(background.empty()) { statusText_=L"Enter a persona background first"; return; }
         int ageSel=(int)SendMessageW(personaAgeCombo_,CB_GETCURSEL,0,0);
-        const int age=(ageSel==CB_ERR)?simSettings_.persona.age:(13+ageSel);
+        const int age=(ageSel==CB_ERR)?simSettings_.persona.age:(8+ageSel);
         try {
             sentinel::simulation::ModelContext ctx=simContext_;
             ctx.personaSummary=BuildPersonaSummary();
@@ -2850,7 +2850,7 @@ private:
 
     void LoadProfileEditors() {
         SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
-        SendMessageW(personaAgeCombo_,CB_SETCURSEL,(WPARAM)std::clamp(simSettings_.persona.age-13,0,77),0);
+        SendMessageW(personaAgeCombo_,CB_SETCURSEL,(WPARAM)std::clamp(simSettings_.persona.age-8,0,9),0);
         SetWindowTextW(personaLocationEdit_,Widen(simSettings_.persona.location).c_str());
         SetWindowTextW(personaOccupationEdit_,Widen(simSettings_.persona.occupation).c_str());
         SetWindowTextW(personaEducationEdit_,Widen(simSettings_.persona.education).c_str());
@@ -2908,13 +2908,25 @@ private:
             // These are age-sensitive derived defaults for now; later they can
             // be exposed as advanced controls without changing the profile format.
             const int age=simSettings_.persona.age;
-            simSettings_.persona.vocabularyLevel =
-                simSettings_.persona.communicationLevel=="Advanced" ? "Advanced" :
-                simSettings_.persona.communicationLevel=="Simple" ? "Simple" :
-                (age<=17 ? "Teen age-appropriate" : "Age-appropriate");
+            if(age<=10) {
+                simSettings_.persona.vocabularyLevel="Child 8-10";
+                simSettings_.persona.messageLength="Usually short";
+            } else if(age<=13) {
+                simSettings_.persona.vocabularyLevel="Preteen 11-13";
+                simSettings_.persona.messageLength="Short to medium";
+            } else if(age<=15) {
+                simSettings_.persona.vocabularyLevel="Young teen 14-15";
+                simSettings_.persona.messageLength="Varied short to medium";
+            } else {
+                simSettings_.persona.vocabularyLevel="Older teen 16-17";
+                simSettings_.persona.messageLength="Varied short to medium";
+            }
+            if(simSettings_.persona.communicationLevel=="Simple")
+                simSettings_.persona.vocabularyLevel+=" / simple";
+            else if(simSettings_.persona.communicationLevel=="Advanced")
+                simSettings_.persona.vocabularyLevel+=" / advanced-for-age";
             simSettings_.persona.capitalizationStyle =
                 simSettings_.persona.grammarQuality=="Careful" ? "Standard" : "Casual";
-            simSettings_.persona.messageLength = age<=17 ? "Varied short to medium" : "Short to medium";
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
