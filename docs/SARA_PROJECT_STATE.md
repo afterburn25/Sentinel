@@ -12,7 +12,7 @@ The repository was originally named Sentinel and still uses Sentinel in many sou
 
 - GitHub: `afterburn25/Sentinel`
 - Default branch: `main`
-- Active development branch: `sara-1.0.18-evaluation-suite`
+- Active development branch: `sara-1.0.18.3-channel-core-reconciled`
 - Desktop implementation: native Windows C++20
 - Build system: CMake + vcpkg
 - Main GUI implementation currently lives in `src/Gui/Main.cpp`
@@ -369,3 +369,31 @@ Implemented:
 - The Personas & LoRAs workspace shows profile count, active/saved state, linked LoRA, base model, and the current persona's LoRA versions.
 - Persona profile persistence has unit coverage for create/load/list/update/delete, locked facts, and delay settings.
 - The SARA 1.0.15 visual baseline and actual-build screenshot requirement remain unchanged.
+
+
+## SARA 1.0.18.3 reconciled channel-core integration
+
+Active branch: `sara-1.0.18.3-channel-core-reconciled`
+
+This branch is the clean continuation of the restored visual/reusable-persona line. It starts from the latest `sara-1.0.18.2-persona-profiles` head and reconciles the validated channel/jurisdiction implementation with the separate persona-memory-scope work.
+
+Integrated:
+- approved SARA 1.0.15 visual baseline and hybrid Model Lab shell
+- reusable SQLite persona profiles and automatic assigned-LoRA resolution
+- persona-scoped conversation listing, resume, and relevant-memory recall so memories cannot bleed across persona profiles
+- provider-neutral channel account/conversation/event/message/attachment storage
+- SARA local simulation channel adapter and operator-approved media bridge
+- automation decision gates with human review for identity linking, channel migration, meetings, money/payment, media, and sensitive actions
+- jurisdiction profile storage, operation selection, and review-only fallback when profiles are missing, draft, unreviewed, or expired
+- release-safe regression tests for both channel gates and persona-memory isolation
+- package/runtime/installer identity updated to SARA 1.0.18.3
+
+Migration order is intentionally reconciled as:
+1. `0013_conversation_persona_scope.sql`
+2. `0014_unified_channel_core.sql`
+3. `0015_jurisdiction_rules.sql`
+
+Branch-lineage note:
+- `sara-1.0.18.3-persona-memory-scope` and `sara-1.0.18.4-channel-core` were parallel intermediate experiments.
+- PR #8 / `sara-1.0.18.3-channel-core` supplied the validated channel/jurisdiction implementation but was created before the 1.0.18.2 persona branch received its final release/documentation commits.
+- `sara-1.0.18.3-channel-core-reconciled` supersedes those divergent integration attempts as the current combined development line.
