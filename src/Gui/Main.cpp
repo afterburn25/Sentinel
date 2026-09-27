@@ -3657,6 +3657,138 @@ private:
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
+
+    void OpenEmojiPicker() {
+        if(!chatEdit_) return;
+        SetFocus(chatEdit_);
+
+        INPUT inputs[4]{};
+        inputs[0].type=INPUT_KEYBOARD;
+        inputs[0].ki.wVk=VK_LWIN;
+        inputs[1].type=INPUT_KEYBOARD;
+        inputs[1].ki.wVk=VK_OEM_PERIOD;
+        inputs[2].type=INPUT_KEYBOARD;
+        inputs[2].ki.wVk=VK_OEM_PERIOD;
+        inputs[2].ki.dwFlags=KEYEVENTF_KEYUP;
+        inputs[3].type=INPUT_KEYBOARD;
+        inputs[3].ki.wVk=VK_LWIN;
+        inputs[3].ki.dwFlags=KEYEVENTF_KEYUP;
+        SendInput(4,inputs,sizeof(INPUT));
+        statusText_=L"Emoji picker opened";
+    }
+
+    static std::string ImageMarker(long long id) {
+        return "[[IMAGE:"+std::to_string(id)+"]]";
+    }
+
+    static std::optional<long long> ParseImageMarker(const std::string& text) {
+        if(text.rfind("[[IMAGE:",0)!=0 || text.size()<11) return std::nullopt;
+        auto end=text.find("]]",8);
+        if(end==std::string::npos) return std::nullopt;
+        try { return std::stoll(text.substr(8,end-8)); }
+        catch(...) { return std::nullopt; }
+    }
+
+    struct ConversationImageView {
+        long long id{};
+        std::filesystem::path path;
+        std::string originalName;
+        std::string caption;
+    };
+
+    std::optional<ConversationImageView> GetConversationImage(long long id) const {
+        sqlite3_stmt* s{};
+        const char* sql=
+            "SELECT id,stored_path,original_name,caption FROM conversation_media "
+            "WHERE id=? AND conversation_id=? LIMIT 1";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+            return std::nullopt;
+        sqlite3_bind_int64(s,1,id);
+        sqlite3_bind_text(s,2,currentConversationId_.c_str(),-1,SQLITE_TRANSIENT);
+        std::optional<ConversationImageView> out;
+        if(sqlite3_step(s)==SQLITE_ROW) {
+            ConversationImageView v;
+            v.id=sqlite3_column_int64(s,0);
+            auto col=[&](int i)->std::string{
+                const auto* p=(const char*)sqlite3_column_text(s,i);
+                return p?p:"";
+            };
+            v.path=std::filesystem::path(Widen(col(1)));
+            v.originalName=col(2);
+            v.caption=col(3);
+            out=v;
+        }
+        sqlite3_finalize(s);
+        return out;
+    }
+
+    long long StoreConversationImage(
+        sentinel::simulation::ChatTurn::Speaker speaker,
+        const std::filesystem::path& source,
+        std::string_view caption)
+    {
+        if(currentConversationId_.empty()) ResetSimulation();
+        if(!std::filesystem::exists(source)) return 0;
+
+        auto ext=source.extension().wstring();
+        auto hash=runtime_->hash.Sha256File(source).ToHex();
+        auto mediaDir=runtime_->root/"conversation-media";
+        std::filesystem::create_directories(mediaDir);
+        auto stored=mediaDir/(Widen(hash.substr(0,20))+ext);
+        if(!std::filesystem::exists(stored))
+            std::filesystem::copy_file(source,stored,std::filesystem::copy_options::overwrite_existing);
+
+        sqlite3_stmt* s{};
+        const char* sql=
+            "INSERT INTO conversation_media("
+            "conversation_id,speaker,stored_path,original_name,sha256,caption"
+            ") VALUES(?,?,?,?,?,?)";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+            throw std::runtime_error("could not prepare conversation image insert");
+
+        const auto storedUtf8=Narrow(stored.wstring());
+        const auto original=Narrow(source.filename().wstring());
+        sqlite3_bind_text(s,1,currentConversationId_.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,2,(int)speaker);
+        sqlite3_bind_text(s,3,storedUtf8.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,4,original.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,5,hash.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,6,std::string(caption).c_str(),-1,SQLITE_TRANSIENT);
+        if(sqlite3_step(s)!=SQLITE_DONE) {
+            sqlite3_finalize(s);
+            throw std::runtime_error("could not save conversation image");
+        }
+        const auto id=sqlite3_last_insert_rowid(runtime_->db.Handle());
+        sqlite3_finalize(s);
+
+        const auto marker=ImageMarker(id);
+        simContext_.history.push_back({speaker,marker});
+        runtime_->conversationMemory.Append(currentConversationId_,speaker,marker);
+        sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
+        ScrollSimulationToBottom();
+        return id;
+    }
+
+    void AttachImageToConversation() {
+        auto file=PickPersonaMediaFile();
+        if(!file) return;
+        if(!IsAllowedPersonaMediaExtension(*file)) {
+            MessageBoxW(hwnd_,L"Choose a JPG, JPEG, PNG, WEBP, or BMP image.",
+                L"Attach Image",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        try {
+            StoreConversationImage(
+                sentinel::simulation::ChatTurn::Speaker::Investigator,
+                *file,
+                "Image attachment");
+            statusText_=L"Image attached to conversation";
+            InvalidateRect(hwnd_,nullptr,FALSE);
+        } catch(const std::exception& e) {
+            statusText_=L"Image attachment failed: "+Widen(e.what());
+        }
+    }
+
     void CopySimulationMessage(size_t index) {
         if(index>=simContext_.history.size()) return;
         std::wstring text=Widen(simContext_.history[index].text);
