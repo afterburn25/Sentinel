@@ -188,7 +188,19 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     if(msg==WM_TIMER) {
         if(state) {
             state->frame=(state->frame+1)%240;
-            InvalidateRect(hwnd,nullptr,FALSE);
+            RECT rc{}; GetClientRect(hwnd,&rc);
+            const int w=rc.right-rc.left;
+            const int h=rc.bottom-rc.top;
+            const int trackW=(int)(w*0.18);
+            const int trackX=(w-trackW)/2;
+            const int trackY=(int)(h*0.864);
+            RECT animationRect{
+                trackX-12,
+                trackY-36,
+                trackX+trackW+12,
+                trackY+18
+            };
+            InvalidateRect(hwnd,&animationRect,FALSE);
         }
         return 0;
     }
@@ -196,16 +208,23 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         PAINTSTRUCT ps{};
         HDC dc=BeginPaint(hwnd,&ps);
         RECT rc{}; GetClientRect(hwnd,&rc);
-        FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
         if(state && state->bitmap) {
             HDC mem=CreateCompatibleDC(dc);
             HGDIOBJ old=SelectObject(mem,state->bitmap);
-            SetStretchBltMode(dc,HALFTONE);
-            StretchBlt(dc,0,0,rc.right,rc.bottom,mem,0,0,
-                (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
+            const int clientW=rc.right-rc.left;
+            const int clientH=rc.bottom-rc.top;
+            if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
+                BitBlt(dc,0,0,clientW,clientH,mem,0,0,SRCCOPY);
+            } else {
+                SetStretchBltMode(dc,HALFTONE);
+                SetBrushOrgEx(dc,0,0,nullptr);
+                StretchBlt(dc,0,0,clientW,clientH,mem,0,0,
+                    (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
+            }
             SelectObject(mem,old);
             DeleteDC(mem);
         } else {
+            FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
             SetBkMode(dc,TRANSPARENT);
             SetTextColor(dc,RGB(225,240,255));
             HFONT title=CreateFontW(
@@ -313,7 +332,7 @@ void ShowSaraSplash(HINSTANCE instance) {
     if(splash) {
         ShowWindow(splash,SW_SHOWNORMAL);
         UpdateWindow(splash);
-        SetTimer(splash,1,30,nullptr);
+        SetTimer(splash,1,50,nullptr);
         const ULONGLONG until=GetTickCount64()+7000ULL;
         while(GetTickCount64()<until) {
             MSG msg{};
@@ -1711,7 +1730,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.9",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.10",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
