@@ -2370,7 +2370,7 @@ private:
     }
 
     void ShowPersonaEditors(bool show) {
-        HWND controls[]={
+        HWND allControls[]={
             personaNameEdit_,personaAgeCombo_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
@@ -2378,7 +2378,35 @@ private:
             personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
             personaWritingStyleCombo_,personaProfileCombo_
         };
-        for(HWND h:controls) if(h) ShowWindow(h,show?SW_SHOW:SW_HIDE);
+        for(HWND h:allControls) if(h) ShowWindow(h,SW_HIDE);
+        if(!show) return;
+
+        if(personaProfileCombo_) ShowWindow(personaProfileCombo_,SW_SHOW);
+
+        auto showGroup=[&](std::initializer_list<HWND> controls){
+            for(HWND h:controls) if(h) ShowWindow(h,SW_SHOW);
+        };
+
+        switch(personaTab_) {
+            case PersonaTab::Profile:
+                showGroup({personaNameEdit_,personaAgeCombo_,personaGenderCombo_,personaPronounsCombo_,
+                    personaLocationEdit_,personaOccupationEdit_,personaEducationEdit_,personaRelationshipCombo_,
+                    personaFamilyEdit_,personaInterestsEdit_});
+                break;
+            case PersonaTab::Bio:
+                showGroup({personaBackgroundEdit_});
+                break;
+            case PersonaTab::Behavior:
+                showGroup({personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,
+                    personaWritingStyleCombo_,personaCommunicationCombo_,personaCognitiveCombo_,
+                    personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_});
+                break;
+            case PersonaTab::Scenario:
+                showGroup({scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_});
+                break;
+            case PersonaTab::Gallery:
+                break;
+        }
     }
 
     void ShowAgencyEditors(bool show) {
