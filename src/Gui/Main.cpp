@@ -1349,7 +1349,7 @@ public:
             UpdateWindow(hwnd_);
 
             try {
-                if(model_) {
+                if(!simPreparedFromRule_ && model_) {
                     simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
                 }
             } catch(const std::exception& e) {
