@@ -30,7 +30,7 @@ RestartApplications=no
 SetupLogging=yes
 
 ; Approved SARA dark/neon installer visual baseline.
-WizardStyle=modern dark stellar hidebevels includetitlebar
+WizardStyle=modern dark polar hidebevels includetitlebar
 WizardSizePercent=120,115
 WizardBackColor=#020a12
 WizardBackImageFile=..\\resources\\assets\\SARA-Splash.png
