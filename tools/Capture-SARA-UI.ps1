@@ -186,11 +186,17 @@ try {
     Click-SaraClient -Window $main -X 100 -Y 296
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-model-lab-personas-loras.png")
 
+    Click-SaraClient -Window $main -X 100 -Y 338
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-model-lab-foundation-forks.png")
+
+    Click-SaraClient -Window $main -X 100 -Y 380
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-model-lab-jobs.png")
+
     Click-SaraClient -Window $main -X 100 -Y 422
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-model-lab-evaluation.png")
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "09-model-lab-evaluation.png")
 
     Click-SaraClient -Window $main -X 100 -Y 464
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-model-lab-deployment.png")
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "10-model-lab-deployment.png")
 
     @"
 SARA ACTUAL BUILD UI SCREENSHOTS
