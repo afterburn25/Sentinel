@@ -191,11 +191,19 @@ void TestSaraEvaluationSuite()
     std::vector<EvaluationDimensionResult> dimensions={
         personaPass,policy,style,memoryPass,triggerPass,diversity
     };
+    std::vector<EvaluationCaseResult> caseResults={
+        ScoreNamedCase({"persona.identity","Persona identity",EvaluationDimension::PersonaConsistency,
+            "What is your name?",{"Samantha"},{},0},"My name is Samantha."),
+        ScoreNamedCase({"memory.codeword","Long-context code-word recall",EvaluationDimension::MemoryRecall,
+            "What code word?",{"cobalt"},{},24},"The code word was cobalt.")
+    };
+    assert(caseResults[0].passed);
+    assert(caseResults[1].passed);
 
     EvaluationRunRegistry registry;
     auto& first=registry.Create(
         "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
-        "adapter-1","Samantha.lora v1",dimensions);
+        "adapter-1","Samantha.lora v1",dimensions,caseResults);
     assert(first.overallScore>0);
     assert(first.previousOverallScore==-1);
 
@@ -204,7 +212,7 @@ void TestSaraEvaluationSuite()
     regressed[3].score=25; regressed[3].passed=false;
     auto& second=registry.Create(
         "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
-        "adapter-1","Samantha.lora v1",regressed);
+        "adapter-1","Samantha.lora v1",regressed,caseResults);
     assert(second.previousOverallScore==first.overallScore);
     assert(second.regressionDelta<0);
     assert(!second.warnings.empty());
@@ -219,13 +227,20 @@ void TestSaraEvaluationSuite()
     loaded.Load(path);
     assert(loaded.Runs().size()==2);
     assert(loaded.Runs()[0].dimensions.size()==6);
+    assert(loaded.Runs()[0].cases.size()==2);
     assert(loaded.Runs()[1].regressionDelta==second.regressionDelta);
+    assert(DimensionScore(loaded.Runs()[0],EvaluationDimension::MemoryRecall)==100);
+    auto report=BuildCandidateComparisonReport(loaded.Runs()[0],loaded.Runs()[1]);
+    assert(report.find("SARA EVALUATION COMPARISON")!=std::string::npos);
+    assert(report.find("MEMORY")!=std::string::npos);
     assert(loaded.LatestIndexForCandidate("model-1")==1);
 
     const auto& cases=DefaultEvaluationTestCases();
     assert(cases.size()>=6);
     assert(std::any_of(cases.begin(),cases.end(),[](const auto& tc){
-        return tc.dimension==EvaluationDimension::MemoryRecall && tc.expectedFact=="cobalt";
+        return tc.dimension==EvaluationDimension::MemoryRecall &&
+            !tc.expectedContains.empty() && tc.expectedContains.front()=="cobalt" &&
+            tc.minimumHistoryTurns>=24;
     }));
 
     std::filesystem::remove_all(root);
