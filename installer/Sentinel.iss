@@ -55,23 +55,6 @@ Name: "{userprograms}\SARA\Repair Local AI"; Filename: "{app}\Setup-Sentinel-AI.
 Filename: "{app}\SARA.exe"; Description: "Launch SARA"; Flags: nowait postinstall skipifsilent
 
 [Code]
-function GetDefaultDirName(Param: String): String;
-var
-  LegacyDir, SaraDir: String;
-begin
-  LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
-  SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
-
-  if IsUpgrade and (PreviousInstallPath <> '') then
-    Result := PreviousInstallPath
-  else if DirExists(SaraDir) then
-    Result := SaraDir
-  else if DirExists(LegacyDir) then
-    Result := LegacyDir
-  else
-    Result := SaraDir;
-end;
-
 const
   LlamaBuild = 'b10977';
   ModelFileName = 'Qwen3.5-9B-Q4_K_M.gguf';
@@ -91,6 +74,23 @@ var
   PreviousInstallName: String;
   GPUName: String;
   LastDownloadItem: String;
+
+function GetDefaultDirName(Param: String): String;
+var
+  LegacyDir, SaraDir: String;
+begin
+  LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
+  SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
+
+  if IsUpgrade and (PreviousInstallPath <> '') then
+    Result := PreviousInstallPath
+  else if DirExists(SaraDir) then
+    Result := SaraDir
+  else if DirExists(LegacyDir) then
+    Result := LegacyDir
+  else
+    Result := SaraDir;
+end;
 
 function DetectPreviousInstallation: Boolean;
 var
