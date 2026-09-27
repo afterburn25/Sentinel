@@ -1,9 +1,3 @@
 @echo off
-setlocal
-set "ROOT=%LOCALAPPDATA%\Sentinel"
-echo Starting Sentinel using:
-echo   %ROOT%
-echo.
-"%~dp0bin\SentinelCli.exe" "%ROOT%" interactive
-echo.
-pause
+echo SentinelConsole.cmd is retained for compatibility. Launching SARA console...
+call "%~dp0SARAConsole.cmd"
