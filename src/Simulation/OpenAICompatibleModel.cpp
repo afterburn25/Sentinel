@@ -47,6 +47,45 @@ std::string JsonEscape(std::string_view input) {
 }
 
 
+int ConfiguredPersonaAge(const ModelContext& context) {
+    const auto marker=context.personaSummary.find(", age ");
+    if(marker==std::string::npos) return 13;
+    const auto start=marker+6;
+    size_t end=start;
+    while(end<context.personaSummary.size() && std::isdigit((unsigned char)context.personaSummary[end])) ++end;
+    try {
+        return std::clamp(std::stoi(context.personaSummary.substr(start,end-start)),8,17);
+    } catch(...) {
+        return 13;
+    }
+}
+
+std::string AgeSpeechGuidance(int age) {
+    if(age<=10) {
+        return
+            " AGE SPEECH BAND 8-10: sound unmistakably like an elementary-school-age child in ordinary chat. "
+            "Prefer simple everyday words, concrete thinking, shorter sentences, limited abstraction, occasional repetition, and childlike topic framing. "
+            "Do not sound polished, therapeutic, corporate, highly analytical, or unusually mature. Avoid adult idioms and sophisticated emotional analysis. "
+            "Use slang sparingly and only if plausible for this age. Keep stories simple and grounded in school, games, family-safe routines, food, pets, hobbies, and ordinary daily events. ";
+    }
+    if(age<=13) {
+        return
+            " AGE SPEECH BAND 11-13: sound like a preteen/very young teen. "
+            "Use casual, sometimes uneven grammar, simpler explanations, shorter bursts, mild slang, and stronger peer/school framing than an adult would use. "
+            "Reasoning can be curious but should usually stay concrete rather than polished or highly abstract. Avoid adult professional phrasing and overly self-aware psychological language. ";
+    }
+    if(age<=15) {
+        return
+            " AGE SPEECH BAND 14-15: sound like a younger teenager. "
+            "Use natural teen texting rhythms, informal grammar, age-plausible slang, mixed confidence, shorter-to-medium replies, and occasional impulsive or emotionally direct phrasing. "
+            "The person can discuss broader topics but should still not sound like an adult professional or a carefully composed assistant. ";
+    }
+    return
+        " AGE SPEECH BAND 16-17: sound like an older teenager, not an adult. "
+        "Vocabulary and reasoning may be more developed, but keep texting casual, contemporary, somewhat uneven, and age-plausible. "
+        "Avoid polished workplace language, counseling-style analysis, or consistently formal adult sentence structure. ";
+}
+
 std::string RecentSyntheticTopics(const ModelContext& context,size_t maxReplies=6) {
     struct TopicRule { const char* label; std::vector<std::string_view> terms; };
     static const std::vector<TopicRule> rules={
@@ -297,8 +336,10 @@ public:
         std::string_view investigatorMessage,
         const ModelContext& context) override
     {
+        const int configuredAge=ConfiguredPersonaAge(context);
         std::string system =
-            "Identity: " + context.personaSummary + " "
+            "Identity: " + context.personaSummary + " " +
+            AgeSpeechGuidance(configuredAge) +
             "Speak entirely in first person as this person. Treat the configured identity, background, relationships, "
             "interests, writing style, and remembered conversation facts as your own biographical context. "
             "Do not describe yourself as an AI, chatbot, assistant, language model, synthetic subject, simulation, character, "
@@ -380,8 +421,10 @@ public:
         std::string_view approvedMeaning,
         const ModelContext& context) override
     {
+        const int configuredAge=ConfiguredPersonaAge(context);
         std::string system =
-            "Identity: " + context.personaSummary + " "
+            "Identity: " + context.personaSummary + " " +
+            AgeSpeechGuidance(configuredAge) +
             "An investigator has supplied an approved response meaning for this situation. "
             "Preserve that meaning and factual content exactly, but rewrite it naturally in this persona's voice. "
             "Use the configured age, personality, confidence, writing style, slang, grammar, typo frequency, emoji use, and recent conversation context. "
