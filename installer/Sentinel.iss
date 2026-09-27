@@ -1,8 +1,8 @@
 #define MyAppName "SARA"
-#define MyAppVersion "1.0.10"
+#define MyAppVersion "1.0.11"
 #define MyAppPublisher "SARA Project"
 #define MyAppExeName "SARA.exe"
-#define PackageDir "..\package\SARA-1.0.10-windows-x64"
+#define PackageDir "..\package\SARA-1.0.11-windows-x64"
 
 [Setup]
 AppId={{A6717D99-89F5-4C14-B4BE-2B42EACBC108}
@@ -17,7 +17,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-OutputBaseFilename=SARA-Setup-1.0.10
+OutputBaseFilename=SARA-Setup-1.0.11
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -27,11 +27,11 @@ RestartApplications=no
 UsePreviousAppDir=yes
 SetupLogging=yes
 UninstallDisplayIcon={app}\SARA.exe
-VersionInfoVersion=1.0.10.0
+VersionInfoVersion=1.0.11.0
 VersionInfoCompany=SARA Project
 VersionInfoDescription=SARA Installer
 VersionInfoProductName=SARA
-VersionInfoProductVersion=1.0.10.0
+VersionInfoProductVersion=1.0.11.0
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -62,7 +62,9 @@ begin
   LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
   SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
 
-  if DirExists(SaraDir) then
+  if IsUpgrade and (PreviousInstallPath <> '') then
+    Result := PreviousInstallPath
+  else if DirExists(SaraDir) then
     Result := SaraDir
   else if DirExists(LegacyDir) then
     Result := LegacyDir
@@ -85,22 +87,80 @@ var
   RuntimeAlreadyValid: Boolean;
   IsUpgrade: Boolean;
   PreviousInstallPath: String;
+  PreviousInstallVersion: String;
+  PreviousInstallName: String;
   GPUName: String;
   LastDownloadItem: String;
 
 function DetectPreviousInstallation: Boolean;
 var
-  SaraDir, LegacyDir: String;
+  SaraDir, LegacyDir, RegPath, RegVersion: String;
 begin
   PreviousInstallPath := '';
+  PreviousInstallVersion := '';
+  PreviousInstallName := '';
+
+  { First check the stable AppId uninstall record. This is the authoritative
+    previous-install check for normal SARA/Sentinel installs. }
+  if RegQueryStringValue(
+       HKCU,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A6717D99-89F5-4C14-B4BE-2B42EACBC108}_is1',
+       'InstallLocation',
+       RegPath) then
+  begin
+    RegPath := RemoveBackslashUnlessRoot(RegPath);
+    if (RegPath <> '') and DirExists(RegPath) then
+    begin
+      PreviousInstallPath := RegPath;
+      PreviousInstallName := 'SARA';
+      if RegQueryStringValue(
+           HKCU,
+           'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A6717D99-89F5-4C14-B4BE-2B42EACBC108}_is1',
+           'DisplayVersion',
+           RegVersion) then
+        PreviousInstallVersion := RegVersion;
+    end;
+  end;
+
+  { Also check HKLM in case an older build was installed with elevation. }
+  if (PreviousInstallPath = '') and RegQueryStringValue(
+       HKLM,
+       'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A6717D99-89F5-4C14-B4BE-2B42EACBC108}_is1',
+       'InstallLocation',
+       RegPath) then
+  begin
+    RegPath := RemoveBackslashUnlessRoot(RegPath);
+    if (RegPath <> '') and DirExists(RegPath) then
+    begin
+      PreviousInstallPath := RegPath;
+      PreviousInstallName := 'SARA';
+      if RegQueryStringValue(
+           HKLM,
+           'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A6717D99-89F5-4C14-B4BE-2B42EACBC108}_is1',
+           'DisplayVersion',
+           RegVersion) then
+        PreviousInstallVersion := RegVersion;
+    end;
+  end;
+
+  { Fall back to known folders so pre-AppId Sentinel builds are still detected. }
   SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
   LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
 
-  if FileExists(AddBackslash(SaraDir) + 'SARA.exe') then
-    PreviousInstallPath := SaraDir
-  else if FileExists(AddBackslash(LegacyDir) + 'SARA.exe') or
-          FileExists(AddBackslash(LegacyDir) + 'Sentinel.exe') then
-    PreviousInstallPath := LegacyDir;
+  if PreviousInstallPath = '' then
+  begin
+    if FileExists(AddBackslash(SaraDir) + 'SARA.exe') then
+    begin
+      PreviousInstallPath := SaraDir;
+      PreviousInstallName := 'SARA';
+    end
+    else if FileExists(AddBackslash(LegacyDir) + 'SARA.exe') or
+            FileExists(AddBackslash(LegacyDir) + 'Sentinel.exe') then
+    begin
+      PreviousInstallPath := LegacyDir;
+      PreviousInstallName := 'Sentinel';
+    end;
+  end;
 
   Result := PreviousInstallPath <> '';
 end;
@@ -423,9 +483,12 @@ begin
       wpWelcome,
       'Previous Installation Detected',
       'SARA will upgrade the existing installation.',
+      'Existing product: ' + PreviousInstallName + #13#10 +
+      'Installed version: ' + PreviousInstallVersion + #13#10 +
       'Existing installation:' + #13#10 +
       PreviousInstallPath + #13#10 + #13#10 +
-      'Setup will close SARA automatically, replace the application files, preserve ' +
+      'Setup detected this installation before starting the normal setup flow. ' +
+      'It will close SARA automatically, replace the application files, preserve ' +
       'existing SARA/Sentinel data, and reuse the installed local AI model when valid.');
 
     ProgressTitle := 'Upgrading SARA';
@@ -453,16 +516,25 @@ begin
   if CurPageID = wpReady then
   begin
     if IsUpgrade then
-      WizardForm.NextButton.Caption := '&Upgrade'
+    begin
+      WizardForm.NextButton.Caption := '&Upgrade';
+      WizardForm.ReadyLabel.Caption :=
+        'Setup is ready to upgrade the existing SARA installation.';
+    end
     else
+    begin
       WizardForm.NextButton.Caption := '&Install';
+      WizardForm.ReadyLabel.Caption :=
+        'Setup is ready to install SARA on this computer.';
+    end;
   end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  StopSentinelApp;
+  if IsUpgrade then
+    StopSentinelApp;
   StopSentinelAI;
 end;
 
