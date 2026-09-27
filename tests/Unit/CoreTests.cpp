@@ -584,21 +584,30 @@ void TestWindowsCryptoAndSev()
 
 int main()
 {
-    auto run=[](const char* name,auto&& fn){
-        std::cerr<<"[TEST START] "<<name<<"\n";
-        std::cerr.flush();
-        fn();
-        std::cerr<<"[TEST PASS] "<<name<<"\n";
-        std::cerr.flush();
-    };
+    try {
+        auto run=[](const char* name,auto&& fn){
+            std::cerr<<"[TEST START] "<<name<<"\n";
+            std::cerr.flush();
+            fn();
+            std::cerr<<"[TEST PASS] "<<name<<"\n";
+            std::cerr.flush();
+        };
 
-    run("IdsAndHashes",[](){TestIdsAndHashes();});
-    run("ModelLabRegistries",[](){TestSaraModelLabRegistries();});
-    run("EvaluationSuite",[](){TestSaraEvaluationSuite();});
-    run("ReusablePersonaProfiles",[](){TestReusablePersonaProfiles();});
-    run("UnifiedChannelCore",[](){TestUnifiedChannelCore();});
+        run("IdsAndHashes",[](){TestIdsAndHashes();});
+        run("ModelLabRegistries",[](){TestSaraModelLabRegistries();});
+        run("EvaluationSuite",[](){TestSaraEvaluationSuite();});
+        run("ReusablePersonaProfiles",[](){TestReusablePersonaProfiles();});
+        run("UnifiedChannelCore",[](){TestUnifiedChannelCore();});
 #ifdef _WIN32
-    run("WindowsCryptoAndSev",[](){TestWindowsCryptoAndSev();});
+        run("WindowsCryptoAndSev",[](){TestWindowsCryptoAndSev();});
 #endif
-    std::cout << "SARA Core Tests passed\n";
+        std::cout<<"SARA Core Tests passed\n";
+        return 0;
+    } catch(const std::exception& e) {
+        std::cerr<<"SARA Core Tests exception: "<<e.what()<<"\n";
+        return 1;
+    } catch(...) {
+        std::cerr<<"SARA Core Tests unknown exception\n";
+        return 2;
+    }
 }
