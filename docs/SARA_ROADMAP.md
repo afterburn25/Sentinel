@@ -18,15 +18,21 @@ Last updated: 2026-09-27
 - [ ] Make layouts resilient to supported window resizing.
 
 ### Training architecture
+- [x] Document approved 1.0.16 training architecture.
 - [ ] Add Training Mode selector.
 - [ ] Behavior Tuning mode.
 - [ ] Dataset Training mode.
 - [ ] Persona LoRA Training mode.
 - [ ] Foundation Fork Training mode.
 - [ ] Evaluation / Test mode.
+- [ ] Keep original downloaded/base models immutable.
 - [ ] Add versioned foundation-model fork registry.
+- [ ] Track foundation parent/version lineage.
+- [ ] Add foundation comparison and rollback.
 - [ ] Preserve immutable original base models.
 - [ ] Add persona adapter registry.
+- [ ] Preserve adapter-to-foundation compatibility/version metadata.
+- [ ] Add adapter active/staging/training/archived/rollback states.
 - [ ] Support multiple LoRA/QLoRA versions per persona.
 - [ ] Automatically resolve and load persona adapter.
 - [ ] Add model/persona context bar to Trainer.
@@ -34,7 +40,9 @@ Last updated: 2026-09-27
 ### Conversational trainer
 - [ ] Allow operator to chat with a model in training mode.
 - [ ] Allow natural-language corrections such as “Samantha would say this instead.”
+- [ ] Allow runtime-only correction overrides during training sessions.
 - [ ] Capture model response + correction as a training candidate.
+- [ ] Preserve correction provenance: context, original response, correction, target, persona, foundation, adapter, session, timestamps, review state.
 - [ ] Add correction categories and metadata.
 - [ ] Add review queue.
 - [ ] Approve/reject/edit training candidates.
@@ -59,10 +67,12 @@ Last updated: 2026-09-27
 - [ ] Conversation memory.
 - [ ] Current-context assembly.
 - [ ] Automatic adapter load on persona selection.
+- [ ] Resolve complete runtime stack: Foundation -> LoRA -> Behavior Profile -> Conversation Memory -> Current Context.
 - [ ] Version pinning for reproducibility.
 
 ### Trigger / rule engine
 - [ ] Ensure deterministic triggers run before normal model generation.
+- [ ] Support terminal vs continue-after-match rule behavior.
 - [ ] Prevent a matched trigger from falling through into a generic model response unless explicitly configured.
 - [ ] Show existing rules/triggers in the UI instead of only displaying a rule count.
 - [ ] Add rule inspection/editing.
@@ -73,6 +83,7 @@ Last updated: 2026-09-27
 ### Response variation
 - [ ] Avoid repeating one canned phrasing.
 - [ ] Generate semantically equivalent variants.
+- [ ] Add configurable variation/randomness limits and reusable phrasing pools.
 - [ ] Condition variation on persona personality.
 - [ ] Condition variation on age-appropriate writing style.
 - [ ] Condition variation on intelligence/language level.
