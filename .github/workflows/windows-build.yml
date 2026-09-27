@@ -152,10 +152,27 @@ jobs:
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\\','/')
+            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\','/')
             "$hash  $relative"
           }
           $lines | Set-Content -Encoding ascii "$root/SHA256SUMS.txt"
+
+      - name: Verify SHA-256 manifest
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/SARA-1.0.16-windows-x64
+          $manifest = Get-Content "$root/SHA256SUMS.txt"
+          foreach ($line in $manifest) {
+            if (-not $line.Trim()) { continue }
+            $parts = $line -split '  ', 2
+            if ($parts.Count -ne 2) { throw "Invalid SHA-256 manifest line: $line" }
+            $expected = $parts[0].Trim().ToLowerInvariant()
+            $relative = $parts[1].Trim().Replace('/','\')
+            $path = Join-Path $root $relative
+            if (-not (Test-Path $path)) { throw "SHA-256 manifest file missing: $relative" }
+            $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { throw "SHA-256 mismatch: $relative" }
+          }
 
       - name: Verify packaged launcher layout
         shell: pwsh
