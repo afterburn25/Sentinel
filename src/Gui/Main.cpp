@@ -10,6 +10,7 @@
 #include "Sentinel/Simulation/IModelAdapter.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
+#include "Sentinel/Simulation/PersonaProfileStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
@@ -423,6 +424,7 @@ struct Runtime {
     sentinel::WindowsDpapiSecretProtector dpapi;
     sentinel::MigrationService migrations;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
+    sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -433,6 +435,7 @@ struct Runtime {
           cipher(random),
           migrations(db),
           conversationMemory(db),
+          personaProfiles(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
@@ -641,6 +644,13 @@ public:
         SendMessageW(trainingReviewTargetEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Edit the approved target response...");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
+        if(auto stored=runtime_->personaProfiles.Load(simSettings_.persona.name)) {
+            simSettings_.persona=stored->profile;
+            simSettings_.minDelayMs=stored->minDelayMs;
+            simSettings_.maxDelayMs=stored->maxDelayMs;
+        } else if(!simSettings_.persona.name.empty()) {
+            runtime_->personaProfiles.Save(simSettings_.persona,simSettings_.minDelayMs,simSettings_.maxDelayMs);
+        }
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
         SetWindowTextW(modelNameEdit_,Widen(simSettings_.model).c_str());
 
@@ -722,6 +732,7 @@ public:
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
         }
         selectedFoundation_=foundationRegistry_.ActiveIndex()>=0?foundationRegistry_.ActiveIndex():0;
+        RefreshPersonaProfileNames();
         ResolvePersonaAdapter();
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
@@ -1002,8 +1013,12 @@ public:
                 ResolvePersonaAdapter();
                 statusText_=L"Training mode changed to "+TrainingModeName();
             }
+            else if (b.id==L"persona_new") NewPersonaProfileDraft();
+            else if (b.id.rfind(L"persona_profile:",0)==0) SelectStoredPersonaProfile((int)std::stol(b.id.substr(16)));
+            else if (b.id==L"persona_delete") DeleteCurrentPersonaProfile();
             else if (b.id==L"ml_persona_editor") {
                 page_=Page::Persona;
+                ApplyPageControls();
                 statusText_=L"Persona editor opened";
             }
             else if (b.id==L"ml_style_save") SaveProfileEditors();
@@ -2252,6 +2267,85 @@ private:
         return value;
     }
 
+    void RefreshPersonaProfileNames() {
+        personaProfileNames_.clear();
+        for(const auto& stored:runtime_->personaProfiles.List())
+            personaProfileNames_.push_back(stored.profile.name);
+    }
+
+    void RefreshPersonaRuntimeContext() {
+        simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
+        simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
+            ", gender "+simSettings_.persona.gender+", pronouns "+simSettings_.persona.pronouns+
+            ", location "+simSettings_.persona.location+", occupation "+simSettings_.persona.occupation+
+            ", education "+simSettings_.persona.education+", relationship status "+simSettings_.persona.relationshipStatus+
+            ", family context "+simSettings_.persona.familyContext+", personality "+simSettings_.persona.personality+
+            ", social style "+simSettings_.persona.socialStyle+", confidence "+simSettings_.persona.confidenceLevel+
+            ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
+            ", writing style "+simSettings_.persona.writingStyle+".";
+        ResolvePersonaAdapter();
+    }
+
+    void SelectStoredPersonaProfile(int index) {
+        RefreshPersonaProfileNames();
+        if(index<0 || index>=(int)personaProfileNames_.size()) return;
+        auto stored=runtime_->personaProfiles.Load(personaProfileNames_[(size_t)index]);
+        if(!stored) return;
+
+        simSettings_.persona=stored->profile;
+        simSettings_.minDelayMs=stored->minDelayMs;
+        simSettings_.maxDelayMs=stored->maxDelayMs;
+        sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+        LoadProfileEditors();
+        RefreshPersonaRuntimeContext();
+        ResetSimulation();
+        statusText_=L"Persona loaded: "+Widen(simSettings_.persona.name);
+        ApplyPageControls();
+    }
+
+    void NewPersonaProfileDraft() {
+        RefreshPersonaProfileNames();
+        std::set<std::string> existing(personaProfileNames_.begin(),personaProfileNames_.end());
+        std::string name="New Persona";
+        int suffix=2;
+        while(existing.count(name)) name="New Persona "+std::to_string(suffix++);
+
+        simSettings_.persona=sentinel::simulation::PersonaProfile{};
+        simSettings_.persona.name=name;
+        simSettings_.minDelayMs=3000;
+        simSettings_.maxDelayMs=8500;
+        LoadProfileEditors();
+        page_=Page::Persona;
+        ApplyPageControls();
+        statusText_=L"New persona draft. Save to add it to the reusable profile library.";
+    }
+
+    void DeleteCurrentPersonaProfile() {
+        RefreshPersonaProfileNames();
+        if(personaProfileNames_.size()<=1) {
+            statusText_=L"At least one persona profile must remain";
+            return;
+        }
+        const std::string current=simSettings_.persona.name;
+        if(!runtime_->personaProfiles.Delete(current)) {
+            statusText_=L"Persona profile delete failed";
+            return;
+        }
+        RefreshPersonaProfileNames();
+        auto stored=runtime_->personaProfiles.Load(personaProfileNames_.front());
+        if(stored) {
+            simSettings_.persona=stored->profile;
+            simSettings_.minDelayMs=stored->minDelayMs;
+            simSettings_.maxDelayMs=stored->maxDelayMs;
+            sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+            LoadProfileEditors();
+            RefreshPersonaRuntimeContext();
+            ResetSimulation();
+        }
+        statusText_=L"Persona profile deleted";
+        ApplyPageControls();
+    }
+
     void LoadProfileEditors() {
         SetWindowTextW(personaNameEdit_,Widen(simSettings_.persona.name).c_str());
         SendMessageW(personaAgeCombo_,CB_SETCURSEL,(WPARAM)std::clamp(simSettings_.persona.age-13,0,77),0);
@@ -2319,6 +2413,8 @@ private:
             simSettings_.endpoint=Narrow(EditText(modelEndpointEdit_));
             simSettings_.model=Narrow(EditText(modelNameEdit_));
             sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+            runtime_->personaProfiles.Save(simSettings_.persona,simSettings_.minDelayMs,simSettings_.maxDelayMs);
+            RefreshPersonaProfileNames();
 
             simContext_.scenario=simSettings_.scenario.name+": "+simSettings_.scenario.objective;
             simContext_.personaSummary=simSettings_.persona.name+", age "+std::to_string(simSettings_.persona.age)+
