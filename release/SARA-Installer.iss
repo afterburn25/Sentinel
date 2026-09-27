@@ -8,7 +8,7 @@
 #endif
 
 [Setup]
-; Restore the stable SARA/Sentinel installer identity used by the approved 1.0.15 line.
+// Restore the stable SARA/Sentinel installer identity used by the approved 1.0.15 line.
 AppId={{A6717D99-89F5-4C14-B4BE-2B42EACBC108}
 AppName={#MyAppFullName}
 AppVersion={#MyAppVersion}
@@ -29,7 +29,7 @@ CloseApplications=yes
 RestartApplications=no
 SetupLogging=yes
 
-; Approved SARA dark/neon installer visual baseline.
+// Approved SARA dark/neon installer visual baseline.
 WizardStyle=modern dark polar hidebevels includetitlebar
 WizardSizePercent=120,115
 WizardBackColor=#020a12
@@ -102,11 +102,11 @@ begin
   PreviousInstallVersion := '';
   PreviousInstallName := '';
 
-  ; Approved 1.0.15 AppId.
+  // Approved 1.0.15 AppId.
   if TryExistingUninstallRecord(HKCU, '{A6717D99-89F5-4C14-B4BE-2B42EACBC108}') then begin Result := True; exit; end;
   if TryExistingUninstallRecord(HKLM64, '{A6717D99-89F5-4C14-B4BE-2B42EACBC108}') then begin Result := True; exit; end;
 
-  ; Also recognize the short-lived post-1.0.15 installer identity so users can recover cleanly.
+  // Also recognize the short-lived post-1.0.15 installer identity so users can recover cleanly.
   if TryExistingUninstallRecord(HKCU, '{E68C9C6D-8BD4-4ECA-AE86-72B0B8B3B6A1}') then begin Result := True; exit; end;
   if TryExistingUninstallRecord(HKLM64, '{E68C9C6D-8BD4-4ECA-AE86-72B0B8B3B6A1}') then begin Result := True; exit; end;
 
@@ -154,7 +154,7 @@ var
 begin
   WizardForm.Caption := 'SARA Setup';
 
-  ; Keep the SARA identity visible across every page.
+  // Keep the SARA identity visible across every page.
   FooterLabel := TNewStaticText.Create(WizardForm);
   FooterLabel.Parent := WizardForm;
   FooterLabel.Caption := 'SAME DATA   •   MORE CAPABILITIES   •   A BETTER SARA';
