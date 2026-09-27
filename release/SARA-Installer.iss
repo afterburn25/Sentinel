@@ -34,7 +34,7 @@ WizardStyle=modern dark polar hidebevels includetitlebar
 WizardSizePercent=120,115
 WizardBackColor=#020a12
 WizardBackImageFile=..\\resources\\assets\\SARA-Splash.png
-WizardBackImageOpacity=10
+WizardBackImageOpacity=5
 WizardImageFile=
 WizardSmallImageFile=..\\resources\\assets\\SARA-Icon.png
 WizardSmallImageBackColor=#020a12
@@ -172,13 +172,15 @@ begin
   WizardForm.WelcomeLabel2.Font.Size := 10;
   WizardForm.WelcomeLabel2.Font.Color := $00E8D8C8;
   WizardForm.NextButton.Width := ScaleX(96);
+  WizardForm.NextButton.Font.Style := [fsBold];
   WizardForm.CancelButton.Width := ScaleX(84);
 
   // Keep the SARA identity visible across every page.
   FooterLabel := TNewStaticText.Create(WizardForm);
   FooterLabel.Parent := WizardForm;
-  FooterLabel.Caption := 'SAME DATA   •   MORE CAPABILITIES   •   A BETTER SARA';
+  FooterLabel.Caption := 'Same data   |   More capabilities   |   Better SARA';
   FooterLabel.Font.Style := [fsBold];
+  FooterLabel.Font.Size := 9;
   FooterLabel.Font.Color := $00FFD718;
   FooterLabel.Left := ScaleX(18);
   FooterLabel.Top := WizardForm.ClientHeight - ScaleY(49);
