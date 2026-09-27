@@ -39,6 +39,7 @@
 #include <shlobj.h>
 #include <shellapi.h>
 #include <wrl/client.h>
+#include <wincodec.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -56,7 +57,8 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
+constexpr wchar_t kClassName[] = L"SARANativeWindow";
+constexpr int kSaraIconResource = 101;
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 constexpr UINT_PTR kSimTypingStartTimer = 4101;
@@ -88,11 +90,15 @@ std::string Narrow(const std::wstring& s) {
 std::filesystem::path AppDataRoot() {
     PWSTR p{};
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p))) {
-        std::filesystem::path out = std::filesystem::path(p) / L"Sentinel";
+        const std::filesystem::path local(p);
         CoTaskMemFree(p);
-        return out;
+        const auto sara = local / L"SARA";
+        const auto legacy = local / L"SARA";
+        if (std::filesystem::exists(sara)) return sara;
+        if (std::filesystem::exists(legacy)) return legacy; // preserve existing Sentinel data on upgrade
+        return sara;
     }
-    return std::filesystem::current_path() / "sentinel-data";
+    return std::filesystem::current_path() / "sara-data";
 }
 
 std::filesystem::path ExeDir() {
@@ -108,6 +114,139 @@ std::filesystem::path MigrationsDir() {
     if (std::filesystem::exists(p)) return p;
     p = std::filesystem::current_path() / "migrations";
     return p;
+}
+
+struct SplashState {
+    HBITMAP bitmap{};
+    UINT imageWidth{};
+    UINT imageHeight{};
+};
+
+bool LoadBitmapWithWic(const std::filesystem::path& path,HBITMAP& bitmap,UINT& width,UINT& height) {
+    bitmap=nullptr; width=0; height=0;
+    if(!std::filesystem::exists(path)) return false;
+
+    ComPtr<IWICImagingFactory> factory;
+    if(FAILED(CoCreateInstance(
+            CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,
+            __uuidof(IWICImagingFactory),reinterpret_cast<void**>(factory.GetAddressOf()))) || !factory)
+        return false;
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    if(FAILED(factory->CreateDecoderFromFilename(
+            path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnLoad,&decoder)) || !decoder)
+        return false;
+
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if(FAILED(decoder->GetFrame(0,&frame)) || !frame) return false;
+    if(FAILED(frame->GetSize(&width,&height)) || width==0 || height==0) return false;
+
+    ComPtr<IWICFormatConverter> converter;
+    if(FAILED(factory->CreateFormatConverter(&converter)) || !converter) return false;
+    if(FAILED(converter->Initialize(
+            frame.Get(),GUID_WICPixelFormat32bppBGR,
+            WICBitmapDitherTypeNone,nullptr,0.0,WICBitmapPaletteTypeCustom)))
+        return false;
+
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth=(LONG)width;
+    bmi.bmiHeader.biHeight=-(LONG)height;
+    bmi.bmiHeader.biPlanes=1;
+    bmi.bmiHeader.biBitCount=32;
+    bmi.bmiHeader.biCompression=BI_RGB;
+
+    void* bits=nullptr;
+    HDC dc=GetDC(nullptr);
+    bitmap=CreateDIBSection(dc,&bmi,DIB_RGB_COLORS,&bits,nullptr,0);
+    ReleaseDC(nullptr,dc);
+    if(!bitmap || !bits) {
+        if(bitmap) DeleteObject(bitmap);
+        bitmap=nullptr;
+        return false;
+    }
+
+    const UINT stride=width*4;
+    if(FAILED(converter->CopyPixels(nullptr,stride,stride*height,reinterpret_cast<BYTE*>(bits)))) {
+        DeleteObject(bitmap);
+        bitmap=nullptr;
+        return false;
+    }
+    return true;
+}
+
+LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
+    auto* state=reinterpret_cast<SplashState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+    if(msg==WM_NCCREATE) {
+        auto* cs=reinterpret_cast<CREATESTRUCTW*>(lp);
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        return TRUE;
+    }
+    if(msg==WM_ERASEBKGND) return 1;
+    if(msg==WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc=BeginPaint(hwnd,&ps);
+        RECT rc{}; GetClientRect(hwnd,&rc);
+        FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
+        if(state && state->bitmap) {
+            HDC mem=CreateCompatibleDC(dc);
+            HGDIOBJ old=SelectObject(mem,state->bitmap);
+            SetStretchBltMode(dc,HALFTONE);
+            StretchBlt(dc,0,0,rc.right,rc.bottom,mem,0,0,
+                (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
+            SelectObject(mem,old);
+            DeleteDC(mem);
+        }
+        EndPaint(hwnd,&ps);
+        return 0;
+    }
+    return DefWindowProcW(hwnd,msg,wp,lp);
+}
+
+void ShowSaraSplash(HINSTANCE instance) {
+    SplashState state;
+    if(!LoadBitmapWithWic(ExeDir()/L"assets"/L"SARA-Splash.jpg",
+            state.bitmap,state.imageWidth,state.imageHeight))
+        return;
+
+    constexpr wchar_t splashClass[]=L"SARAStartupSplash";
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.lpfnWndProc=SplashWndProc;
+    wc.hInstance=instance;
+    wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
+    wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName=splashClass;
+    RegisterClassExW(&wc);
+
+    RECT work{};
+    SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
+    int width=960, height=540;
+    const int maxW=(int)((work.right-work.left)*0.90);
+    const int maxH=(int)((work.bottom-work.top)*0.90);
+    if(width>maxW) { width=maxW; height=width*9/16; }
+    if(height>maxH) { height=maxH; width=height*16/9; }
+    const int x=work.left+(work.right-work.left-width)/2;
+    const int y=work.top+(work.bottom-work.top-height)/2;
+
+    HWND splash=CreateWindowExW(
+        WS_EX_TOOLWINDOW|WS_EX_TOPMOST,splashClass,L"SARA",
+        WS_POPUP,x,y,width,height,nullptr,nullptr,instance,&state);
+    if(splash) {
+        ShowWindow(splash,SW_SHOWNORMAL);
+        UpdateWindow(splash);
+        const ULONGLONG until=GetTickCount64()+7000ULL;
+        while(GetTickCount64()<until) {
+            MSG msg{};
+            while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+            Sleep(10);
+        }
+        DestroyWindow(splash);
+    }
+    DeleteObject(state.bitmap);
+    UnregisterClassW(splashClass,instance);
 }
 
 bool IsLocalModelEndpoint(const std::string& endpoint) {
@@ -603,6 +742,9 @@ public:
             nullptr,
             reinterpret_cast<void**>(factory_.GetAddressOf()));
         DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(writeFactory_.GetAddressOf()));
+        CoCreateInstance(
+            CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,
+            __uuidof(IWICImagingFactory),reinterpret_cast<void**>(wicFactory_.GetAddressOf()));
         CreateResources();
         LoadData();
 
@@ -848,7 +990,7 @@ public:
         }
 
         HRESULT hr=target_->EndDraw();
-        if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
+        if (hr==D2DERR_RECREATE_TARGET) { brandBitmap_.Reset(); target_.Reset(); brushesReady_=false; }
     }
 
     void Click(float x,float y) {
@@ -1167,6 +1309,8 @@ private:
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     ComPtr<IDWriteFactory> writeFactory_;
+    ComPtr<IWICImagingFactory> wicFactory_;
+    ComPtr<ID2D1Bitmap> brandBitmap_;
     ComPtr<IDWriteTextFormat> titleFmt_,h1Fmt_,bodyFmt_,smallFmt_,tinyFmt_,bigFmt_;
     BrushSet brush_;
     bool brushesReady_{false};
@@ -1179,6 +1323,29 @@ private:
     bool selectionDragging_{false};
     D2D1_POINT_2F selectionStartPoint_{0,0};
 
+    ComPtr<ID2D1Bitmap> LoadD2DBitmap(const std::filesystem::path& path) {
+        ComPtr<ID2D1Bitmap> bitmap;
+        if(!target_ || !wicFactory_ || !std::filesystem::exists(path)) return bitmap;
+
+        ComPtr<IWICBitmapDecoder> decoder;
+        if(FAILED(wicFactory_->CreateDecoderFromFilename(
+                path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnLoad,&decoder)) || !decoder)
+            return bitmap;
+
+        ComPtr<IWICBitmapFrameDecode> frame;
+        if(FAILED(decoder->GetFrame(0,&frame)) || !frame) return bitmap;
+
+        ComPtr<IWICFormatConverter> converter;
+        if(FAILED(wicFactory_->CreateFormatConverter(&converter)) || !converter) return bitmap;
+        if(FAILED(converter->Initialize(
+                frame.Get(),GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapDitherTypeNone,nullptr,0.0,WICBitmapPaletteTypeCustom)))
+            return bitmap;
+
+        target_->CreateBitmapFromWicBitmap(converter.Get(),nullptr,&bitmap);
+        return bitmap;
+    }
+
     void CreateResources() {
         if (!target_) {
             RECT rc{}; GetClientRect(hwnd_,&rc);
@@ -1186,6 +1353,9 @@ private:
                 D2D1::RenderTargetProperties(),
                 D2D1::HwndRenderTargetProperties(hwnd_,D2D1::SizeU(std::max(1L,rc.right),std::max(1L,rc.bottom))),
                 &target_);
+        }
+        if(target_ && !brandBitmap_) {
+            brandBitmap_=LoadD2DBitmap(ExeDir()/L"assets"/L"SARA-Logo.png");
         }
         if (!titleFmt_) {
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,30,L"en-us",&titleFmt_);
@@ -1432,10 +1602,17 @@ private:
     }
 
     void DrawBrand() {
-        DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
-        DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
-        Text(L"Sentinel",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
+        if(brandBitmap_) {
+            const auto sz=brandBitmap_->GetSize();
+            const float h=64.0f;
+            const float w=h*(sz.width/std::max(1.0f,sz.height));
+            target_->DrawBitmap(
+                brandBitmap_.Get(),D2D1::RectF(10,7,10+w,7+h),1.0f,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        }
+        Text(L"SARA",76,10,132,36,titleFmt_.Get(),brush_.text.Get());
+        Text(L"SYNTHETIC ADAPTIVE",77,43,136,14,tinyFmt_.Get(),brush_.cyan.Get());
+        Text(L"RESPONSE AGENT",77,56,136,14,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -1453,7 +1630,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v1.0.7",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.8",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -2862,7 +3039,7 @@ private:
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
                 Narrow(we),Narrow(wm),{},simSettings_.temperature,simSettings_.maxTokens);
             sentinel::simulation::ModelContext testContext;
-            testContext.scenario="Sentinel local model connection test";
+            testContext.scenario="SARA local model connection test";
             testContext.personaSummary="Synthetic test only.";
             auto probe=candidate->GenerateInvestigatorSuggestion(testContext);
             model_=std::move(candidate);
@@ -3041,7 +3218,7 @@ private:
 
     void PreserveSimulationTranscript() {
         if(cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -3049,7 +3226,7 @@ private:
             std::filesystem::create_directories(exportDir);
             auto path=exportDir/"simulation-transcript.txt";
             std::ofstream out(path,std::ios::trunc);
-            out<<"Sentinel Simulation Transcript\n";
+            out<<"SARA Simulation Transcript\n";
             out<<"Scenario: "<<simSettings_.scenario.name<<"\n";
             out<<"Persona: "<<simSettings_.persona.name<<"\n";
             out<<"Age state: "<<sentinel::simulation::ToString(simSettings_.ageState)<<"\n\n";
@@ -3391,7 +3568,7 @@ private:
         try {
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
             sentinel::simulation::ModelContext ctx;
-            ctx.scenario="Sentinel Model Lab candidate evaluation";
+            ctx.scenario="SARA Model Lab candidate evaluation";
             ctx.personaSummary=simContext_.personaSummary;
             ctx.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,"Hello, introduce yourself briefly."});
             auto reply=candidate->GenerateSyntheticReply("Hello, introduce yourself briefly.",ctx);
@@ -3873,7 +4050,7 @@ private:
 
         aiDiagnostics_=report.str();
         statusText_=L"AI diagnostics complete";
-        MessageBoxW(hwnd_,aiDiagnostics_.c_str(),L"Sentinel AI Diagnostics",MB_OK|MB_ICONINFORMATION);
+        MessageBoxW(hwnd_,aiDiagnostics_.c_str(),L"SARA AI Diagnostics",MB_OK|MB_ICONINFORMATION);
         InvalidateRect(hwnd_,nullptr,FALSE);
     }
 
@@ -3957,7 +4134,7 @@ private:
         GetWindowTextW(caseTitleEdit_,tbuf,512);
         std::wstring wn=nbuf,wt=tbuf;
         if (wn.empty()||wt.empty()) {
-            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"SARA",MB_OK|MB_ICONINFORMATION);
             page_=Page::Cases; ShowCaseEditors(true); return;
         }
         try {
@@ -3990,7 +4167,7 @@ private:
 
     void ImportEvidence() {
         if (cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create a case first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create a case first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         auto file=PickFile(); if (!file) return;
@@ -4008,7 +4185,7 @@ private:
 
     void VerifySelected() {
         if (cases_.empty()||evidence_.empty()) {
-            MessageBoxW(hwnd_,L"Select or import evidence first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Select or import evidence first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -4084,6 +4261,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+    ShowSaraSplash(instance);
     WNDCLASSEXW wc{sizeof(wc)};
     wc.style=CS_HREDRAW|CS_VREDRAW;
     wc.lpfnWndProc=WndProc;
@@ -4091,11 +4269,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
     wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName=kClassName;
-    wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
+    wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(kSaraIconResource));
+    if(!wc.hIcon) wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
+    wc.hIconSm=wc.hIcon;
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
-        0,kClassName,L"Sentinel - Secure Evidence & Integrity",
+        0,kClassName,L"SARA - Synthetic Adaptive Response Agent",
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
