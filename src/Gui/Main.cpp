@@ -521,7 +521,7 @@ public:
 
     void ExportModelLabDiagnostics() {
         wchar_t file[MAX_PATH]{};
-        wcscpy_s(file,L"SARA-1.0.16-Diagnostics.txt");
+        wcscpy_s(file,L"SARA-1.0.17-Diagnostics.txt");
         OPENFILENAMEW ofn{};
         ofn.lStructSize=sizeof(ofn);
         ofn.hwndOwner=hwnd_;
@@ -533,7 +533,7 @@ public:
         if(!GetSaveFileNameW(&ofn)) return;
 
         std::ofstream out(std::filesystem::path(file),std::ios::trunc);
-        out<<"SARA 1.0.16 MODEL LAB DIAGNOSTICS\n";
+        out<<"SARA 1.0.17 MODEL LAB DIAGNOSTICS\n";
         out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
         out<<"Persona: "<<simSettings_.persona.name<<"\n";
         out<<"Age: "<<simSettings_.persona.age<<"\n";
@@ -596,6 +596,9 @@ public:
         if(id==L"ml_approve") return L"Approve the latest reviewed training example";
         if(id==L"ml_rules_manage") return L"View, add, edit, prioritize, or delete trigger rules";
         if(id==L"dataset_snapshot") return L"Freeze approved examples into a versioned dataset snapshot";
+        if(id==L"dataset_import") return L"Import a portable SARA dataset snapshot and its reviewed examples";
+        if(id==L"dataset_export") return L"Export the selected snapshot with its reviewed training records";
+        if(id==L"adapter_export") return L"Export selected persona adapter metadata";
         if(id==L"job_new") return L"Queue a new training job from the selected foundation and dataset";
         if(id==L"foundation_new_fork") return L"Create a versioned SARA Foundation descendant without altering the base";
         if(id==L"model_activate") return L"Activate the selected approved candidate";
@@ -690,6 +693,8 @@ public:
             }
             else if (b.id==L"ml_style_save") SaveProfileEditors();
             else if (b.id==L"adapter_new") CreatePersonaAdapter();
+            else if (b.id==L"adapter_export") ExportSelectedPersonaAdapter();
+            else if (b.id.rfind(L"adapter_select:",0)==0) SelectPersonaAdapter((int)std::stol(b.id.substr(15)));
             else if (b.id.rfind(L"adapter_activate:",0)==0) ActivatePersonaAdapter((size_t)std::stoul(b.id.substr(17)));
             else if (b.id==L"adapter_rollback") RollbackPersonaAdapter();
             else if (b.id==L"foundation_new_fork") CreateFoundationFork();
@@ -697,11 +702,15 @@ public:
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
             else if (b.id==L"foundation_rollback") RollbackFoundation();
             else if (b.id==L"dataset_snapshot") CreateDatasetSnapshot();
+            else if (b.id==L"dataset_import") ImportDatasetSnapshot();
+            else if (b.id==L"dataset_export") ExportSelectedDatasetSnapshot();
+            else if (b.id.rfind(L"dataset_select:",0)==0) SelectDatasetSnapshot((int)std::stol(b.id.substr(15)));
             else if (b.id.rfind(L"training_example:",0)==0) SelectTrainingExample((int)std::stol(b.id.substr(17)));
             else if (b.id==L"training_review_save") SaveSelectedTrainingTarget();
             else if (b.id==L"training_review_approve") ReviewSelectedTrainingExample(true);
             else if (b.id==L"training_review_reject") ReviewSelectedTrainingExample(false);
             else if (b.id==L"job_new") CreateTrainingJob();
+            else if (b.id.rfind(L"job_select:",0)==0) SelectTrainingJob((int)std::stol(b.id.substr(11)));
             else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
             else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
             else if (b.id.rfind(L"foundation:",0)==0) {
@@ -902,6 +911,9 @@ private:
     int trainingReviewPending_{0};
     int trainingApproved_{0};
     int selectedTrainingExample_{-1};
+    int selectedDatasetSnapshot_{-1};
+    int selectedPersonaAdapter_{-1};
+    int selectedTrainingJob_{-1};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
     size_t selectedCase_{0},selectedEvidence_{0};
@@ -1220,7 +1232,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.16",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.17",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -2437,6 +2449,39 @@ private:
         }
     }
 
+    void SelectPersonaAdapter(int index) {
+        if(index<0 || index>=(int)personaAdapterRegistry_.Adapters().size()) return;
+        if(personaAdapterRegistry_.Adapters()[(size_t)index].personaName!=simSettings_.persona.name) return;
+        selectedPersonaAdapter_=index;
+        statusText_=L"Persona adapter selected";
+    }
+
+    void ExportSelectedPersonaAdapter() {
+        if(selectedPersonaAdapter_<0 || selectedPersonaAdapter_>=(int)personaAdapterRegistry_.Adapters().size()) {
+            int active=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+            if(active<0) { statusText_=L"Select a persona adapter first"; return; }
+            selectedPersonaAdapter_=active;
+        }
+        const auto& a=personaAdapterRegistry_.Adapters()[(size_t)selectedPersonaAdapter_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(a.personaName+"-"+a.adapterName+"-"+a.version+".sara-adapter");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Adapter Metadata\0*.sara-adapter\0Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-adapter"; ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<"SARA_ADAPTER_V1\n";
+        out<<"id="<<a.id<<"\n";
+        out<<"persona="<<a.personaName<<"\n";
+        out<<"name="<<a.adapterName<<"\n";
+        out<<"version="<<a.version<<"\n";
+        out<<"foundation="<<a.foundationId<<"\n";
+        out<<"stage="<<sentinel::simulation::ToString(a.stage)<<"\n";
+        statusText_=L"Persona adapter metadata exported";
+    }
+
     void CreatePersonaAdapter() {
         std::string persona=simSettings_.persona.name.empty()?"Default Persona":simSettings_.persona.name;
         std::string foundationId;
@@ -2449,6 +2494,7 @@ private:
         auto& adapter=personaAdapterRegistry_.Add(persona,persona+".lora","v"+std::to_string(count+1),foundationId);
         personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
         assignedPersonaLoRA_=Widen(adapter.adapterName+" "+adapter.version);
+        selectedPersonaAdapter_=(int)personaAdapterRegistry_.Adapters().size()-1;
         statusText_=L"Persona LoRA created in staging";
     }
 
@@ -2473,9 +2519,62 @@ private:
         } else statusText_=L"No archived LoRA is available for rollback";
     }
 
+    void SelectDatasetSnapshot(int index) {
+        if(index<0 || index>=(int)trainingData_.Snapshots().size()) return;
+        selectedDatasetSnapshot_=index;
+        selectedTrainingExample_=-1;
+        ApplyPageControls();
+        statusText_=L"Dataset snapshot selected";
+    }
+
+    void ImportDatasetSnapshot() {
+        wchar_t file[MAX_PATH]{};
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+        try {
+            auto& snap=trainingData_.ImportSnapshot(std::filesystem::path(file));
+            trainingData_.Save(runtime_->root/"training-data.tsv");
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+            selectedTrainingExample_=-1;
+            trainingCaptured_=(int)trainingData_.Examples().size();
+            trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+            trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+            statusText_=L"Imported dataset snapshot "+Widen(snap.name);
+        } catch(const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Import Failed",MB_OK|MB_ICONERROR);
+            statusText_=L"Dataset import failed";
+        }
+    }
+
+    void ExportSelectedDatasetSnapshot() {
+        if(trainingData_.Snapshots().empty()) { statusText_=L"No dataset snapshot is available to export"; return; }
+        if(selectedDatasetSnapshot_<0 || selectedDatasetSnapshot_>=(int)trainingData_.Snapshots().size())
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+        const auto& snap=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(snap.name+".sara-dataset");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-dataset"; ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+        try {
+            trainingData_.ExportSnapshot((size_t)selectedDatasetSnapshot_,std::filesystem::path(file));
+            statusText_=L"Dataset snapshot exported";
+        } catch(const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Export Failed",MB_OK|MB_ICONERROR);
+            statusText_=L"Dataset export failed";
+        }
+    }
+
     void SelectTrainingExample(int index) {
         if(index<0 || index>=(int)trainingData_.Examples().size()) return;
         selectedTrainingExample_=index;
+        selectedDatasetSnapshot_=-1;
         SetWindowTextW(trainingReviewTargetEdit_,Widen(trainingData_.Examples()[(size_t)index].targetResponse).c_str());
         ApplyPageControls();
         statusText_=L"Training example selected for review";
@@ -2521,7 +2620,15 @@ private:
         }
         auto& snap=trainingData_.CreateSnapshot("SARA Dataset "+std::to_string(trainingData_.Snapshots().size()+1));
         trainingData_.Save(runtime_->root/"training-data.tsv");
+        selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+        selectedTrainingExample_=-1;
         statusText_=L"Created dataset snapshot "+Widen(snap.name);
+    }
+
+    void SelectTrainingJob(int index) {
+        if(index<0 || index>=(int)trainingJobRegistry_.Jobs().size()) return;
+        selectedTrainingJob_=index;
+        statusText_=L"Training job selected";
     }
 
     void CreateTrainingJob() {
@@ -2538,6 +2645,7 @@ private:
         else dataset="approved-captures-"+std::to_string(trainingApproved_);
         trainingJobRegistry_.Create(foundation,dataset);
         trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        selectedTrainingJob_=(int)trainingJobRegistry_.Jobs().size()-1;
         statusText_=L"Training job queued";
     }
 
@@ -3100,21 +3208,35 @@ private:
         TextLine(L"Adapter Versions",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
         AddButton(L"adapter_new",L"New Persona LoRA",x+listW-160,y+198,128,28,true);
         AddButton(L"adapter_rollback",L"Rollback",x+listW-258,y+198,88,28,false);
+        AddButton(L"adapter_export",L"Export",x+listW-346,y+198,78,28,false);
         float ay=y+236;
         int shown=0;
-        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<2;i++) {
             const auto& a=personaAdapterRegistry_.Adapters()[i];
             if(a.personaName!=simSettings_.persona.name) continue;
+            const bool selected=(int)i==selectedPersonaAdapter_;
+            if(selected) Rounded(x+26,ay-4,listW-52,30,brush_.panel2.Get(),brush_.cyan.Get(),6);
             TextLine(Widen(a.adapterName+" "+a.version),x+32,ay,220,22,smallFmt_.Get(),brush_.text.Get());
             TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+264,ay,90,22,tinyFmt_.Get(),
                 a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
             TextLine(Widen(a.foundationId),x+366,ay,listW-520,22,tinyFmt_.Get(),brush_.muted.Get());
             if(a.stage!=sentinel::simulation::AdapterStage::Active)
                 AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-126,ay-2,94,26,false);
+            buttons_.push_back({{x+26,ay-4,x+listW-132,ay+26},L"adapter_select:"+std::to_wstring(i)});
             ay+=38; ++shown;
         }
         if(shown==0) {
             TextLine(L"No LoRA versions for this persona yet.",x+32,ay,300,22,smallFmt_.Get(),brush_.muted.Get());
+        }
+        int activeAdapter=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        TextLine(L"Compare",x+32,y+316,64,18,tinyFmt_.Get(),brush_.muted.Get());
+        if(selectedPersonaAdapter_>=0 && selectedPersonaAdapter_<(int)personaAdapterRegistry_.Adapters().size()) {
+            const auto& selected=personaAdapterRegistry_.Adapters()[(size_t)selectedPersonaAdapter_];
+            TextLine(L"Selected "+Widen(selected.version)+L" • "+Widen(selected.foundationId),x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.cyan.Get());
+        } else TextLine(L"Select an adapter version",x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.muted.Get());
+        if(activeAdapter>=0) {
+            const auto& active=personaAdapterRegistry_.Adapters()[(size_t)activeAdapter];
+            TextLine(L"Active "+Widen(active.version)+L" • "+Widen(active.foundationId),x+100,y+336,listW-250,20,tinyFmt_.Get(),brush_.green.Get());
         }
 
         const float rx=x+listW+gap;
@@ -3225,7 +3347,8 @@ private:
 
         Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Reviewed training examples and immutable dataset snapshots.",x+18,y+40,leftW-190,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Reviewed training examples and lineage-aware dataset snapshots.",x+18,y+40,leftW-260,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"dataset_import",L"Import",x+leftW-232,y+14,70,30,false);
         AddButton(L"dataset_snapshot",L"Create Snapshot",x+leftW-152,y+14,134,30,true);
 
         TextLine(L"EXAMPLE",x+28,y+78,100,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -3257,7 +3380,7 @@ private:
 
         const float rx=x+leftW+gap;
         Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Review Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(selectedTrainingExample_>=0?L"Review Inspector":L"Dataset Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
             const auto& selected=trainingData_.Examples()[(size_t)selectedTrainingExample_];
@@ -3274,9 +3397,23 @@ private:
             AddButton(L"training_review_save",L"Save Edit",rx+18,y+222,92,28,false);
             AddButton(L"training_review_approve",L"Approve",rx+120,y+222,92,28,true);
             AddButton(L"training_review_reject",L"Reject",rx+222,y+222,92,28,false);
+        } else if(selectedDatasetSnapshot_>=0 && selectedDatasetSnapshot_<(int)trainingData_.Snapshots().size()) {
+            const auto& selected=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+            Badge(L"SNAPSHOT",rx+rightW-108,y+16,brush_.cyan.Get(),90);
+            TextLine(L"Name",rx+18,y+54,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.name),rx+98,y+50,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"ID",rx+18,y+82,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.id),rx+98,y+78,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Created",rx+18,y+110,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.createdUtc.empty()?"Legacy snapshot":selected.createdUtc),rx+98,y+106,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Parent",rx+18,y+138,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.parentId.empty()?"Root / no parent":selected.parentId),rx+98,y+134,rightW-116,24,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Examples",rx+18,y+166,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(selected.exampleIds.size()),rx+98,y+162,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            AddButton(L"dataset_export",L"Export Snapshot",rx+18,y+206,130,30,true);
         } else {
-            Text(L"Select a training example on the left to edit its target response, approve it, or reject it.",
-                rx+18,y+54,rightW-36,60,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"Select a training example to review it, or select a dataset snapshot below to inspect lineage and export it.",
+                rx+18,y+54,rightW-36,70,smallFmt_.Get(),brush_.muted.Get());
         }
 
         target_->DrawLine(D2D1::Point2F(rx+18,y+266),D2D1::Point2F(rx+rightW-18,y+266),brush_.border.Get(),1);
@@ -3284,9 +3421,13 @@ private:
         float sy=y+306;
         int sshown=0;
         for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<2; --i,++sshown) {
-            const auto& s=trainingData_.Snapshots()[i-1];
-            TextLine(Widen(s.name),rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(s.exampleIds.size())+L" approved examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            const size_t snapshotIndex=i-1;
+            const auto& s=trainingData_.Snapshots()[snapshotIndex];
+            const bool selected=(int)snapshotIndex==selectedDatasetSnapshot_;
+            if(selected) Rounded(rx+14,sy-2,rightW-28,22,brush_.panel2.Get(),brush_.cyan.Get(),5);
+            TextLine(Widen(s.name),rx+18,sy,rightW-120,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(s.exampleIds.size())+L" examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{rx+14,sy-2,rx+rightW-14,sy+20},L"dataset_select:"+std::to_wstring(snapshotIndex)});
             sy+=24;
         }
         if(sshown==0) TextLine(L"No snapshots yet.",rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -3296,44 +3437,72 @@ private:
     }
 
     void DrawModelLabJobs(float x,float y,float contentW) {
-        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        const float gap=12.0f;
+        const float inspectorW=360.0f;
+        const float listW=contentW-inspectorW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Persistent job records ready for handoff to the isolated training service.",x+18,y+40,contentW-180,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"job_new",L"New Training Job",x+contentW-152,y+14,134,30,true);
+        TextLine(L"Persistent run history with exact foundation and dataset lineage.",x+18,y+40,listW-180,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"job_new",L"New Training Job",x+listW-152,y+14,134,30,true);
 
         TextLine(L"JOB",x+28,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"FOUNDATION",x+140,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"DATASET",x+372,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+604,y+80,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"PROGRESS",x+726,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"DATASET",x+140,y+80,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+302,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PROGRESS",x+414,y+80,90,18,tinyFmt_.Get(),brush_.muted.Get());
 
         float yy=y+104;
         if(trainingJobRegistry_.Jobs().empty()) {
-            Rounded(x+18,yy,contentW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No training jobs yet. Queue one from the current foundation and approved capture set.",
-                x+34,yy+8,contentW-68,42,bodyFmt_.Get(),brush_.muted.Get());
-            return;
+            Rounded(x+18,yy,listW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No training jobs yet. Queue one from the current foundation and dataset.",
+                x+34,yy+8,listW-68,42,bodyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
+                const auto& job=trainingJobRegistry_.Jobs()[i];
+                const bool selected=(int)i==selectedTrainingJob_;
+                Rounded(x+18,yy,listW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),8);
+                TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.dataset),x+140,yy+5,150,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.state),x+302,yy+5,100,22,tinyFmt_.Get(),
+                    job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
+                TextLine(std::to_wstring(job.progress)+L"%",x+414,yy+5,72,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.createdUtc.empty()?"Legacy run":job.createdUtc),x+28,yy+31,listW-180,18,tinyFmt_.Get(),brush_.muted.Get());
+                if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+listW-94,yy+14,62,28,false);
+                else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+listW-112,yy+14,80,28,true);
+                buttons_.push_back({{x+18,yy,x+listW-122,yy+58},L"job_select:"+std::to_wstring(i)});
+                yy+=66;
+            }
         }
 
-        for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
-            const auto& job=trainingJobRegistry_.Jobs()[i];
-            Rounded(x+18,yy,contentW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(job.baseModel),x+140,yy+5,220,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(job.dataset),x+372,yy+5,220,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(job.state),x+604,yy+5,110,22,tinyFmt_.Get(),
-                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
-            TextLine(std::to_wstring(job.progress)+L"%",x+726,yy+5,80,22,tinyFmt_.Get(),brush_.text.Get());
-
-            const float barX=x+826, barW=std::max(70.0f,contentW-1020.0f);
-            Rounded(barX,yy+10,barW,8,brush_.panel2.Get(),nullptr,4);
-            if(job.progress>0) Rounded(barX,yy+10,barW*(job.progress/100.0f),8,brush_.cyan.Get(),nullptr,4);
-
-            if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+contentW-170,yy+14,68,28,false);
-            else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+contentW-184,yy+14,82,28,true);
-
-            TextLine(L"Training execution remains isolated from live inference.",x+28,yy+32,contentW-240,18,tinyFmt_.Get(),brush_.muted.Get());
-            yy+=66;
+        const float rx=x+listW+gap;
+        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Run Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        if(selectedTrainingJob_>=0 && selectedTrainingJob_<(int)trainingJobRegistry_.Jobs().size()) {
+            const auto& job=trainingJobRegistry_.Jobs()[(size_t)selectedTrainingJob_];
+            Badge(Widen(job.state),rx+inspectorW-110,y+16,
+                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get(),92);
+            TextLine(L"Job",rx+18,y+58,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.id),rx+110,y+54,inspectorW-128,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Foundation",rx+18,y+88,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.baseModel),rx+110,y+84,inspectorW-128,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Dataset",rx+18,y+118,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.dataset),rx+110,y+114,inspectorW-128,24,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Created",rx+18,y+154,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.createdUtc.empty()?"Legacy run":job.createdUtc),rx+110,y+150,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Started",rx+18,y+182,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.startedUtc.empty()?"Not started":job.startedUtc),rx+110,y+178,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Completed",rx+18,y+210,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.completedUtc.empty()?"Not completed":job.completedUtc),rx+110,y+206,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Progress",rx+18,y+244,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(job.progress)+L"%",rx+110,y+240,80,24,smallFmt_.Get(),brush_.text.Get());
+            Rounded(rx+18,y+276,inspectorW-36,10,brush_.panel2.Get(),nullptr,5);
+            if(job.progress>0) Rounded(rx+18,y+276,(inspectorW-36)*(job.progress/100.0f),10,brush_.cyan.Get(),nullptr,5);
+            Text(L"Training execution remains isolated from live inference. This record preserves the exact dataset and foundation used by the run.",
+                rx+18,y+308,inspectorW-36,52,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            Text(L"Select a training run on the left to inspect its foundation, dataset lineage, timestamps, and progress.",
+                rx+18,y+58,inspectorW-36,70,smallFmt_.Get(),brush_.muted.Get());
         }
     }
 
@@ -3428,7 +3597,7 @@ private:
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
         TextLine(sub,x+20,y+52,contentW-40,24,bodyFmt_.Get(),brush_.muted.Get());
         Rounded(x+20,y+94,contentW-40,78,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"Structured workspace reserved for SARA 1.0.16",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Structured workspace reserved for SARA 1.0.17",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
         Text(L"This section is now a first-class Model Lab destination and will use the shared foundation, persona, LoRA, review, evaluation, and deployment state.",
             x+38,y+132,contentW-76,34,tinyFmt_.Get(),brush_.muted.Get());
     }
@@ -3640,12 +3809,12 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.16");
+            auto info=service.Check(url,"1.0.17");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
                 statusText_=L"SARA update available";
             } else {
-                updateStatus_=L"Current version 1.0.16 is up to date";
+                updateStatus_=L"Current version 1.0.17 is up to date";
                 statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
@@ -3684,7 +3853,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SARA 1.0.16",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"SARA 1.0.17",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());

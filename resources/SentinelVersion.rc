@@ -1,8 +1,8 @@
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,16,0
- PRODUCTVERSION 1,0,16,0
+ FILEVERSION 1,0,17,0
+ PRODUCTVERSION 1,0,17,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -19,11 +19,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "SARA Project\0"
             VALUE "FileDescription", "SARA - Synthetic Adaptive Response Agent\0"
-            VALUE "FileVersion", "1.0.16.0\0"
+            VALUE "FileVersion", "1.0.17.0\0"
             VALUE "InternalName", "SARA\0"
             VALUE "OriginalFilename", "SARA.exe\0"
             VALUE "ProductName", "SARA\0"
-            VALUE "ProductVersion", "1.0.16.0\0"
+            VALUE "ProductVersion", "1.0.17.0\0"
             VALUE "LegalCopyright", "Copyright 2026 SARA Project\0"
             VALUE "Comments", "Synthetic Adaptive Response Agent - local AI, persona, training, evidence, and operations platform\0"
         END

@@ -2,8 +2,28 @@
 #include <algorithm>
 #include <fstream>
 #include <stdexcept>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
 
 namespace sentinel::simulation {
+namespace {
+std::string RegistryNowUtc() {
+    auto now=std::chrono::system_clock::now();
+    auto t=std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm,&t);
+#else
+    gmtime_r(&t,&tm);
+#endif
+    std::ostringstream out;
+    out<<std::put_time(&tm,"%Y-%m-%dT%H:%M:%SZ");
+    return out.str();
+}
+}
+
 std::string ToString(ModelStage stage) {
     switch(stage) {
         case ModelStage::Candidate: return "CANDIDATE";
@@ -112,6 +132,7 @@ TrainingJob& TrainingJobRegistry::Create(std::string baseModel,std::string datas
     job.dataset=std::move(dataset);
     job.state="QUEUED";
     job.progress=0;
+    job.createdUtc=RegistryNowUtc();
     jobs_.push_back(std::move(job));
     return jobs_.back();
 }
@@ -120,6 +141,8 @@ void TrainingJobRegistry::SetState(size_t index,std::string state,int progress) 
     if(index>=jobs_.size()) return;
     jobs_[index].state=std::move(state);
     jobs_[index].progress=std::clamp(progress,0,100);
+    if(jobs_[index].state=="RUNNING" && jobs_[index].startedUtc.empty()) jobs_[index].startedUtc=RegistryNowUtc();
+    if(jobs_[index].state=="COMPLETED" && jobs_[index].completedUtc.empty()) jobs_[index].completedUtc=RegistryNowUtc();
 }
 
 std::vector<TrainingJob>& TrainingJobRegistry::Jobs(){ return jobs_; }
@@ -129,7 +152,8 @@ void TrainingJobRegistry::Save(const std::filesystem::path& path) const {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path,std::ios::trunc);
     for(const auto& j:jobs_)
-        out<<j.id<<"\t"<<j.baseModel<<"\t"<<j.dataset<<"\t"<<j.state<<"\t"<<j.progress<<"\n";
+        out<<j.id<<"\t"<<j.baseModel<<"\t"<<j.dataset<<"\t"<<j.state<<"\t"<<j.progress
+           <<"\t"<<j.createdUtc<<"\t"<<j.startedUtc<<"\t"<<j.completedUtc<<"\n";
 }
 
 void TrainingJobRegistry::Load(const std::filesystem::path& path) {
@@ -144,9 +168,12 @@ void TrainingJobRegistry::Load(const std::filesystem::path& path) {
             if(pos==std::string::npos) { p.push_back(line.substr(start)); break; }
             p.push_back(line.substr(start,pos-start)); start=pos+1;
         }
-        if(p.size()!=5) continue;
+        if(p.size()!=5 && p.size()!=8) continue;
         try {
-            jobs_.push_back({p[0],p[1],p[2],p[3],std::clamp(std::stoi(p[4]),0,100)});
+            TrainingJob j;
+            j.id=p[0]; j.baseModel=p[1]; j.dataset=p[2]; j.state=p[3]; j.progress=std::clamp(std::stoi(p[4]),0,100);
+            if(p.size()==8) { j.createdUtc=p[5]; j.startedUtc=p[6]; j.completedUtc=p[7]; }
+            jobs_.push_back(std::move(j));
         } catch(...) {}
     }
 }

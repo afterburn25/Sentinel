@@ -24,6 +24,9 @@ struct TrainingJob {
     std::string dataset;
     std::string state{"QUEUED"};
     int progress{0};
+    std::string createdUtc;
+    std::string startedUtc;
+    std::string completedUtc;
 };
 
 enum class FoundationStage { Base, Candidate, Approved, Active, Retired };

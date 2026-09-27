@@ -143,7 +143,7 @@ std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     auto u=ParseUrl(endpoint);
     auto modelsPath=ModelsPathFromChatPath(u.path);
 
-    HINTERNET session=WinHttpOpen(L"SARA/1.0.16",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=WinHttpOpen(L"SARA/1.0.17",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
     if(!session) throw std::runtime_error("WinHttpOpen failed");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
 
@@ -302,7 +302,7 @@ private:
         json+="]}";
 
         auto u=ParseUrl(endpoint_);
-        HINTERNET session=WinHttpOpen(L"SARA/1.0.16",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+        HINTERNET session=WinHttpOpen(L"SARA/1.0.17",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
         if(!session) throw std::runtime_error("WinHttpOpen failed");
         WinHttpSetTimeouts(session,10000,10000,30000,60000);
 

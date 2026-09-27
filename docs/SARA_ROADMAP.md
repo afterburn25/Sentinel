@@ -139,3 +139,29 @@ Last updated: 2026-09-27
 - GGUF package manifests
 - llama.cpp local inference contract
 - Local/background training service separation
+
+
+## 1.0.17 — Dataset & Adapter Management
+
+### Dataset management
+- [x] Add snapshot creation timestamp and parent lineage.
+- [x] Add selectable dataset snapshot browser/details.
+- [x] Add dataset export.
+- [x] Add dataset import with duplicate-safe IDs.
+- [x] Show example count, approval provenance, and lineage.
+
+### Persona adapter management
+- [x] Add adapter version selection.
+- [x] Add active-vs-selected adapter comparison.
+- [x] Show foundation compatibility and adapter lifecycle state/history context.
+- [x] Add adapter export metadata.
+
+### Training run history
+- [x] Add created/start/completed timestamps to training jobs.
+- [x] Preserve completed job history.
+- [x] Show dataset/foundation lineage used by each job.
+- [x] Add job history/detail inspector.
+
+### UI
+- [x] Keep 1.0.17 inside the approved hybrid Model Lab design.
+- [x] Preserve no-overlap/minimum-window guarantees.

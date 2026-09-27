@@ -27,6 +27,8 @@ struct TrainingExample {
 struct DatasetSnapshot {
     std::string id;
     std::string name;
+    std::string parentId;
+    std::string createdUtc;
     std::vector<std::string> exampleIds;
 };
 
@@ -37,7 +39,9 @@ public:
         std::string input,std::string originalResponse,std::string correction,std::string targetResponse,
         std::string category="Behavior");
     void SetState(size_t index,TrainingExampleState state);
-    DatasetSnapshot& CreateSnapshot(std::string name);
+    DatasetSnapshot& CreateSnapshot(std::string name,std::string parentId={});
+    void ExportSnapshot(size_t index,const std::filesystem::path& path) const;
+    DatasetSnapshot& ImportSnapshot(const std::filesystem::path& path);
     std::vector<TrainingExample>& Examples();
     const std::vector<TrainingExample>& Examples() const;
     std::vector<DatasetSnapshot>& Snapshots();
