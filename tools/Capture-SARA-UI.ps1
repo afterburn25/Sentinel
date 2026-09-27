@@ -60,9 +60,9 @@ function Find-SaraWindow {
         $callback = [SaraUiNative+EnumWindowsProc]{
             param([IntPtr]$hwnd, [IntPtr]$lParam)
 
-            [uint32]$pid = 0
-            [void][SaraUiNative]::GetWindowThreadProcessId($hwnd, [ref]$pid)
-            if ($pid -ne $ProcessId) { return $true }
+            [uint32]$windowPid = 0
+            [void][SaraUiNative]::GetWindowThreadProcessId($hwnd, [ref]$windowPid)
+            if ($windowPid -ne $ProcessId) { return $true }
 
             $sb = New-Object Text.StringBuilder 256
             [void][SaraUiNative]::GetClassName($hwnd, $sb, $sb.Capacity)
