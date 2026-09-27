@@ -1491,6 +1491,8 @@ private:
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
+    HWND trainerModeCombo_{},trainerFoundationCombo_{};
+    HWND trainerForkNameEdit_{},trainerBasePathEdit_{},trainerLoraNameEdit_{},trainerLoraPathEdit_{},trainerDatasetEdit_{},trainerOutputEdit_{},trainerInstructionEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -1533,6 +1535,8 @@ private:
     std::string operatingStateCode_;
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
+    std::vector<sentinel::simulation::ModelFoundation> trainerFoundations_;
+    std::wstring trainerRuntimeStatus_=L"No persona LoRA active";
     bool responseRuleExactWording_{false};
 
     HFONT chatFont_{};
