@@ -121,7 +121,9 @@ struct SplashState {
     HBITMAP bitmap{};
     UINT imageWidth{};
     UINT imageHeight{};
-    int frame{};
+    HANDLE readyEvent{};
+    ULONGLONG started{};
+    int progressPercent{};
 };
 
 struct SplashThreadContext {
@@ -225,19 +227,19 @@ void PaintSplashImage(HWND hwnd,SplashState* state,HDC dc) {
     DeleteObject(sub);
 }
 
-void PaintSplashLoadingShimmer(HWND hwnd,SplashState* state,HDC dc) {
+void PaintSplashProgress(HWND hwnd,SplashState* state,HDC dc) {
     if(!state || !state->bitmap || state->imageWidth==0 || state->imageHeight==0) return;
 
     RECT rc{}; GetClientRect(hwnd,&rc);
     const int clientW=rc.right-rc.left;
     const int clientH=rc.bottom-rc.top;
 
-    // These coordinates are the single loading bar already present in the
-    // approved 1672x941 splash artwork. We animate only inside that bar.
-    constexpr int srcX=678;
-    constexpr int srcY=819;
-    constexpr int srcW=295;
-    constexpr int srcH=10;
+    // This is the one progress bar built into the approved 1672x941 artwork.
+    // The source PNG starts empty; SARA fills this same bar left-to-right.
+    constexpr int srcX=688;
+    constexpr int srcY=820;
+    constexpr int srcW=302;
+    constexpr int srcH=8;
 
     const double scaleX=(double)clientW/(double)state->imageWidth;
     const double scaleY=(double)clientH/(double)state->imageHeight;
@@ -246,8 +248,7 @@ void PaintSplashLoadingShimmer(HWND hwnd,SplashState* state,HDC dc) {
     const int dstW=std::max(1,(int)std::lround(srcW*scaleX));
     const int dstH=std::max(2,(int)std::lround(srcH*scaleY));
 
-    // Restore only the original bar pixels, never the whole splash. This keeps
-    // the static artwork untouched and prevents timer-driven flashing.
+    // Restore the original empty bar before drawing the new progress amount.
     HDC mem=CreateCompatibleDC(dc);
     HGDIOBJ old=SelectObject(mem,state->bitmap);
     if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
@@ -259,16 +260,10 @@ void PaintSplashLoadingShimmer(HWND hwnd,SplashState* state,HDC dc) {
     SelectObject(mem,old);
     DeleteDC(mem);
 
-    // A narrow moving highlight travels inside the existing bar. No second
-    // track, no extra dots, and no overlay outside the original bar.
-    const int sweepW=std::max(12,dstW/8);
-    const int travel=dstW+sweepW;
-    const int pos=(state->frame*6)%travel-sweepW;
-    const int left=std::max(dstX,dstX+pos);
-    const int right=std::min(dstX+dstW,dstX+pos+sweepW);
-    if(right>left) {
-        HBRUSH cyan=CreateSolidBrush(RGB(58,238,255));
-        RECT fill{left,dstY+std::max(1,dstH/4),right,dstY+std::max(2,(dstH*3)/4)};
+    const int fillW=(dstW*std::clamp(state->progressPercent,0,100))/100;
+    if(fillW>0) {
+        HBRUSH cyan=CreateSolidBrush(RGB(0,220,255));
+        RECT fill{dstX,dstY,dstX+fillW,dstY+dstH};
         FillRect(dc,&fill,cyan);
         DeleteObject(cyan);
     }
@@ -284,10 +279,18 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     if(msg==WM_ERASEBKGND) return 1;
     if(msg==WM_TIMER) {
         if(state) {
-            state->frame=(state->frame+1)%10000;
+            const ULONGLONG elapsed=GetTickCount64()-state->started;
+            const bool ready=state->readyEvent &&
+                WaitForSingleObject(state->readyEvent,0)==WAIT_OBJECT_0;
+
+            if(ready && elapsed>=7000ULL)
+                state->progressPercent=100;
+            else
+                state->progressPercent=(int)std::min<ULONGLONG>(90ULL,(elapsed*90ULL)/7000ULL);
+
             HDC dc=GetDC(hwnd);
             if(dc) {
-                PaintSplashLoadingShimmer(hwnd,state,dc);
+                PaintSplashProgress(hwnd,state,dc);
                 ReleaseDC(hwnd,dc);
             }
         }
@@ -297,7 +300,7 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         PAINTSTRUCT ps{};
         HDC dc=BeginPaint(hwnd,&ps);
         PaintSplashImage(hwnd,state,dc);
-        PaintSplashLoadingShimmer(hwnd,state,dc);
+        PaintSplashProgress(hwnd,state,dc);
         EndPaint(hwnd,&ps);
         return 0;
     }
@@ -309,6 +312,9 @@ DWORD WINAPI SaraSplashThreadProc(LPVOID param) {
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
 
     SplashState state;
+    state.readyEvent=ctx->readyEvent;
+    state.started=GetTickCount64();
+    state.progressPercent=0;
     const bool imageLoaded=LoadBitmapWithWic(
         ExeDir()/L"assets"/L"SARA-Splash.png",
         state.bitmap,state.imageWidth,state.imageHeight);
@@ -352,8 +358,6 @@ DWORD WINAPI SaraSplashThreadProc(LPVOID param) {
         UpdateWindow(splash);
         SetTimer(splash,1,50,nullptr);
 
-        const ULONGLONG minimumUntil=GetTickCount64()+7000ULL;
-        bool appReady=false;
         while(true) {
             MSG msg{};
             while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
@@ -361,12 +365,20 @@ DWORD WINAPI SaraSplashThreadProc(LPVOID param) {
                 DispatchMessageW(&msg);
             }
 
-            if(!appReady && ctx->readyEvent &&
-               WaitForSingleObject(ctx->readyEvent,0)==WAIT_OBJECT_0)
-                appReady=true;
+            const ULONGLONG elapsed=GetTickCount64()-state.started;
+            const bool appReady=ctx->readyEvent &&
+                WaitForSingleObject(ctx->readyEvent,0)==WAIT_OBJECT_0;
 
-            if(appReady && GetTickCount64()>=minimumUntil)
+            if(appReady && elapsed>=7000ULL) {
+                state.progressPercent=100;
+                HDC dc=GetDC(splash);
+                if(dc) {
+                    PaintSplashProgress(splash,&state,dc);
+                    ReleaseDC(splash,dc);
+                }
+                Sleep(120);
                 break;
+            }
 
             Sleep(10);
         }
