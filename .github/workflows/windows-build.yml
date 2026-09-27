@@ -45,6 +45,14 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-
 
+      - name: Verify restored SARA visual assets
+        shell: pwsh
+        run: |
+          python -c "from PIL import Image; import hashlib; p=r'resources/assets/SARA-Splash.png'; raw=open(p,'rb').read(); im=Image.open(p); assert im.format=='PNG'; assert im.size==(1672,941), im.size; assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Approved SARA 1.0.15 splash verified:', im.size)"
+          if (-not (Test-Path "resources/assets/SARA-Logo.png")) { throw "SARA logo asset missing" }
+          if (-not (Test-Path "resources/assets/SARA-Icon.png")) { throw "SARA icon asset missing" }
+          if (-not (Test-Path "resources/SARA.ico")) { throw "SARA ICO resource missing" }
+
       - name: Configure
         shell: pwsh
         run: cmake --preset windows-msvc-release
