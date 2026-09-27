@@ -178,3 +178,21 @@ Backend architecture changes must not regress the interface into generic utility
 - Shared dark navy/charcoal visual language with cyan/electric-blue primary accents and restrained purple secondary accents
 - Shared Model Lab navigation and context bar
 - Consistent cards, spacing, typography, iconography, badges, and state treatment
+
+
+## 1.0.16 implementation snapshot
+
+The active development branch now implements the approved hybrid design and core Model Lab state model:
+
+- Functional Overview / Train / Datasets / Personas & LoRAs / Foundation Forks / Jobs / Evaluation / Deployment workspaces.
+- Conversational Trainer with correction/instruction capture.
+- Persistent reviewed training examples and immutable dataset snapshots.
+- Persistent training-job records.
+- Persistent versioned foundation forks with immutable base, lineage, comparison, activation, and rollback.
+- Persistent persona adapter/LoRA registry with multi-version lifecycle and rollback.
+- Automatic persona adapter resolution.
+- OpenAI-compatible runtime contract sends resolved `X-SARA-Foundation-Id`, `X-SARA-Foundation`, `X-SARA-Adapter-Id`, and `X-SARA-Adapter` headers so compatible local inference services can automatically load the selected LoRA.
+- Persistent trigger rules with create/edit/delete, priority, terminal/continue behavior, alternate response pools, and trigger-first execution.
+- Persona response variation dimensions: intelligence/language level, slang, grammar quality, typo tendency, emoji tendency, and mood.
+- Hybrid UI interaction polish: vector smiley/paperclip composer controls, hover/pressed treatment, contextual help, aligned dropdowns, and minimum-window protection.
+- Visible product/package branding normalized to SARA 1.0.16 while retaining internal Sentinel namespace/storage compatibility where changing it could break existing data.
