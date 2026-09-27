@@ -932,6 +932,8 @@ public:
         personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
         personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
         personaBackgroundEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
+        responseRuleTriggerEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
+        responseRuleResponseEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1043,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         operatingStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
@@ -954,6 +956,7 @@ public:
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
+            responseRuleTriggerEdit_,responseRuleResponseEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
@@ -985,6 +988,8 @@ public:
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
+        SendMessageW(responseRuleTriggerEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Question or phrase to match");
+        SendMessageW(responseRuleResponseEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Investigator-approved response override");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
@@ -1409,6 +1414,7 @@ private:
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
+    HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     std::vector<sentinel::CaseRecord> cases_;
@@ -1429,6 +1435,7 @@ private:
     bool simInitiativeSent_{false};
     std::string simPendingMessage_;
     std::string simPreparedReply_;
+    bool simPreparedFromRule_{false};
     int simLastStartDelayMs_{0};
     int simLastTypingDelayMs_{0};
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
@@ -2212,6 +2219,8 @@ private:
         ShowChatEditor(page_==Page::Simulation);
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
+        if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
+        if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
         LayoutNativeControls();
     }
 
@@ -2296,6 +2305,13 @@ private:
             MoveControl(personaGrammarCombo_,(int)(x+112),(int)(ty+84),145,150);
             MoveControl(personaTypoCombo_,(int)(x+327),(int)(ty+84),140,150);
             MoveControl(personaEmojiCombo_,(int)(x+547),(int)(ty+84),145,150);
+        }
+
+        if(page_==Page::ModelLab) {
+            const float x=kSidebar+28.0f, y=kHeader+104.0f;
+            const float contentW=w-x-28.0f;
+            MoveControl(responseRuleTriggerEdit_,(int)(x+120),(int)(y+104),260,30,TRUE);
+            MoveControl(responseRuleResponseEdit_,(int)(x+474),(int)(y+104),(int)std::max(260.0f,contentW-760.0f),30,TRUE);
         }
 
         if(page_==Page::Agency) {
