@@ -1300,11 +1300,18 @@ public:
 
             simInitiativeSent_=true;
             try {
+                simContext_.learningMode=simSettings_.learningMode;
                 const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
                     currentConversationId_,10);
                 if(!participantFacts.empty()) {
                     if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
                     simContext_.recalledMemory+=participantFacts;
+                }
+                const auto personaClaims=runtime_->conversationMemory.RecallPersonaClaims(
+                    currentConversationId_,12);
+                if(!personaClaims.empty()) {
+                    if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+                    simContext_.recalledMemory+=personaClaims;
                 }
 
                 auto initiative=model_->GenerateSyntheticInitiative(simContext_);
@@ -1318,6 +1325,7 @@ public:
                         initiative);
                     LogPersonaConversationEvent(
                         "proactive_followup",{},initiative,0,0);
+                    RecordLearnedPersonaNote(initiative,"proactive_persona_claim");
                     sentinel::simulation::SaveSession(
                         runtime_->root/"simulation-session.tsv",simContext_);
                     statusText_=L"Synthetic subject started a benign follow-up";
