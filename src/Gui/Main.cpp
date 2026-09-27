@@ -596,6 +596,9 @@ public:
         if(id==L"ml_approve") return L"Approve the latest reviewed training example";
         if(id==L"ml_rules_manage") return L"View, add, edit, prioritize, or delete trigger rules";
         if(id==L"dataset_snapshot") return L"Freeze approved examples into a versioned dataset snapshot";
+        if(id==L"dataset_import") return L"Import a portable SARA dataset snapshot and its reviewed examples";
+        if(id==L"dataset_export") return L"Export the selected snapshot with its reviewed training records";
+        if(id==L"adapter_export") return L"Export selected persona adapter metadata";
         if(id==L"job_new") return L"Queue a new training job from the selected foundation and dataset";
         if(id==L"foundation_new_fork") return L"Create a versioned SARA Foundation descendant without altering the base";
         if(id==L"model_activate") return L"Activate the selected approved candidate";
@@ -690,6 +693,8 @@ public:
             }
             else if (b.id==L"ml_style_save") SaveProfileEditors();
             else if (b.id==L"adapter_new") CreatePersonaAdapter();
+            else if (b.id==L"adapter_export") ExportSelectedPersonaAdapter();
+            else if (b.id.rfind(L"adapter_select:",0)==0) SelectPersonaAdapter((int)std::stol(b.id.substr(15)));
             else if (b.id.rfind(L"adapter_activate:",0)==0) ActivatePersonaAdapter((size_t)std::stoul(b.id.substr(17)));
             else if (b.id==L"adapter_rollback") RollbackPersonaAdapter();
             else if (b.id==L"foundation_new_fork") CreateFoundationFork();
@@ -697,11 +702,15 @@ public:
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
             else if (b.id==L"foundation_rollback") RollbackFoundation();
             else if (b.id==L"dataset_snapshot") CreateDatasetSnapshot();
+            else if (b.id==L"dataset_import") ImportDatasetSnapshot();
+            else if (b.id==L"dataset_export") ExportSelectedDatasetSnapshot();
+            else if (b.id.rfind(L"dataset_select:",0)==0) SelectDatasetSnapshot((int)std::stol(b.id.substr(15)));
             else if (b.id.rfind(L"training_example:",0)==0) SelectTrainingExample((int)std::stol(b.id.substr(17)));
             else if (b.id==L"training_review_save") SaveSelectedTrainingTarget();
             else if (b.id==L"training_review_approve") ReviewSelectedTrainingExample(true);
             else if (b.id==L"training_review_reject") ReviewSelectedTrainingExample(false);
             else if (b.id==L"job_new") CreateTrainingJob();
+            else if (b.id.rfind(L"job_select:",0)==0) SelectTrainingJob((int)std::stol(b.id.substr(11)));
             else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
             else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
             else if (b.id.rfind(L"foundation:",0)==0) {
@@ -902,6 +911,9 @@ private:
     int trainingReviewPending_{0};
     int trainingApproved_{0};
     int selectedTrainingExample_{-1};
+    int selectedDatasetSnapshot_{-1};
+    int selectedPersonaAdapter_{-1};
+    int selectedTrainingJob_{-1};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
     size_t selectedCase_{0},selectedEvidence_{0};
@@ -2437,6 +2449,39 @@ private:
         }
     }
 
+    void SelectPersonaAdapter(int index) {
+        if(index<0 || index>=(int)personaAdapterRegistry_.Adapters().size()) return;
+        if(personaAdapterRegistry_.Adapters()[(size_t)index].personaName!=simSettings_.persona.name) return;
+        selectedPersonaAdapter_=index;
+        statusText_=L"Persona adapter selected";
+    }
+
+    void ExportSelectedPersonaAdapter() {
+        if(selectedPersonaAdapter_<0 || selectedPersonaAdapter_>=(int)personaAdapterRegistry_.Adapters().size()) {
+            int active=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+            if(active<0) { statusText_=L"Select a persona adapter first"; return; }
+            selectedPersonaAdapter_=active;
+        }
+        const auto& a=personaAdapterRegistry_.Adapters()[(size_t)selectedPersonaAdapter_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(a.personaName+"-"+a.adapterName+"-"+a.version+".sara-adapter");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Adapter Metadata\0*.sara-adapter\0Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-adapter"; ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<"SARA_ADAPTER_V1\n";
+        out<<"id="<<a.id<<"\n";
+        out<<"persona="<<a.personaName<<"\n";
+        out<<"name="<<a.adapterName<<"\n";
+        out<<"version="<<a.version<<"\n";
+        out<<"foundation="<<a.foundationId<<"\n";
+        out<<"stage="<<sentinel::simulation::ToString(a.stage)<<"\n";
+        statusText_=L"Persona adapter metadata exported";
+    }
+
     void CreatePersonaAdapter() {
         std::string persona=simSettings_.persona.name.empty()?"Default Persona":simSettings_.persona.name;
         std::string foundationId;
@@ -2449,6 +2494,7 @@ private:
         auto& adapter=personaAdapterRegistry_.Add(persona,persona+".lora","v"+std::to_string(count+1),foundationId);
         personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
         assignedPersonaLoRA_=Widen(adapter.adapterName+" "+adapter.version);
+        selectedPersonaAdapter_=(int)personaAdapterRegistry_.Adapters().size()-1;
         statusText_=L"Persona LoRA created in staging";
     }
 
@@ -2473,9 +2519,62 @@ private:
         } else statusText_=L"No archived LoRA is available for rollback";
     }
 
+    void SelectDatasetSnapshot(int index) {
+        if(index<0 || index>=(int)trainingData_.Snapshots().size()) return;
+        selectedDatasetSnapshot_=index;
+        selectedTrainingExample_=-1;
+        ApplyPageControls();
+        statusText_=L"Dataset snapshot selected";
+    }
+
+    void ImportDatasetSnapshot() {
+        wchar_t file[MAX_PATH]{};
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+        try {
+            auto& snap=trainingData_.ImportSnapshot(std::filesystem::path(file));
+            trainingData_.Save(runtime_->root/"training-data.tsv");
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+            selectedTrainingExample_=-1;
+            trainingCaptured_=(int)trainingData_.Examples().size();
+            trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+            trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+            statusText_=L"Imported dataset snapshot "+Widen(snap.name);
+        } catch(const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Import Failed",MB_OK|MB_ICONERROR);
+            statusText_=L"Dataset import failed";
+        }
+    }
+
+    void ExportSelectedDatasetSnapshot() {
+        if(trainingData_.Snapshots().empty()) { statusText_=L"No dataset snapshot is available to export"; return; }
+        if(selectedDatasetSnapshot_<0 || selectedDatasetSnapshot_>=(int)trainingData_.Snapshots().size())
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+        const auto& snap=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(snap.name+".sara-dataset");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-dataset"; ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+        try {
+            trainingData_.ExportSnapshot((size_t)selectedDatasetSnapshot_,std::filesystem::path(file));
+            statusText_=L"Dataset snapshot exported";
+        } catch(const std::exception& e) {
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Export Failed",MB_OK|MB_ICONERROR);
+            statusText_=L"Dataset export failed";
+        }
+    }
+
     void SelectTrainingExample(int index) {
         if(index<0 || index>=(int)trainingData_.Examples().size()) return;
         selectedTrainingExample_=index;
+        selectedDatasetSnapshot_=-1;
         SetWindowTextW(trainingReviewTargetEdit_,Widen(trainingData_.Examples()[(size_t)index].targetResponse).c_str());
         ApplyPageControls();
         statusText_=L"Training example selected for review";
@@ -2521,7 +2620,15 @@ private:
         }
         auto& snap=trainingData_.CreateSnapshot("SARA Dataset "+std::to_string(trainingData_.Snapshots().size()+1));
         trainingData_.Save(runtime_->root/"training-data.tsv");
+        selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+        selectedTrainingExample_=-1;
         statusText_=L"Created dataset snapshot "+Widen(snap.name);
+    }
+
+    void SelectTrainingJob(int index) {
+        if(index<0 || index>=(int)trainingJobRegistry_.Jobs().size()) return;
+        selectedTrainingJob_=index;
+        statusText_=L"Training job selected";
     }
 
     void CreateTrainingJob() {
@@ -2538,6 +2645,7 @@ private:
         else dataset="approved-captures-"+std::to_string(trainingApproved_);
         trainingJobRegistry_.Create(foundation,dataset);
         trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        selectedTrainingJob_=(int)trainingJobRegistry_.Jobs().size()-1;
         statusText_=L"Training job queued";
     }
 
