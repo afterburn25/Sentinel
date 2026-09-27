@@ -1,10 +1,10 @@
 #define MyAppName "SARA"
 #define MyAppFullName "SARA - Synthetic Adaptive Response Agent"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.17"
+  #define MyAppVersion "1.0.18"
 #endif
 #ifndef SourceDir
-  #define SourceDir "..\\package\\SARA-1.0.17-windows-x64"
+  #define SourceDir "..\\package\\SARA-1.0.18-windows-x64"
 #endif
 
 [Setup]
