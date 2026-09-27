@@ -120,8 +120,13 @@ struct SplashState {
     HBITMAP bitmap{};
     UINT imageWidth{};
     UINT imageHeight{};
-    ULONGLONG started{};
     int frame{};
+};
+
+struct SplashThreadContext {
+    HINSTANCE instance{};
+    HANDLE readyEvent{};
+    HANDLE createdEvent{};
 };
 
 bool LoadBitmapWithWic(const std::filesystem::path& path,HBITMAP& bitmap,UINT& width,UINT& height) {
@@ -177,6 +182,97 @@ bool LoadBitmapWithWic(const std::filesystem::path& path,HBITMAP& bitmap,UINT& w
     return true;
 }
 
+void PaintSplashImage(HWND hwnd,SplashState* state,HDC dc) {
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    if(state && state->bitmap) {
+        HDC mem=CreateCompatibleDC(dc);
+        HGDIOBJ old=SelectObject(mem,state->bitmap);
+        const int clientW=rc.right-rc.left;
+        const int clientH=rc.bottom-rc.top;
+        if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
+            BitBlt(dc,0,0,clientW,clientH,mem,0,0,SRCCOPY);
+        } else {
+            SetStretchBltMode(dc,HALFTONE);
+            SetBrushOrgEx(dc,0,0,nullptr);
+            StretchBlt(dc,0,0,clientW,clientH,mem,0,0,
+                (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
+        }
+        SelectObject(mem,old);
+        DeleteDC(mem);
+        return;
+    }
+
+    FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
+    SetBkMode(dc,TRANSPARENT);
+    SetTextColor(dc,RGB(225,240,255));
+    HFONT title=CreateFontW(
+        -72,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+    HFONT sub=CreateFontW(
+        -24,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+    HFONT oldFont=(HFONT)SelectObject(dc,title);
+    RECT titleRc{0,rc.bottom/2-70,rc.right,rc.bottom/2+20};
+    DrawTextW(dc,L"SARA",-1,&titleRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    SelectObject(dc,sub);
+    RECT subRc{0,rc.bottom/2+10,rc.right,rc.bottom/2+60};
+    DrawTextW(dc,L"Synthetic Adaptive Response Agent",-1,&subRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    SelectObject(dc,oldFont);
+    DeleteObject(title);
+    DeleteObject(sub);
+}
+
+void PaintSplashLoadingShimmer(HWND hwnd,SplashState* state,HDC dc) {
+    if(!state || !state->bitmap || state->imageWidth==0 || state->imageHeight==0) return;
+
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    const int clientW=rc.right-rc.left;
+    const int clientH=rc.bottom-rc.top;
+
+    // These coordinates are the single loading bar already present in the
+    // approved 1672x941 splash artwork. We animate only inside that bar.
+    constexpr int srcX=678;
+    constexpr int srcY=819;
+    constexpr int srcW=295;
+    constexpr int srcH=10;
+
+    const double scaleX=(double)clientW/(double)state->imageWidth;
+    const double scaleY=(double)clientH/(double)state->imageHeight;
+    const int dstX=(int)std::lround(srcX*scaleX);
+    const int dstY=(int)std::lround(srcY*scaleY);
+    const int dstW=std::max(1,(int)std::lround(srcW*scaleX));
+    const int dstH=std::max(2,(int)std::lround(srcH*scaleY));
+
+    // Restore only the original bar pixels, never the whole splash. This keeps
+    // the static artwork untouched and prevents timer-driven flashing.
+    HDC mem=CreateCompatibleDC(dc);
+    HGDIOBJ old=SelectObject(mem,state->bitmap);
+    if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
+        BitBlt(dc,dstX,dstY,dstW,dstH,mem,srcX,srcY,SRCCOPY);
+    } else {
+        SetStretchBltMode(dc,HALFTONE);
+        StretchBlt(dc,dstX,dstY,dstW,dstH,mem,srcX,srcY,srcW,srcH,SRCCOPY);
+    }
+    SelectObject(mem,old);
+    DeleteDC(mem);
+
+    // A narrow moving highlight travels inside the existing bar. No second
+    // track, no extra dots, and no overlay outside the original bar.
+    const int sweepW=std::max(12,dstW/8);
+    const int travel=dstW+sweepW;
+    const int pos=(state->frame*6)%travel-sweepW;
+    const int left=std::max(dstX,dstX+pos);
+    const int right=std::min(dstX+dstW,dstX+pos+sweepW);
+    if(right>left) {
+        HBRUSH cyan=CreateSolidBrush(RGB(58,238,255));
+        RECT fill{left,dstY+std::max(1,dstH/4),right,dstY+std::max(2,(dstH*3)/4)};
+        FillRect(dc,&fill,cyan);
+        DeleteObject(cyan);
+    }
+}
+
 LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     auto* state=reinterpret_cast<SplashState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
     if(msg==WM_NCCREATE) {
@@ -187,121 +283,39 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     if(msg==WM_ERASEBKGND) return 1;
     if(msg==WM_TIMER) {
         if(state) {
-            state->frame=(state->frame+1)%240;
-            RECT rc{}; GetClientRect(hwnd,&rc);
-            const int w=rc.right-rc.left;
-            const int h=rc.bottom-rc.top;
-            const int trackW=(int)(w*0.18);
-            const int trackX=(w-trackW)/2;
-            const int trackY=(int)(h*0.864);
-            RECT animationRect{
-                trackX-12,
-                trackY-36,
-                trackX+trackW+12,
-                trackY+18
-            };
-            InvalidateRect(hwnd,&animationRect,FALSE);
+            state->frame=(state->frame+1)%10000;
+            HDC dc=GetDC(hwnd);
+            if(dc) {
+                PaintSplashLoadingShimmer(hwnd,state,dc);
+                ReleaseDC(hwnd,dc);
+            }
         }
         return 0;
     }
     if(msg==WM_PAINT) {
         PAINTSTRUCT ps{};
         HDC dc=BeginPaint(hwnd,&ps);
-        RECT rc{}; GetClientRect(hwnd,&rc);
-        if(state && state->bitmap) {
-            HDC mem=CreateCompatibleDC(dc);
-            HGDIOBJ old=SelectObject(mem,state->bitmap);
-            const int clientW=rc.right-rc.left;
-            const int clientH=rc.bottom-rc.top;
-            if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
-                BitBlt(dc,0,0,clientW,clientH,mem,0,0,SRCCOPY);
-            } else {
-                SetStretchBltMode(dc,HALFTONE);
-                SetBrushOrgEx(dc,0,0,nullptr);
-                StretchBlt(dc,0,0,clientW,clientH,mem,0,0,
-                    (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
-            }
-            SelectObject(mem,old);
-            DeleteDC(mem);
-        } else {
-            FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
-            SetBkMode(dc,TRANSPARENT);
-            SetTextColor(dc,RGB(225,240,255));
-            HFONT title=CreateFontW(
-                -72,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
-                DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
-            HFONT sub=CreateFontW(
-                -24,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
-                DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
-            HFONT oldFont=(HFONT)SelectObject(dc,title);
-            RECT titleRc{0,rc.bottom/2-70,rc.right,rc.bottom/2+20};
-            DrawTextW(dc,L"SARA",-1,&titleRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            SelectObject(dc,sub);
-            RECT subRc{0,rc.bottom/2+10,rc.right,rc.bottom/2+60};
-            DrawTextW(dc,L"Synthetic Adaptive Response Agent",-1,&subRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-            SelectObject(dc,oldFont);
-            DeleteObject(title);
-            DeleteObject(sub);
-        }
-        if(state) {
-            const int w=rc.right-rc.left;
-            const int h=rc.bottom-rc.top;
-            const int trackW=(int)(w*0.18);
-            const int trackH=5;
-            const int trackX=(w-trackW)/2;
-            const int trackY=(int)(h*0.864);
-            HBRUSH track=CreateSolidBrush(RGB(18,67,118));
-            HBRUSH cyan=CreateSolidBrush(RGB(0,224,255));
-            RECT tr{trackX,trackY,trackX+trackW,trackY+trackH};
-            FillRect(dc,&tr,track);
-
-            const int sweepW=std::max(28,trackW/4);
-            const int travel=trackW+sweepW;
-            const int pos=(state->frame*7)%travel-sweepW;
-            RECT fill{
-                std::max(trackX,trackX+pos),
-                trackY,
-                std::min(trackX+trackW,trackX+pos+sweepW),
-                trackY+trackH
-            };
-            if(fill.right>fill.left) FillRect(dc,&fill,cyan);
-
-            const int dotY=trackY-22;
-            for(int i=0;i<3;i++) {
-                const int phase=(state->frame/7+i)%3;
-                HBRUSH dot=CreateSolidBrush(phase==0?RGB(50,235,255):RGB(29,116,178));
-                const int x=w/2-18+i*18;
-                HGDIOBJ oldBrush=SelectObject(dc,dot);
-                HPEN pen=CreatePen(PS_NULL,0,RGB(0,0,0));
-                HGDIOBJ oldPen=SelectObject(dc,pen);
-                Ellipse(dc,x-4,dotY-4,x+4,dotY+4);
-                SelectObject(dc,oldPen);
-                SelectObject(dc,oldBrush);
-                DeleteObject(pen);
-                DeleteObject(dot);
-            }
-            DeleteObject(cyan);
-            DeleteObject(track);
-        }
+        PaintSplashImage(hwnd,state,dc);
+        PaintSplashLoadingShimmer(hwnd,state,dc);
         EndPaint(hwnd,&ps);
         return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
 }
 
-void ShowSaraSplash(HINSTANCE instance) {
+DWORD WINAPI SaraSplashThreadProc(LPVOID param) {
+    auto* ctx=reinterpret_cast<SplashThreadContext*>(param);
+    CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+
     SplashState state;
     const bool imageLoaded=LoadBitmapWithWic(
         ExeDir()/L"assets"/L"SARA-Splash.png",
         state.bitmap,state.imageWidth,state.imageHeight);
-    state.started=GetTickCount64();
 
     constexpr wchar_t splashClass[]=L"SARAStartupSplash";
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc=SplashWndProc;
-    wc.hInstance=instance;
+    wc.hInstance=ctx->instance;
     wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
     wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName=splashClass;
@@ -328,25 +342,42 @@ void ShowSaraSplash(HINSTANCE instance) {
 
     HWND splash=CreateWindowExW(
         WS_EX_TOOLWINDOW|WS_EX_TOPMOST,splashClass,L"SARA",
-        WS_POPUP,x,y,width,height,nullptr,nullptr,instance,&state);
+        WS_POPUP,x,y,width,height,nullptr,nullptr,ctx->instance,&state);
+
+    if(ctx->createdEvent) SetEvent(ctx->createdEvent);
+
     if(splash) {
         ShowWindow(splash,SW_SHOWNORMAL);
         UpdateWindow(splash);
         SetTimer(splash,1,50,nullptr);
-        const ULONGLONG until=GetTickCount64()+7000ULL;
-        while(GetTickCount64()<until) {
+
+        const ULONGLONG minimumUntil=GetTickCount64()+7000ULL;
+        bool appReady=false;
+        while(true) {
             MSG msg{};
             while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
                 TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
+
+            if(!appReady && ctx->readyEvent &&
+               WaitForSingleObject(ctx->readyEvent,0)==WAIT_OBJECT_0)
+                appReady=true;
+
+            if(appReady && GetTickCount64()>=minimumUntil)
+                break;
+
             Sleep(10);
         }
+
         KillTimer(splash,1);
         DestroyWindow(splash);
     }
-    DeleteObject(state.bitmap);
-    UnregisterClassW(splashClass,instance);
+
+    if(state.bitmap) DeleteObject(state.bitmap);
+    UnregisterClassW(splashClass,ctx->instance);
+    CoUninitialize();
+    return 0;
 }
 
 bool IsLocalModelEndpoint(const std::string& endpoint) {
@@ -4387,7 +4418,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
-    ShowSaraSplash(instance);
+
+    SplashThreadContext splashCtx{};
+    splashCtx.instance=instance;
+    splashCtx.readyEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    splashCtx.createdEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    HANDLE splashThread=CreateThread(nullptr,0,SaraSplashThreadProc,&splashCtx,0,nullptr);
+    if(splashThread && splashCtx.createdEvent)
+        WaitForSingleObject(splashCtx.createdEvent,5000);
+
     WNDCLASSEXW wc{sizeof(wc)};
     wc.style=CS_HREDRAW|CS_VREDRAW;
     wc.lpfnWndProc=WndProc;
@@ -4405,7 +4444,24 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
-    if (!hwnd) return 1;
+    if (!hwnd) {
+        if(splashCtx.readyEvent) SetEvent(splashCtx.readyEvent);
+        if(splashThread) WaitForSingleObject(splashThread,INFINITE);
+        if(splashThread) CloseHandle(splashThread);
+        if(splashCtx.createdEvent) CloseHandle(splashCtx.createdEvent);
+        if(splashCtx.readyEvent) CloseHandle(splashCtx.readyEvent);
+        CoUninitialize();
+        return 1;
+    }
+
+    // The main window has completed WM_CREATE/App::Init and is ready to show.
+    // Keep the splash visible until this point (and for the requested minimum
+    // seven seconds), then reveal the already-initialized app immediately.
+    if(splashCtx.readyEvent) SetEvent(splashCtx.readyEvent);
+    if(splashThread) WaitForSingleObject(splashThread,INFINITE);
+    if(splashThread) CloseHandle(splashThread);
+    if(splashCtx.createdEvent) CloseHandle(splashCtx.createdEvent);
+    if(splashCtx.readyEvent) CloseHandle(splashCtx.readyEvent);
 
     ShowWindow(hwnd,show);
     UpdateWindow(hwnd);
