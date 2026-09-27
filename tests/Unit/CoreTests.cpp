@@ -409,8 +409,8 @@ void TestUnifiedChannelCore()
     assert(recent[0].body=="hello");
 
     ChannelAdapterRegistry registry;
-    registry.Register(std::make_unique<LocalSimulationChannelAdapter>(
-        sentinel::operations::CreateInMemoryMessageAdapter()));
+    auto legacyAdapter=sentinel::operations::CreateInMemoryMessageAdapter();
+    registry.Register(std::make_unique<LocalSimulationChannelAdapter>(*legacyAdapter));
     auto* adapter=registry.FindByName("SARA Local Simulation");
     assert(adapter!=nullptr);
     assert(adapter->Connected());
