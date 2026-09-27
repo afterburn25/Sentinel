@@ -512,7 +512,6 @@ begin
   if FileExists(ModelPath) then
     DeleteFile(ModelPath);
 
-  SaveModelMarker;
   SetStatus('Installing verified SARA model...');
   if not RenameFile(TempModel, ModelPath) then
   begin
@@ -520,6 +519,7 @@ begin
       RaiseException('Unable to move the verified SARA model into the application folder.');
     DeleteFile(TempModel);
   end;
+  SaveModelMarker;
   ProgressPage.SetProgress(90, 100);
 end;
 
