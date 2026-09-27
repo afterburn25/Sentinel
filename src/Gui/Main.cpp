@@ -1353,8 +1353,20 @@ public:
             UpdateWindow(hwnd_);
 
             try {
-                if(!simPreparedFromRule_ && model_) {
-                    simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                if(simPreparedFromRule_) {
+                    if(simRuleResponseMode_=="persona_variation" && model_) {
+                        simPreparedReply_=model_->GeneratePersonaRuleReply(
+                            simRuleMeaning_,simContext_);
+                        const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+                            simSettings_.ageState,simPreparedReply_);
+                        if(!policy.allowed)
+                            simPreparedReply_=simRuleMeaning_;
+                    } else if(simPreparedReply_.empty()) {
+                        simPreparedReply_=simRuleMeaning_;
+                    }
+                } else if(model_) {
+                    simPreparedReply_=model_->GenerateSyntheticReply(
+                        simPendingMessage_,simContext_);
                 }
             } catch(const std::exception& e) {
                 simPreparedReply_=std::string("Model error: ")+e.what();
@@ -1393,10 +1405,16 @@ public:
                         simLastStartDelayMs_,simLastTypingDelayMs_);
                     if(!simPreparedFromRule_)
                         RecordLearnedPersonaNote(simPreparedReply_,"reactive_persona_claim");
-                    const auto source=Widen(model_?model_->Name():"No model");
-                    statusText_=L"Response from "+source;
-                    if(!simContext_.recalledMemory.empty())
-                        statusText_+=L" | prior-conversation context used";
+                    if(simPreparedFromRule_) {
+                        statusText_=simRuleResponseMode_=="persona_variation"
+                            ? L"Response rule applied in persona voice"
+                            : L"Exact response rule applied";
+                    } else {
+                        const auto source=Widen(model_?model_->Name():"No model");
+                        statusText_=L"Response from "+source;
+                        if(!simContext_.recalledMemory.empty())
+                            statusText_+=L" | prior-conversation context used";
+                    }
                 } else {
                     statusText_=L"Model request failed";
                 }
@@ -1412,6 +1430,8 @@ public:
         simPendingMessage_.clear();
         simPreparedReply_.clear();
         simPreparedFromRule_=false;
+        simRuleMeaning_.clear();
+        simRuleResponseMode_.clear();
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         // One benign proactive nudge is allowed in Simulation after 60 seconds
         // of silence. Live-channel automation remains governed by the operation
@@ -3192,13 +3212,19 @@ private:
         simPreparedReply_.clear();
         simPreparedFromRule_=false;
 
+        simRuleMeaning_.clear();
+        simRuleResponseMode_.clear();
+
         if(auto rule=FindPersonaResponseRule(utf8)) {
             const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
-                simSettings_.ageState,*rule);
+                simSettings_.ageState,rule->response);
             if(policy.allowed) {
-                simPreparedReply_=*rule;
                 simPreparedFromRule_=true;
-                statusText_=L"Investigator response rule matched";
+                simRuleMeaning_=rule->response;
+                simRuleResponseMode_=rule->responseMode;
+                if(rule->responseMode=="exact")
+                    simPreparedReply_=rule->response;
+                statusText_=L"Response rule matched: "+Widen(rule->trigger);
             } else {
                 statusText_=L"Matched response rule was blocked by active policy";
             }
@@ -3219,7 +3245,8 @@ private:
         simLastStartDelayMs_=readingDelay;
         simLastTypingDelayMs_=0;
         SetTimer(hwnd_,kSimTypingStartTimer,(UINT)readingDelay,nullptr);
-        statusText_=L"Message delivered";
+        if(!simPreparedFromRule_)
+            statusText_=L"Message delivered";
         SetFocus(chatEdit_);
         SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
         InvalidateRect(chatEdit_,nullptr,FALSE);
