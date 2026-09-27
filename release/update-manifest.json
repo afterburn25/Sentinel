@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.16",
   "download_url": "",
   "sha256": "",
-  "notes": "Sentinel 1.0 development release. Production update distribution requires a trusted signed release channel."
+  "notes": "SARA 1.0.16 Model Lab / Trainer redesign: hybrid UI, conversational training, foundation forks, persona LoRAs, reviewed datasets, training jobs, trigger rules, response variation, evaluation, deployment, diagnostics, and rollback."
 }
