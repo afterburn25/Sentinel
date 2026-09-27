@@ -1,4 +1,5 @@
 #include "Sentinel/Simulation/SettingsStore.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
@@ -74,6 +75,7 @@ SimulationSettings LoadSimulationSettings(const std::filesystem::path& path) {
             else if(k=="learningMode") s.learningMode=(v=="1" || v=="true" || v=="TRUE");
         } catch(...) {}
     }
+    s.persona.age=std::clamp(s.persona.age,8,17);
     if(s.minDelayMs<500) s.minDelayMs=500;
     if(s.maxDelayMs<s.minDelayMs) s.maxDelayMs=s.minDelayMs;
     return s;
