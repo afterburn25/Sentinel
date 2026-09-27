@@ -1928,7 +1928,7 @@ private:
             DrawIcon(NavIcon(i),26,y+3,22,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+3,145,26,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.15",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(std::wstring(L"SARA v")+Widen(SARA_VERSION_STR),24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
