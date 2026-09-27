@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sentinel VERSION 1.0.18 LANGUAGES CXX RC)
+project(Sentinel VERSION 1.0.18.1 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,7 +72,7 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         winhttp
         comctl32
     )
-    target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE)
+    target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE SARA_VERSION_STR="${PROJECT_VERSION}")
     set_target_properties(Sentinel PROPERTIES OUTPUT_NAME SARA)
 endif()
 
