@@ -670,6 +670,8 @@ public:
             else if (b.id==L"model_register") RegisterCurrentModel();
             else if (b.id==L"model_eval") EvaluateSelectedRegistryModel();
             else if (b.id.rfind(L"evalrun:",0)==0) selectedEvaluationRun_=(int)std::stol(b.id.substr(8));
+            else if (b.id.rfind(L"evalcompare:",0)==0) comparisonEvaluationRun_=(int)std::stol(b.id.substr(12));
+            else if (b.id==L"eval_export_compare") ExportEvaluationComparison();
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
@@ -951,6 +953,7 @@ private:
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
     int selectedEvaluationRun_{-1};
+    int comparisonEvaluationRun_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
@@ -2982,7 +2985,8 @@ private:
                 if(!rule.enabled) continue;
                 ++triggerTotal;
                 auto match=triggerRules_.Match(rule.pattern,simContext_.personaSummary,1);
-                if(match && match->ruleId==rule.id) ++triggerPassed;
+                const bool responseOk=rule.responses.empty() || (match && !match->response.empty());
+                if(match && match->ruleId==rule.id && match->terminal==rule.terminal && responseOk) ++triggerPassed;
             }
 
             std::vector<sentinel::simulation::EvaluationDimensionResult> dimensions;
@@ -2996,6 +3000,23 @@ private:
             dimensions.push_back(sentinel::simulation::ScoreTriggerRegression(
                 triggerTotal,triggerPassed));
             dimensions.push_back(sentinel::simulation::ScoreResponseDiversity(styleResponses));
+
+            for(auto& dimension:dimensions) {
+                int caseTotal=0;
+                int caseCount=0;
+                for(const auto& cr:caseResults) {
+                    if(cr.dimension!=dimension.dimension) continue;
+                    caseTotal+=cr.score;
+                    ++caseCount;
+                    if(!cr.passed) dimension.warnings.push_back(cr.caseName+": "+cr.details);
+                }
+                if(caseCount>0) {
+                    const int caseAverage=caseTotal/caseCount;
+                    dimension.score=(dimension.score+caseAverage)/2;
+                    dimension.passed=dimension.score>=80;
+                    dimension.details+=" Named-case average "+std::to_string(caseAverage)+".";
+                }
+            }
 
             auto& run=evaluationRuns_.Create(
                 item.id,item.modelName,
@@ -3031,6 +3052,33 @@ private:
             statusText_=L"Model evaluation suite failed";
             MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Model Evaluation Failed",MB_OK|MB_ICONERROR);
         }
+    }
+
+    void ExportEvaluationComparison() {
+        if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size() ||
+           comparisonEvaluationRun_<0 || comparisonEvaluationRun_>=(int)evaluationRuns_.Runs().size()) {
+            statusText_=L"Select two evaluation runs to compare";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-Evaluation-Comparison.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        const auto report=sentinel::simulation::BuildCandidateComparisonReport(
+            evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_],
+            evaluationRuns_.Runs()[(size_t)comparisonEvaluationRun_]);
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<report;
+        statusText_=L"Evaluation comparison exported";
     }
 
     void ApproveSelectedRegistryModel() {
@@ -3707,30 +3755,52 @@ private:
 
         const float rx=x+leftW+gap;
         Rounded(rx,lowerY,rightW,150,brush_.panel2.Get(),brush_.border.Get(),9);
-        TextLine(L"Candidate Comparison",rx+16,lowerY+8,rightW-32,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Candidate Comparison",rx+16,lowerY+8,rightW-154,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"eval_export_compare",L"Export",rx+rightW-100,lowerY+8,82,24,false);
+
+        const sentinel::simulation::EvaluationRun* compare=nullptr;
+        if(comparisonEvaluationRun_>=0 && comparisonEvaluationRun_<(int)evaluationRuns_.Runs().size())
+            compare=&evaluationRuns_.Runs()[(size_t)comparisonEvaluationRun_];
 
         float cy=lowerY+38;
         int candidates=0;
-        for(size_t i=0;i<modelRegistry_.Models().size() && candidates<4;i++) {
+        for(size_t i=0;i<modelRegistry_.Models().size() && candidates<3;i++) {
             const auto& model=modelRegistry_.Models()[i];
             int latest=evaluationRuns_.LatestIndexForCandidate(model.id);
+            if(latest<0) continue;
+            const auto& run=evaluationRuns_.Runs()[(size_t)latest];
+            const bool chosen=latest==comparisonEvaluationRun_;
+            if(chosen) Rounded(rx+12,cy-2,rightW-24,24,brush_.sidebar.Get(),brush_.purple.Get(),5);
             TextLine(Widen(model.modelName),rx+20,cy,rightW-150,20,tinyFmt_.Get(),brush_.text.Get());
-            if(latest>=0) {
-                const auto& run=evaluationRuns_.Runs()[(size_t)latest];
-                TextLine(std::to_wstring(run.overallScore),rx+rightW-124,cy,42,20,tinyFmt_.Get(),
-                    run.overallScore>=80?brush_.green.Get():run.overallScore>=60?brush_.yellow.Get():brush_.red.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-                const std::wstring d=run.previousOverallScore<0?L"new":((run.regressionDelta>=0?L"+":L"")+std::to_wstring(run.regressionDelta));
-                TextLine(d,rx+rightW-72,cy,52,20,tinyFmt_.Get(),run.regressionDelta<0?brush_.yellow.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            } else {
-                TextLine(L"not run",rx+rightW-100,cy,80,20,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            TextLine(std::to_wstring(run.overallScore),rx+rightW-124,cy,42,20,tinyFmt_.Get(),
+                run.overallScore>=80?brush_.green.Get():run.overallScore>=60?brush_.yellow.Get():brush_.red.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            if(selected) {
+                const int delta=run.overallScore-selected->overallScore;
+                TextLine((delta>=0?L"+":L"")+std::to_wstring(delta),rx+rightW-72,cy,52,20,tinyFmt_.Get(),
+                    delta<0?brush_.yellow.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
             }
-            cy+=26;
+            buttons_.push_back({{rx+12,cy-2,rx+rightW-12,cy+22},L"evalcompare:"+std::to_wstring(latest)});
+            cy+=25;
             ++candidates;
         }
-        if(candidates==0) TextLine(L"No registered candidates.",rx+20,cy,rightW-40,22,tinyFmt_.Get(),brush_.muted.Get());
+        if(candidates==0) TextLine(L"No evaluated candidates.",rx+20,cy,rightW-40,22,tinyFmt_.Get(),brush_.muted.Get());
 
-        if(selected && !selected->warnings.empty()) {
-            TextLine(L"Regression / warnings: "+Widen(selected->warnings.front()),rx+16,lowerY+124,rightW-32,20,tinyFmt_.Get(),brush_.yellow.Get());
+        if(selected && compare) {
+            const auto dims=std::array<sentinel::simulation::EvaluationDimension,3>{
+                sentinel::simulation::EvaluationDimension::PersonaConsistency,
+                sentinel::simulation::EvaluationDimension::MemoryRecall,
+                sentinel::simulation::EvaluationDimension::TriggerRegression
+            };
+            std::wstring summary;
+            for(size_t i=0;i<dims.size();++i) {
+                const int a=sentinel::simulation::DimensionScore(*selected,dims[i]);
+                const int b=sentinel::simulation::DimensionScore(*compare,dims[i]);
+                if(i) summary+=L"  ";
+                summary+=Widen(sentinel::simulation::ToString(dims[i]))+L" "+std::to_wstring(a-b);
+            }
+            TextLine(summary,rx+16,lowerY+116,rightW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
+        } else if(selected && !selected->warnings.empty()) {
+            TextLine(L"Regression / warnings: "+Widen(selected->warnings.front()),rx+16,lowerY+116,rightW-32,20,tinyFmt_.Get(),brush_.yellow.Get());
         }
     }
 
