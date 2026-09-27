@@ -201,11 +201,12 @@ void TestSaraEvaluationSuite()
     assert(caseResults[1].passed);
 
     EvaluationRunRegistry registry;
-    auto& first=registry.Create(
+    registry.Create(
         "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
         "adapter-1","Samantha.lora v1",dimensions,caseResults);
-    assert(first.overallScore>0);
-    assert(first.previousOverallScore==-1);
+    assert(registry.Runs()[0].overallScore>0);
+    assert(registry.Runs()[0].previousOverallScore==-1);
+    const int firstScore=registry.Runs()[0].overallScore;
 
     auto regressed=dimensions;
     regressed[0].score=40; regressed[0].passed=false;
@@ -213,7 +214,7 @@ void TestSaraEvaluationSuite()
     auto& second=registry.Create(
         "model-1","Candidate A","foundation-1","SARA Foundation 1.0",
         "adapter-1","Samantha.lora v1",regressed,caseResults);
-    assert(second.previousOverallScore==first.overallScore);
+    assert(second.previousOverallScore==firstScore);
     assert(second.regressionDelta<0);
     assert(!second.warnings.empty());
     assert(registry.LatestIndexForCandidate("model-1")==1);
