@@ -198,22 +198,43 @@ The active development branch now implements the approved hybrid design and core
 - Visible product/package branding normalized to SARA 1.0.16 while retaining internal Sentinel namespace/storage compatibility where changing it could break existing data.
 
 
-## Validated 1.0.16 build
+## Validated 1.0.16 release build
 
-Validated on 2026-09-27 from branch `sara-1.0.16-trainer-redesign`.
+Final release validation completed on 2026-09-27 from branch `sara-1.0.16-trainer-redesign`.
 
-- GitHub Actions run: **#494**
-- Workflow run ID: `36318949691`
-- Validated commit: `20a1f152dd2accdf4029c5a4ae21db1a21293595`
+- GitHub Actions run: **#511**
+- Workflow run ID: `36321502659`
+- Validated commit: `befccf9a1481afc7cd8e9ffd620893e5ea934ed1`
 - Windows MSVC x64 Release build: PASS
 - Unit/integration tests: PASS
 - SQLite DLL dependency check: PASS
 - Install/package step: PASS
 - SHA-256 manifest generation: PASS
+- SHA-256 manifest verification: PASS
 - Packaged launcher layout: PASS
-- Artifact upload: PASS
-- Artifact: `SARA-1.0.16-windows-x64`
-- Artifact ID: `10931726051`
-- Artifact archive SHA-256: `8dbacfb102da41fe226a9401bea425a5f0f0a449e3843e270e6011ab351dab94`
-- Artifact contains `SARA.exe`, CLI/verifier tools, migrations, manifest, README, and signing-status notice.
-- Artifact Signing secrets were not configured; this is an **unsigned development build**.
+- Inno Setup installer compilation: PASS
+- Installer SHA-256 generation: PASS
+- Portable artifact upload: PASS
+- Installer artifact upload: PASS
+
+### Portable package
+
+- Artifact name: `SARA-1.0.16-windows-x64`
+- Artifact ID: `10932775896`
+- Artifact ZIP SHA-256: `84c50af15a6c317ce71a1dd17638cb533f0639dc8c50614bc02317ce22eede80`
+- `SARA.exe` SHA-256: `55ef77594cb9e3bd858bb10fe89cd18ae4e41221e9456c6af100f407d8172780`
+- Portable `SHA256SUMS.txt`: 22 entries verified successfully.
+- Manifest paths use normalized forward slashes.
+
+### Installer package
+
+- Artifact name: `SARA-1.0.16-Installer-Package`
+- Artifact ID: `10932164823`
+- Artifact ZIP SHA-256: `ca5e7088cb55df7a145c3991a441a10ccdc1c3bcccdae5cb167543488c4238d3`
+- Installer: `SARA-Setup-1.0.16.exe`
+- Installer EXE SHA-256: `66a102715cc248b831d75ac7052be4d8beb0a44054b475981a6541b2a47094b2`
+- Included installer checksum file matches the EXE exactly.
+
+### Signing status
+
+Microsoft Artifact Signing is wired into CI, but repository signing secrets are not configured. The release artifacts are therefore **unsigned development builds** and the workflow records that status explicitly.
