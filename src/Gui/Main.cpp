@@ -2933,10 +2933,21 @@ private:
                 AddButton(L"foundation_rollback",L"Rollback",rx+226,y+176,106,32,false);
             }
 
-            TextLine(L"Version Safety",rx+18,y+242,detailW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Version Safety",rx+18,y+232,detailW-36,24,smallFmt_.Get(),brush_.cyan.Get());
             Text(L"Base remains intact • child lineage retained • previous active fork kept for rollback",
-                rx+18,y+272,detailW-36,48,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Compare and evaluation hooks will use this lineage.",rx+18,y+330,detailW-36,24,tinyFmt_.Get(),brush_.text.Get());
+                rx+18,y+258,detailW-36,34,tinyFmt_.Get(),brush_.muted.Get());
+
+            const sentinel::simulation::FoundationModel* parent=nullptr;
+            if(!m.parentId.empty()) {
+                for(const auto& candidate:foundationRegistry_.Models())
+                    if(candidate.id==m.parentId) { parent=&candidate; break; }
+            }
+            TextLine(L"Compare",rx+18,y+300,detailW-36,20,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Selected",rx+18,y+324,62,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.name+" "+m.version),rx+86,y+320,detailW-104,22,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Parent",rx+18,y+348,62,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(parent?Widen(parent->name+" "+parent->version):L"Original downloaded model",
+                rx+86,y+344,detailW-104,22,tinyFmt_.Get(),parent?brush_.text.Get():brush_.yellow.Get());
         }
     }
 
