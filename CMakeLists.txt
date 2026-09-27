@@ -121,6 +121,9 @@ install(DIRECTORY migrations/ DESTINATION migrations)
 install(FILES README.md DESTINATION .)
 
 install(FILES
+    resources/SARAConsole.cmd
+    resources/Install-SARA.ps1
+    resources/Uninstall-SARA.ps1
     resources/SentinelConsole.cmd
     resources/Install-Sentinel.ps1
     resources/Uninstall-Sentinel.ps1
