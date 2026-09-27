@@ -1523,17 +1523,18 @@ private:
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
-            const float x=kSidebar+28.0f, y=kHeader+102.0f;
+            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float bodyY=top+116.0f;
             const float contentW=w-x-28.0f, gap=12.0f, inspectorW=360.0f;
             const float listW=contentW-inspectorW-gap;
             const float rx=x+listW+gap;
             const int comboW=150, comboH=130;
-            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(y+318),comboW,comboH,TRUE);
-            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(y+318),comboW,comboH,TRUE);
-            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(y+356),comboW,comboH,TRUE);
-            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(y+356),comboW,comboH,TRUE);
-            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(y+394),comboW,comboH,TRUE);
-            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(y+394),comboW,comboH,TRUE);
+            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(bodyY+244),comboW,comboH,TRUE);
+            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(bodyY+244),comboW,comboH,TRUE);
+            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(bodyY+282),comboW,comboH,TRUE);
+            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(bodyY+282),comboW,comboH,TRUE);
+            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(bodyY+320),comboW,comboH,TRUE);
+            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(bodyY+320),comboW,comboH,TRUE);
         }
 
         if(page_==Page::Persona) {
