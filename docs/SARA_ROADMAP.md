@@ -182,3 +182,22 @@ Last updated: 2026-09-27
 - [x] Reset the active conversation when switching personas to prevent context bleed.
 - [x] Add regression tests for reusable profile persistence and updates.
 - [ ] Validate SARA 1.0.18.2 through Windows build/tests, actual UI screenshots, installer build, and installer screenshot.
+
+
+## 1.0.18.3 — Reconciled Persona Memory + Channel Core
+
+- [x] Rebase channel work onto the latest 1.0.18.2 reusable-persona head.
+- [x] Preserve the restored 1.0.15 visual/UX baseline.
+- [x] Scope conversation archive/resume to the selected persona.
+- [x] Scope recalled prior-conversation memory to the selected persona.
+- [x] Separate stored persona name from full persona summary.
+- [x] Restore normalized provider-neutral channel core.
+- [x] Restore local SARA channel adapter and operator-approved media queue.
+- [x] Restore automation review gates.
+- [x] Restore jurisdiction profiles and operating-jurisdiction selection.
+- [x] Force review-only behavior when jurisdiction rules are not active/reviewed.
+- [x] Renumber combined migrations to 0013 persona scope / 0014 channel core / 0015 jurisdiction rules.
+- [x] Make persona-memory isolation tests effective in Release builds.
+- [x] Stamp executable, installer, CI artifacts, updater, and runtime as SARA 1.0.18.3.
+- [ ] Pass full Windows compile/test/package/screenshot/installer validation for the reconciled branch.
+- [ ] Review actual packaged SARA UI and installer screenshots for visual regression before merge.
