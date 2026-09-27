@@ -16,15 +16,15 @@ function Health {
   } catch {}
   return '000'
 }
-if(-not (Test-Path $model)){throw 'Local Sentinel model is not installed.'}
+if(-not (Test-Path $model)){throw 'Local SARA model is not installed.'}
 if((Health) -eq '200'){
-  if(-not $NoLaunch){Start-Process (Join-Path $app 'Sentinel.exe') -WorkingDirectory $app}
+  if(-not $NoLaunch){Start-Process (Join-Path $app 'SARA.exe') -WorkingDirectory $app}
   exit 0
 }
 & (Join-Path $ai 'Stop-Sentinel-AI.ps1')
 $gpu=Get-ChildItem (Join-Path $ai 'runtime') -Filter llama-server.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
 $cpu=Get-ChildItem (Join-Path $ai 'runtime_cpu') -Filter llama-server.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-if(-not $gpu -and -not $cpu){throw 'Sentinel llama.cpp runtime is not installed.'}
+if(-not $gpu -and -not $cpu){throw 'SARA llama.cpp runtime is not installed.'}
 
 function Start-One($server,[int]$layers,[string]$tag){
   $out=Join-Path $logs "llama-server-$tag.out.log"
@@ -45,5 +45,5 @@ function Start-One($server,[int]$layers,[string]$tag){
 $ready=$false
 if($gpu){$ready=Start-One $gpu 999 'gpu'}
 if(-not $ready -and $cpu){$ready=Start-One $cpu 0 'cpu'}
-if(-not $ready){throw 'Sentinel AI backend failed to start. See ai\logs.'}
-if(-not $NoLaunch){Start-Process (Join-Path $app 'Sentinel.exe') -WorkingDirectory $app}
+if(-not $ready){throw 'SARA AI backend failed to start. See ai\logs.'}
+if(-not $NoLaunch){Start-Process (Join-Path $app 'SARA.exe') -WorkingDirectory $app}
