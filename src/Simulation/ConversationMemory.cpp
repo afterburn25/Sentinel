@@ -290,11 +290,15 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
         "SELECT m.body,c.updated_utc "
         "FROM simulation_messages m "
         "JOIN simulation_conversations c ON c.id=m.conversation_id "
-        "WHERE m.conversation_id<>? AND m.speaker=? "
-        "ORDER BY m.row_id DESC LIMIT 300",
+        "WHERE m.speaker=? AND ("
+        "m.conversation_id=? OR "
+        "c.persona_name=(SELECT persona_name FROM simulation_conversations WHERE id=?)) "
+        "ORDER BY CASE WHEN m.conversation_id=? THEN 0 ELSE 1 END, m.row_id DESC LIMIT 500",
         -1,&s,nullptr),db,"prepare participant fact recall");
-    sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
-    sqlite3_bind_int(s,2,(int)ChatTurn::Speaker::Investigator);
+    sqlite3_bind_int(s,1,(int)ChatTurn::Speaker::Investigator);
+    sqlite3_bind_text(s,2,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,4,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
 
     std::vector<std::pair<std::string,std::string>> facts;
     while(sqlite3_step(s)==SQLITE_ROW) {
@@ -336,8 +340,8 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
     std::reverse(facts.begin(),facts.end());
 
     std::ostringstream out;
-    out<<"Previously stated facts/answers from the other person. Treat them as remembered conversation facts. "
-          "Do not ask for the same information again unless there is a genuine contradiction or reason to clarify:\n";
+    out<<"Known facts/answers from the other person, including the current conversation and earlier conversations with this same persona. "
+          "Treat them as remembered conversation facts. Do not ask for the same information again unless there is a genuine contradiction or reason to clarify:\n";
     for(const auto& [when,body]:facts)
         out<<"["<<when<<"] "<<body<<"\n";
     return out.str();
