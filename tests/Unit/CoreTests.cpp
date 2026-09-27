@@ -60,18 +60,19 @@ void TestSaraModelLabRegistries()
     assert(foundations.ActiveIndex()==1);
 
     PersonaAdapterRegistry adapters;
-    auto& a1=adapters.Add("Samantha","Samantha.lora","v1",fork1Id);
-    assert(a1.stage==AdapterStage::Staging);
+    adapters.Add("Samantha","Samantha.lora","v1",fork1Id);
+    assert(adapters.Adapters()[0].stage==AdapterStage::Staging);
+    const auto adapter1Id=adapters.Adapters()[0].id;
     adapters.Activate(0);
     assert(adapters.ResolveActiveIndex("Samantha")==0);
-    auto& a2=adapters.Add("Samantha","Samantha.lora","v2",fork1Id);
+    adapters.Add("Samantha","Samantha.lora","v2",fork1Id);
     adapters.Activate(1);
     assert(adapters.ResolveActiveIndex("Samantha")==1);
     assert(adapters.Rollback("Samantha"));
     assert(adapters.ResolveActiveIndex("Samantha")==0);
 
     TrainingDataRegistry data;
-    data.Capture("Samantha",fork1Id,a1.id,"conv-1","hello","hey","shorter","hey");
+    data.Capture("Samantha",fork1Id,adapter1Id,"conv-1","hello","hey","shorter","hey");
     assert(data.Count(TrainingExampleState::Review)==1);
     data.SetState(0,TrainingExampleState::Approved);
     assert(data.Count(TrainingExampleState::Approved)==1);
