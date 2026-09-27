@@ -56,6 +56,7 @@ constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
 enum class ModelLabSection { Overview, Train, Datasets, Personas, FoundationForks, Jobs, Evaluation, Deployment };
+enum class TrainingMode { BehaviorTuning, DatasetTraining, PersonaLoRA, FoundationFork, EvaluationTest };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat, Smile, Paperclip };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
@@ -481,6 +482,14 @@ public:
             }
             else if (b.id==L"ml_capture") CaptureLatestTrainingExample();
             else if (b.id==L"ml_approve") ApproveTrainingCapture();
+            else if (b.id==L"ml_training_mode") {
+                trainingMode_=(TrainingMode)(((int)trainingMode_+1)%5);
+                statusText_=L"Training mode changed to "+TrainingModeName();
+            }
+            else if (b.id==L"ml_persona_editor") {
+                page_=Page::Persona;
+                statusText_=L"Persona editor opened";
+            }
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
@@ -652,6 +661,8 @@ private:
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
     ModelLabSection modelLabSection_{ModelLabSection::Overview};
+    TrainingMode trainingMode_{TrainingMode::BehaviorTuning};
+    std::wstring assignedPersonaLoRA_=L"Auto-resolve";
     int trainingCaptured_{0};
     int trainingReviewPending_{0};
     int trainingApproved_{0};
@@ -2072,6 +2083,17 @@ private:
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    std::wstring TrainingModeName() const {
+        switch(trainingMode_) {
+            case TrainingMode::BehaviorTuning: return L"Behavior Tuning";
+            case TrainingMode::DatasetTraining: return L"Dataset Training";
+            case TrainingMode::PersonaLoRA: return L"Persona LoRA Training";
+            case TrainingMode::FoundationFork: return L"Foundation Fork Training";
+            case TrainingMode::EvaluationTest: return L"Evaluation / Test";
+        }
+        return L"Behavior Tuning";
+    }
+
     void CaptureLatestTrainingExample() {
         if(simContext_.history.empty()) {
             statusText_=L"No conversation turn is available to capture";
@@ -2195,15 +2217,19 @@ private:
         const std::wstring contextValues[]={
             modelName,
             Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
-            L"Auto-resolve persona adapter",
-            L"Behavior / Dataset / LoRA"
+            assignedPersonaLoRA_,
+            TrainingModeName()
         };
         const wchar_t* contextLabels[]={L"FOUNDATION MODEL",L"PERSONA",L"ASSIGNED LORA",L"TRAINING MODE"};
         for(int i=0;i<4;i++) {
             const float cx=x+i*(contextW+gap);
             Rounded(cx,y,contextW,60,brush_.panel.Get(),brush_.border.Get(),9);
             TextLine(contextLabels[i],cx+14,y+6,contextW-28,17,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(contextValues[i],cx+14,y+24,contextW-28,27,smallFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get());
+            TextLine(contextValues[i],cx+14,y+24,contextW-42,27,smallFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get());
+            if(i==3) {
+                TextLine(L"▼",cx+contextW-28,y+25,18,24,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+                buttons_.push_back({{cx,y,cx+contextW,y+60},L"ml_training_mode"});
+            }
         }
     }
 
@@ -2351,6 +2377,72 @@ private:
         TextLine(L"5  Current Context",rx+18,y+350,rightW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void DrawModelLabPersonas(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float inspectorW=360.0f;
+        const float listW=contentW-inspectorW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Personas & LoRAs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Reusable persona behavior profiles and their assigned adapters.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"ml_persona_editor",L"Open Persona Editor",x+listW-158,y+14,140,30,true);
+
+        TextLine(L"PERSONA",x+28,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"FOUNDATION",x+210,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ASSIGNED LORA",x+392,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",x+574,y+78,listW-602,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float rowY=y+102;
+        Rounded(x+18,rowY,listW-36,70,brush_.panel2.Get(),brush_.cyan.Get(),8);
+        TextLine(Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
+            x+28,rowY+7,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(Widen(simSettings_.persona.personality.empty()?std::string("Configured behavior profile"):simSettings_.persona.personality),
+            x+28,rowY+34,170,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        const std::wstring foundation=selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()
+            ? Widen(modelRegistry_.Models()[(size_t)selectedRegistryModel_].modelName)
+            : L"SARA Foundation / base";
+        TextLine(foundation,x+210,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Version-pinned",x+210,rowY+36,170,18,tinyFmt_.Get(),brush_.cyan.Get());
+
+        TextLine(assignedPersonaLoRA_,x+392,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Augments foundation",x+392,rowY+36,170,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Badge(L"ACTIVE",x+574,rowY+20,brush_.green.Get(),74);
+
+        Rounded(x+18,y+188,listW-36,174,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Adapter Versioning",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Persona adapters augment the foundation model and remain independently versioned.",x+32,y+226,listW-64,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Active adapter",x+32,y+262,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(assignedPersonaLoRA_,x+156,y+258,220,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Compatibility",x+32,y+294,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Foundation/version checked before load",x+156,y+290,listW-188,24,smallFmt_.Get(),brush_.green.Get());
+        TextLine(L"Rollback",x+32,y+326,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Previous approved adapter remains available",x+156,y+322,listW-188,24,smallFmt_.Get(),brush_.text.Get());
+
+        const float rx=x+listW+gap;
+        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        Badge(L"RUNTIME",rx+inspectorW-104,y+16,brush_.cyan.Get(),86);
+
+        TextLine(L"Name",rx+18,y+62,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rx+118,y+58,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Age",rx+18,y+92,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(simSettings_.persona.age),rx+118,y+88,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Personality",rx+18,y+122,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.personality),rx+118,y+118,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Writing style",rx+18,y+152,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.writingStyle),rx+118,y+148,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+184),D2D1::Point2F(rx+inspectorW-18,y+184),brush_.border.Get(),1);
+        TextLine(L"Automatic Runtime Resolution",rx+18,y+196,inspectorW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"1  SARA Foundation",rx+18,y+232,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"2  Persona LoRA",rx+18,y+258,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"3  Behavior Profile",rx+18,y+284,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"4  Conversation Memory",rx+18,y+310,inspectorW-36,20,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"5  Current Context",rx+18,y+336,inspectorW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+    }
+
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
@@ -2377,7 +2469,7 @@ private:
             case ModelLabSection::Datasets:
                 DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Datasets",L"Curate versioned datasets, snapshots, quality, lineage, import, and export."); break;
             case ModelLabSection::Personas:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Personas & LoRAs",L"Manage personas, adapter versions, foundation assignment, status, and rollback."); break;
+                DrawModelLabPersonas(x,bodyY,contentW); break;
             case ModelLabSection::FoundationForks:
                 DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Foundation Forks",L"Preserve immutable base models and manage versioned SARA Foundation descendants."); break;
             case ModelLabSection::Jobs:
