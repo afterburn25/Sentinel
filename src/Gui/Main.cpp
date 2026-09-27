@@ -3867,18 +3867,19 @@ private:
         const float stripW=(contentW-stripGap*2.0f)/3.0f;
 
         GlowPanel(x,bottomY,stripW,110,false,10);
-        TextLine(L"System Resources",x+14,bottomY+8,stripW-28,22,smallFmt_.Get(),brush_.text.Get());
-        const wchar_t* resLabels[]={L"GPU",L"CPU",L"RAM"};
-        const int resValues[]={42,28,56};
+        TextLine(L"Workspace State",x+14,bottomY+8,stripW-28,22,smallFmt_.Get(),brush_.text.Get());
+        const wchar_t* resLabels[]={L"Models",L"Jobs",L"Datasets"};
+        const int resValues[]={
+            (int)modelRegistry_.Models().size(),
+            (int)trainingJobRegistry_.Jobs().size(),
+            (int)trainingData_.Snapshots().size()
+        };
         for(int i=0;i<3;i++) {
             const float cx=x+46+i*((stripW-70)/3.0f);
-            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+58),26,26),brush_.border.Get(),5);
-            const float angle=(float)(resValues[i]*3.6*3.14159265/180.0);
-            const float ex=cx+26*std::sin(angle);
-            const float ey=bottomY+58-26*std::cos(angle);
-            target_->DrawLine(D2D1::Point2F(cx,bottomY+58),D2D1::Point2F(ex,ey),i==2?brush_.green.Get():brush_.cyan.Get(),3);
-            TextLine(std::to_wstring(resValues[i])+L"%",cx-24,bottomY+45,48,22,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
-            TextLine(resLabels[i],cx-24,bottomY+78,48,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+58),26,26),brush_.border.Get(),4);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+58),22,22),i==2?brush_.green.Get():brush_.cyan.Get(),2);
+            TextLine(std::to_wstring(resValues[i]),cx-24,bottomY+45,48,22,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(resLabels[i],cx-30,bottomY+78,60,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
         const float ax=x+stripW+stripGap;
@@ -4012,14 +4013,19 @@ private:
         const float resourceW=(contentW-gap)*0.46f;
         const float activityW=contentW-gap-resourceW;
         GlowPanel(x,bottomY,resourceW,110,false,10);
-        TextLine(L"Resource Usage",x+14,bottomY+8,resourceW-28,22,smallFmt_.Get(),brush_.text.Get());
-        const wchar_t* labels[]={L"CPU",L"Memory",L"Disk",L"Jobs"};
-        const int vals[]={42,68,28,(int)trainingJobRegistry_.Jobs().size()};
+        TextLine(L"Workspace Stats",x+14,bottomY+8,resourceW-28,22,smallFmt_.Get(),brush_.text.Get());
+        const wchar_t* labels[]={L"Adapters",L"Datasets",L"Jobs",L"Evals"};
+        const int vals[]={
+            (int)personaAdapterRegistry_.Adapters().size(),
+            (int)trainingData_.Snapshots().size(),
+            (int)trainingJobRegistry_.Jobs().size(),
+            (int)evaluationRuns_.Runs().size()
+        };
         for(int i=0;i<4;i++) {
             const float cx=x+48+i*((resourceW-80)/4.0f);
             target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+60),24,24),brush_.border.Get(),4);
-            TextLine(std::to_wstring(vals[i])+(i<3?L"%":L""),cx-24,bottomY+48,48,22,smallFmt_.Get(),
-                i==3?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+60),20,20),i==3?brush_.green.Get():brush_.cyan.Get(),2);
+            TextLine(std::to_wstring(vals[i]),cx-24,bottomY+48,48,22,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
             TextLine(labels[i],cx-30,bottomY+82,60,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
