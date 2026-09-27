@@ -45,6 +45,50 @@ std::string JsonEscape(std::string_view input) {
     return out;
 }
 
+
+std::string RecentSyntheticTopics(const ModelContext& context,size_t maxReplies=6) {
+    struct TopicRule { const char* label; std::vector<std::string_view> terms; };
+    static const std::vector<TopicRule> rules={
+        {"music",{"music","song","songs","artist","band","playlist","listen"}},
+        {"movies/shows",{"movie","movies","show","shows","watching","tv","film"}},
+        {"pets",{"pet","pets","dog","dogs","cat","cats"}},
+        {"school",{"school","class","classes","teacher","homework"}},
+        {"work",{"work","job","jobs","boss","coworker"}},
+        {"food",{"food","eat","eating","restaurant","cook","cooking","snack"}},
+        {"games",{"game","games","gaming","xbox","playstation","switch"}},
+        {"sports",{"sport","sports","football","basketball","baseball","soccer"}},
+        {"family",{"family","mom","dad","mother","father","sister","brother"}},
+        {"travel/places",{"travel","trip","vacation","city","town","place"}},
+        {"weekend/plans",{"weekend","plans","tonight","tomorrow","doing later"}}
+    };
+
+    std::set<std::string> used;
+    size_t seen=0;
+    for(auto it=context.history.rbegin();it!=context.history.rend() && seen<maxReplies;++it) {
+        if(it->speaker!=ChatTurn::Speaker::SyntheticSubject) continue;
+        ++seen;
+        std::string lower=it->text;
+        std::transform(lower.begin(),lower.end(),lower.begin(),
+            [](unsigned char ch){ return (char)std::tolower(ch); });
+        for(const auto& rule:rules) {
+            for(const auto term:rule.terms) {
+                if(lower.find(term)!=std::string::npos) {
+                    used.insert(rule.label);
+                    break;
+                }
+            }
+        }
+    }
+
+    if(used.empty()) return {};
+    std::string out;
+    for(const auto& topic:used) {
+        if(!out.empty()) out+=", ";
+        out+=topic;
+    }
+    return out;
+}
+
 std::string JsonUnescape(std::string_view input) {
     std::string out;
     out.reserve(input.size());
@@ -293,11 +337,29 @@ public:
             "Do not repeat old lines word-for-word unless explicitly asked for an exact quote. "
             "Stay grounded in the person's known life and current conversation; do not invent off-screen actions or events that were never established.";
 
+        const auto recentTopics=RecentSyntheticTopics(context,6);
+        if(!recentTopics.empty()) {
+            system += " Recently used synthetic-subject topics: " + recentTopics +
+                ". Treat these as a repetition warning. Do not introduce them again in this reply unless the other person's latest message directly brought one of them back up. ";
+        }
         if(!context.recalledMemory.empty()) {
             system += " Relevant earlier-conversation memory follows. Treat it as private background context, not as text to copy: " +
                 context.recalledMemory;
         }
-        return Complete(system,context,std::string(investigatorMessage));
+        auto reply=Complete(system,context,std::string(investigatorMessage));
+
+        // Avoid exact canned repeats. One retry is enough; the second request
+        // explicitly asks for a different natural formulation and direction.
+        for(auto it=context.history.rbegin();it!=context.history.rend();++it) {
+            if(it->speaker!=ChatTurn::Speaker::SyntheticSubject) continue;
+            if(it->text==reply) {
+                std::string retrySystem=system+
+                    " Your first draft exactly repeated a previous reply. Produce a meaningfully different response with different wording and, when appropriate, a different ordinary topic.";
+                reply=Complete(retrySystem,context,std::string(investigatorMessage));
+                break;
+            }
+        }
+        return reply;
     }
 
     std::string GenerateSyntheticInitiative(
@@ -315,14 +377,31 @@ public:
             "Do not interrogate, pressure, guilt, flirt sexually, suggest sexual content, arrange a meeting, discuss money, or escalate a sensitive topic. "
             "Do not mention being an AI, chatbot, assistant, model, simulation, persona, or software. "
             "Keep it natural and short, usually one or two sentences.";
+        const auto recentTopics=RecentSyntheticTopics(context,6);
+        if(!recentTopics.empty()) {
+            system += " Recently used synthetic-subject topics: " + recentTopics +
+                ". Avoid all of these for this proactive message unless the other person was actively discussing one immediately before the pause. ";
+        }
         if(!context.recalledMemory.empty()) {
             system += " Remembered facts/answers from earlier conversations follow. Use them naturally and do not ask for them again: " +
                 context.recalledMemory;
         }
-        return Complete(
+        auto reply=Complete(
             system,
             context,
             "The conversation has been quiet for a while. Send one natural benign message to keep the conversation going.");
+
+        for(auto it=context.history.rbegin();it!=context.history.rend();++it) {
+            if(it->speaker!=ChatTurn::Speaker::SyntheticSubject) continue;
+            if(it->text==reply) {
+                reply=Complete(
+                    system+" Do not repeat any prior synthetic-subject message verbatim. Pick a fresh ordinary direction.",
+                    context,
+                    "Send a different natural benign follow-up using a fresh topic.");
+                break;
+            }
+        }
+        return reply;
     }
 
     std::string GenerateBehaviorProfile(
