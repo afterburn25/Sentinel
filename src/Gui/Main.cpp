@@ -1050,7 +1050,16 @@ public:
         SendMessageW(trainerLoraPathEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"LoRA adapter path");
         SendMessageW(trainerDatasetEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Approved training JSONL path");
         SendMessageW(trainerOutputEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Training output folder");
-        SendMessageW(trainerInstructionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Tell SARA how this persona/model should change...");
+        SendMessageW(trainerInstructionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Talk to SARA: describe the behavior, correction, or training goal...");
+        HWND trainerEdits[]={
+            trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,
+            trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_
+        };
+        for(HWND edit:trainerEdits) {
+            SetWindowTheme(edit,L"DarkMode_Explorer",nullptr);
+            SendMessageW(edit,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+            SendMessageW(edit,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(10,10));
+        }
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
@@ -1247,6 +1256,14 @@ public:
             else if (b.id==L"persona_tab_behavior") { personaTab_=PersonaTab::Behavior; ApplyPageControls(); }
             else if (b.id==L"persona_tab_scenario") { personaTab_=PersonaTab::Scenario; ApplyPageControls(); }
             else if (b.id==L"persona_tab_gallery") { personaTab_=PersonaTab::Gallery; ApplyPageControls(); }
+            else if (b.id==L"ml_overview") { page_=Page::ModelLab; ApplyPageControls(); }
+            else if (b.id==L"ml_train") { page_=Page::Trainer; ApplyPageControls(); }
+            else if (b.id==L"ml_personas") { page_=Page::Persona; ApplyPageControls(); }
+            else if (b.id==L"ml_datasets") statusText_=L"Datasets workspace is next in the controlled hybrid-UI recovery";
+            else if (b.id==L"ml_foundations") statusText_=L"Foundation Forks are available below; dedicated workspace recovery is pending";
+            else if (b.id==L"ml_jobs") statusText_=L"Training Jobs are active in this Trainer workspace; dedicated view is pending";
+            else if (b.id==L"ml_evaluation") statusText_=L"Evaluation workspace will be restored after the Trainer passes visual regression";
+            else if (b.id==L"ml_deployment") statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
@@ -1900,17 +1917,28 @@ private:
     }
 
     void DrawBrand() {
+        // Render the exact approved SARA 1.0.15 logo asset. Do not recreate,
+        // redraw, or substitute the mark with a generic triangle/wordmark.
         if(brandBitmap_) {
             const auto sz=brandBitmap_->GetSize();
-            const float h=64.0f;
-            const float w=h*(sz.width/std::max(1.0f,sz.height));
+            const float maxW=(float)kSidebar-18.0f;
+            const float maxH=(float)kHeader-8.0f;
+            const float scale=std::min(
+                maxW/std::max(1.0f,sz.width),
+                maxH/std::max(1.0f,sz.height));
+            const float w=sz.width*scale;
+            const float h=sz.height*scale;
+            const float x=((float)kSidebar-w)*0.5f;
+            const float y=((float)kHeader-h)*0.5f;
             target_->DrawBitmap(
-                brandBitmap_.Get(),D2D1::RectF(10,7,10+w,7+h),1.0f,
+                brandBitmap_.Get(),D2D1::RectF(x,y,x+w,y+h),1.0f,
                 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            return;
         }
-        Text(L"SARA",76,10,132,36,titleFmt_.Get(),brush_.text.Get());
-        Text(L"SYNTHETIC ADAPTIVE",77,43,136,14,tinyFmt_.Get(),brush_.cyan.Get());
-        Text(L"RESPONSE AGENT",77,56,136,14,tinyFmt_.Get(),brush_.muted.Get());
+
+        // Text fallback only if the packaged logo asset is genuinely missing.
+        Text(L"SARA",24,16,172,32,titleFmt_.Get(),brush_.text.Get());
+        Text(L"Synthetic Adaptive Response Agent",24,49,172,16,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -2545,21 +2573,42 @@ private:
         }
 
         if(page_==Page::Trainer) {
-            const float x=kSidebar+28.0f, y=kHeader+104.0f;
+            const float x=kSidebar+28.0f;
+            const float y=kHeader+94.0f;
             const float contentW=w-x-28.0f;
-            MoveControl(trainerModeCombo_,(int)(x+138),(int)(y+18),240,190,TRUE);
-            MoveControl(trainerFoundationCombo_,(int)(x+510),(int)(y+18),(int)std::max(280.0f,contentW-532.0f),190,TRUE);
+            const float gap=14.0f;
+            const float heroY=y+48.0f;
+            const float heroH=76.0f;
+            const float bodyY=heroY+heroH+12.0f;
+            const float rightW=std::clamp(contentW*0.29f,286.0f,342.0f);
+            const float leftW=contentW-rightW-gap;
+            const float advancedY=bodyY+292.0f;
+            const float fieldSplit=leftW*0.48f;
 
-            MoveControl(trainerForkNameEdit_,(int)(x+138),(int)(y+104),250,32,TRUE);
-            MoveControl(trainerBasePathEdit_,(int)(x+510),(int)(y+104),(int)std::max(280.0f,contentW-532.0f),32,TRUE);
+            MoveControl(trainerModeCombo_,
+                (int)(x+18),(int)(bodyY+66),(int)std::max(170.0f,leftW*0.42f),180,TRUE);
+            MoveControl(trainerFoundationCombo_,
+                (int)(x+fieldSplit),(int)(bodyY+66),(int)std::max(190.0f,leftW-fieldSplit-18.0f),180,TRUE);
 
-            MoveControl(trainerLoraNameEdit_,(int)(x+138),(int)(y+188),250,32,TRUE);
-            MoveControl(trainerLoraPathEdit_,(int)(x+510),(int)(y+188),(int)std::max(280.0f,contentW-532.0f),32,TRUE);
+            MoveControl(trainerInstructionEdit_,
+                (int)(x+18),(int)(bodyY+158),(int)(leftW-36),122,TRUE);
+            RECT trainerTextRect{12,10,std::max(24,(int)(leftW-60)),108};
+            SendMessageW(trainerInstructionEdit_,EM_SETRECTNP,0,(LPARAM)&trainerTextRect);
 
-            MoveControl(trainerDatasetEdit_,(int)(x+138),(int)(y+272),(int)std::max(250.0f,contentW*0.42f),32,TRUE);
-            MoveControl(trainerOutputEdit_,(int)(x+650),(int)(y+272),(int)std::max(220.0f,contentW-672.0f),32,TRUE);
+            MoveControl(trainerForkNameEdit_,
+                (int)(x+108),(int)(advancedY+28),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+            MoveControl(trainerBasePathEdit_,
+                (int)(x+fieldSplit+112),(int)(advancedY+28),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
 
-            MoveControl(trainerInstructionEdit_,(int)(x+20),(int)(y+390),(int)(contentW-40),116,TRUE);
+            MoveControl(trainerLoraNameEdit_,
+                (int)(x+108),(int)(advancedY+70),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+            MoveControl(trainerLoraPathEdit_,
+                (int)(x+fieldSplit+112),(int)(advancedY+70),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
+
+            MoveControl(trainerDatasetEdit_,
+                (int)(x+108),(int)(advancedY+112),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+            MoveControl(trainerOutputEdit_,
+                (int)(x+fieldSplit+112),(int)(advancedY+112),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
         }
 
         if(page_==Page::Agency) {
@@ -5040,67 +5089,172 @@ private:
 
     void DrawTrainer(float w,float h) {
         PageTitle(
-            L"Trainer",
-            L"Conversational behavior tuning, foundation forks, training modes, and persona LoRA bindings");
+            L"Model Lab / Trainer",
+            L"Conversational training studio - recovered SARA 1.0.15 backend with the approved hybrid workspace");
 
         const float x=kSidebar+28.0f;
-        const float y=kHeader+104.0f;
+        const float y=kHeader+94.0f;
         const float contentW=w-x-28.0f;
+        const float gap=14.0f;
 
-        Rounded(x,y,contentW,70,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Training Mode",x+18,y+18,110,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Foundation",x+404,y+18,96,24,tinyFmt_.Get(),brush_.muted.Get());
+        // Hybrid Model Lab navigation. Only existing recovered workspaces are
+        // activated here; un-restored workspaces remain explicit rather than
+        // silently pretending that later branches were merged.
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==1;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        const float heroY=y+48.0f;
+        const float heroH=76.0f;
+        Rounded(x,heroY,contentW,heroH,brush_.panel.Get(),brush_.cyan.Get(),11);
+
+        // Use the exact approved packaged SARA logo inside the real Trainer UI.
+        if(brandBitmap_) {
+            const auto sz=brandBitmap_->GetSize();
+            const float logoH=58.0f;
+            const float logoW=logoH*(sz.width/std::max(1.0f,sz.height));
+            target_->DrawBitmap(
+                brandBitmap_.Get(),
+                D2D1::RectF(x+14,heroY+9,x+14+logoW,heroY+9+logoH),
+                1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        }
+        TextLine(L"Train Smarter. Together.",x+86,heroY+10,360,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Teach SARA through reviewed conversation, persona tuning, LoRAs, and foundation forks.",
+            x+86,heroY+39,contentW-420,22,smallFmt_.Get(),brush_.muted.Get());
+        StatusDot(x+contentW-154,heroY+22,5,brush_.green.Get());
+        TextLine(L"TRAINER LIVE",x+contentW-140,heroY+10,122,26,tinyFmt_.Get(),brush_.green.Get());
+
+        const float bodyY=heroY+heroH+12.0f;
+        const float bodyH=std::max(410.0f,h-bodyY-24.0f);
+        const float rightW=std::clamp(contentW*0.29f,286.0f,342.0f);
+        const float leftW=contentW-rightW-gap;
+        const float rightX=x+leftW+gap;
+
+        // Conversational Trainer - primary workspace.
+        Rounded(x,bodyY,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),11);
+        TextLine(L"Conversational Trainer",x+18,bodyY+12,300,30,h1Fmt_.Get(),brush_.text.Get());
+        Badge(L"CAPTURE / REFINE",x+leftW-142,bodyY+15,brush_.cyan.Get(),124);
+
+        TextLine(L"Training Mode",x+18,bodyY+49,104,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Foundation",x+leftW*0.50f,bodyY+49,92,18,tinyFmt_.Get(),brush_.muted.Get());
+
         TextLine(
-            L"Behavior = immediate persona parameters | Correction = reviewed examples | Persona LoRA = personality adapter | Foundation Fork SFT = new SARA base | Preference = chosen-vs-rejected pairs",
-            x+18,y+46,contentW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+            L"Talk to SARA naturally. In Behavior mode the instruction updates the active persona parameters; "
+            L"the other modes preserve the same reviewed training/job workflow already present in 1.0.15.",
+            x+18,bodyY+87,leftW-36,42,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x,y+84,contentW,128,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Foundation Fork",x+18,y+96,210,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Fork name",x+18,y+142,104,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Trainable source",x+404,y+142,98,24,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"trainer_create_fork",L"Create Fork",x+contentW-132,y+176,114,30,true);
+        // The native edit control is the real editable training conversation/
+        // instruction surface. It is positioned by LayoutNativeControls().
+        TextLine(L"TRAINING INSTRUCTION / CORRECTION",x+18,bodyY+137,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
 
-        Rounded(x,y+226,contentW,128,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Persona LoRA Binding",x+18,y+238,260,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(
-            L"Persona: "+Widen(simSettings_.persona.name),
-            x+300,y+241,contentW-318,24,smallFmt_.Get(),brush_.cyan.Get());
-        TextLine(L"LoRA name",x+18,y+284,104,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Adapter path",x+404,y+284,94,24,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"trainer_bind_lora",L"Bind to Persona",x+contentW-160,y+318,142,30,true);
+        // Advanced recovered 1.0.15 training controls remain available below
+        // the conversational surface instead of being deleted by the redesign.
+        const float advancedY=bodyY+292.0f;
+        target_->DrawLine(
+            D2D1::Point2F(x+18,advancedY-10),
+            D2D1::Point2F(x+leftW-18,advancedY-10),
+            brush_.border.Get(),1.0f);
+        TextLine(L"Advanced Training Setup",x+18,advancedY,220,24,smallFmt_.Get(),brush_.text.Get());
 
-        Rounded(x,y+368,contentW,168,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Training Job",x+18,y+380,200,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Dataset",x+18,y+426,94,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Output",x+530,y+426,92,24,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"trainer_queue",L"Queue Selected Mode",x+18,y+484,178,34,true);
-        AddButton(L"trainer_run_latest",L"Run Latest Queued",x+204,y+484,160,34,false);
+        TextLine(L"Fork name",x+18,advancedY+34,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Trainable source",x+leftW*0.48f,advancedY+34,110,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        auto jobs=runtime_->trainer.ListJobs(3);
-        float jy=y+484;
-        float jx=x+376;
+        TextLine(L"LoRA name",x+18,advancedY+76,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Adapter path",x+leftW*0.48f,advancedY+76,110,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        TextLine(L"Dataset",x+18,advancedY+118,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Output",x+leftW*0.48f,advancedY+118,110,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float actionY=bodyY+bodyH-42.0f;
+        AddButton(L"trainer_apply_instruction",L"Apply Instruction",x+18,actionY,142,30,true);
+        AddButton(L"trainer_create_fork",L"Create Fork",x+168,actionY,112,30,false);
+        AddButton(L"trainer_bind_lora",L"Bind LoRA",x+288,actionY,104,30,false);
+        AddButton(L"trainer_queue",L"Queue Mode",x+400,actionY,108,30,false);
+        AddButton(L"trainer_run_latest",L"Run Latest",x+516,actionY,104,30,false);
+
+        // Right-side Training Context.
+        const float contextH=136.0f;
+        Rounded(rightX,bodyY,rightW,contextH,brush_.panel.Get(),brush_.border.Get(),11);
+        TextLine(L"Training Context",rightX+16,bodyY+12,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Active Persona",rightX+16,bodyY+50,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rightX+118,bodyY+47,rightW-134,24,smallFmt_.Get(),brush_.cyan.Get());
+
+        TextLine(L"Mode",rightX+16,bodyY+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(EditText(trainerModeCombo_),rightX+118,bodyY+75,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"Foundation",rightX+16,bodyY+106,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(EditText(trainerFoundationCombo_),rightX+118,bodyY+103,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
+
+        // Visible lifecycle from the approved hybrid design.
+        const float pipelineY=bodyY+contextH+12.0f;
+        const float pipelineH=118.0f;
+        Rounded(rightX,pipelineY,rightW,pipelineH,brush_.panel.Get(),brush_.border.Get(),11);
+        TextLine(L"Training Pipeline",rightX+16,pipelineY+10,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+
+        const wchar_t* stages[]={L"Capture",L"Review",L"Dataset",L"Train",L"Evaluate",L"Deploy"};
+        const float lineL=rightX+24.0f;
+        const float lineR=rightX+rightW-24.0f;
+        const float stepGap=(lineR-lineL)/5.0f;
+        target_->DrawLine(
+            D2D1::Point2F(lineL,pipelineY+58),
+            D2D1::Point2F(lineR,pipelineY+58),
+            brush_.border.Get(),2.0f);
+        for(int i=0;i<6;i++) {
+            const float sx=lineL+i*stepGap;
+            const bool current=i==0;
+            Rounded(sx-10,pipelineY+48,20,20,
+                current?brush_.blue.Get():brush_.sidebar.Get(),
+                current?brush_.cyan.Get():brush_.border.Get(),10);
+            TextLine(std::to_wstring(i+1),sx-8,pipelineY+49,16,16,tinyFmt_.Get(),
+                current?brush_.text.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(stages[i],sx-28,pipelineY+76,56,18,tinyFmt_.Get(),
+                current?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+
+        // Recovered job state, shown as an actual command-center panel.
+        const float jobsY=pipelineY+pipelineH+12.0f;
+        const float jobsH=std::max(132.0f,bodyH-(jobsY-bodyY));
+        Rounded(rightX,jobsY,rightW,jobsH,brush_.panel.Get(),brush_.border.Get(),11);
+        TextLine(L"Recent Training Jobs",rightX+16,jobsY+10,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+
+        auto jobs=runtime_->trainer.ListJobs(4);
+        float jy=jobsY+44.0f;
         if(jobs.empty()) {
-            TextLine(L"No training jobs queued yet.",jx,jy,contentW-232,34,smallFmt_.Get(),brush_.muted.Get());
+            TextLine(L"No training jobs queued yet.",rightX+16,jy,rightW-32,24,smallFmt_.Get(),brush_.muted.Get());
         } else {
             for(const auto& job:jobs) {
-                const std::wstring line=
-                    Widen(sentinel::simulation::ToString(job.mode))+L" | "+
-                    Widen(job.targetName)+L" | "+Widen(job.state)+L" | "+
-                    std::to_wstring(job.progress)+L"%";
-                TextLine(line,jx,jy,contentW-232,24,tinyFmt_.Get(),brush_.text.Get());
-                jy+=24;
+                Rounded(rightX+14,jy,rightW-28,42,brush_.sidebar.Get(),brush_.border.Get(),7);
+                TextLine(Widen(job.targetName),rightX+24,jy+4,rightW-116,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.state)+L"  "+std::to_wstring(job.progress)+L"%",
+                    rightX+24,jy+21,rightW-116,16,tinyFmt_.Get(),
+                    job.state=="completed"?brush_.green.Get():brush_.cyan.Get());
+                TextLine(Widen(sentinel::simulation::ToString(job.mode)),
+                    rightX+rightW-100,jy+12,76,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+                jy+=48.0f;
+                if(jy+42>jobsY+jobsH-8) break;
             }
         }
 
-        Rounded(x,y+550,contentW,174,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Conversational Trainer",x+18,y+562,260,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(
-            L"In Behavior mode, describe how the loaded persona should change. SARA converts the instruction into persona parameters immediately. Other modes create persistent training jobs.",
-            x+286,y+563,contentW-304,42,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"trainer_apply_instruction",L"Apply Instruction",x+contentW-170,y+682,152,30,true);
-
-        TextLine(L"Runtime",x+18,y+735,70,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(trainerRuntimeStatus_,x+92,y+732,contentW-110,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Runtime",rightX+16,jobsY+jobsH-28,58,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(trainerRuntimeStatus_,rightX+76,jobsY+jobsH-30,rightW-92,20,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
     void DrawMessaging(float w,float h) {
