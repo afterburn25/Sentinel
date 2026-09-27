@@ -1,6 +1,6 @@
 {
-  "version": "1.0.16",
+  "version": "1.0.18",
   "download_url": "",
   "sha256": "",
-  "notes": "SARA 1.0.16 Model Lab / Trainer redesign: hybrid UI, conversational training, foundation forks, persona LoRAs, reviewed datasets, training jobs, trigger rules, response variation, evaluation, deployment, diagnostics, and rollback."
+  "notes": "SARA 1.0.18 Evaluation Suite: persistent multidimensional evaluation runs, named test cases, long-context recall, trigger regressions, style/persona/policy checks, baseline regression detection, and candidate comparison reports."
 }
