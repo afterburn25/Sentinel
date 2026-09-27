@@ -2577,13 +2577,26 @@ private:
         TextLine(std::to_wstring(trainingApproved_),rx+112,y+108,70,24,bodyFmt_.Get(),brush_.green.Get());
         Text(L"Captured -> Review -> Approved -> Dataset",rx+18,y+142,rightW-36,26,tinyFmt_.Get(),brush_.cyan.Get());
 
-        Rounded(rx,y+196,rightW,186,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Runtime Resolution",rx+16,y+206,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"1  SARA Foundation",rx+18,y+246,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"2  Persona LoRA",rx+18,y+272,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"3  Behavior Profile",rx+18,y+298,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"4  Conversation Memory",rx+18,y+324,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-        TextLine(L"5  Current Context",rx+18,y+350,rightW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+        Rounded(rx,y+196,rightW,88,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Runtime Resolution",rx+16,y+204,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Foundation → LoRA → Behavior → Memory → Context",rx+18,y+238,rightW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(assignedPersonaLoRA_,rx+18,y+258,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(rx,y+296,rightW,86,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Trigger Rules",rx+16,y+304,rightW-32,24,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Last match: "+lastTriggerMatch_,rx+16,y+330,rightW-32,18,tinyFmt_.Get(),brush_.cyan.Get());
+        float ry=y+350;
+        int rshown=0;
+        for(size_t i=0;i<triggerRules_.Rules().size() && rshown<2;i++,rshown++) {
+            const auto& rule=triggerRules_.Rules()[i];
+            TextLine(Widen(rule.name)+L"  ["+Widen(rule.pattern)+L"]",rx+18,ry,rightW-112,16,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(rule.priority)+(rule.terminal?L" • stop":L" • continue"),rx+rightW-98,ry,80,16,tinyFmt_.Get(),
+                rule.terminal?brush_.yellow.Get():brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            ry+=16;
+        }
+        if(triggerRules_.Rules().empty()) {
+            TextLine(L"No rules configured.",rx+18,ry,rightW-36,16,tinyFmt_.Get(),brush_.muted.Get());
+        }
     }
 
     void DrawModelLabPersonas(float x,float y,float contentW) {
