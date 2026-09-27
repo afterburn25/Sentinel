@@ -7,24 +7,24 @@ Last updated: 2026-09-27
 ### UI / UX
 - [x] Lock hybrid UI direction: Executive Dashboard + Conversational Trainer + Personas/LoRAs management + Training Pipeline/Command Center.
 - [ ] Replace the current crowded Model Lab layout with structured workspaces.
-- [ ] Add internal navigation for Overview, Train, Datasets, Personas & LoRAs, Foundation Forks, Jobs, Evaluation, Deployment.
+- [x] Add internal navigation for Overview, Train, Datasets, Personas & LoRAs, Foundation Forks, Jobs, Evaluation, Deployment.
 - [ ] Fix all overlapping/misaligned Trainer controls.
 - [ ] Establish consistent spacing, sizing, typography, cards, buttons, and field styling.
 - [ ] Improve overall SARA desktop polish and visual consistency.
-- [ ] Add smiley-face emoji button to chat composer.
-- [ ] Add paperclip attachment button to chat composer.
-- [ ] Use vector icons and matching icon-button styling.
+- [x] Add smiley-face emoji button to chat composer.
+- [x] Add paperclip attachment button to chat composer.
+- [x] Use vector icons and matching icon-button styling.
 - [ ] Add hover/pressed/focus states and tooltips.
 - [ ] Make layouts resilient to supported window resizing.
 
 ### Training architecture
 - [x] Document approved 1.0.16 training architecture.
-- [ ] Add Training Mode selector.
-- [ ] Behavior Tuning mode.
-- [ ] Dataset Training mode.
-- [ ] Persona LoRA Training mode.
-- [ ] Foundation Fork Training mode.
-- [ ] Evaluation / Test mode.
+- [x] Add Training Mode selector.
+- [x] Behavior Tuning mode.
+- [x] Dataset Training mode.
+- [x] Persona LoRA Training mode.
+- [x] Foundation Fork Training mode.
+- [x] Evaluation / Test mode.
 - [ ] Keep original downloaded/base models immutable.
 - [ ] Add versioned foundation-model fork registry.
 - [ ] Track foundation parent/version lineage.
@@ -35,16 +35,16 @@ Last updated: 2026-09-27
 - [ ] Add adapter active/staging/training/archived/rollback states.
 - [ ] Support multiple LoRA/QLoRA versions per persona.
 - [ ] Automatically resolve and load persona adapter.
-- [ ] Add model/persona context bar to Trainer.
+- [x] Add model/persona context bar to Trainer.
 
 ### Conversational trainer
-- [ ] Allow operator to chat with a model in training mode.
+- [x] Allow operator to chat with a model in training mode.
 - [ ] Allow natural-language corrections such as “Samantha would say this instead.”
 - [ ] Allow runtime-only correction overrides during training sessions.
 - [ ] Capture model response + correction as a training candidate.
 - [ ] Preserve correction provenance: context, original response, correction, target, persona, foundation, adapter, session, timestamps, review state.
 - [ ] Add correction categories and metadata.
-- [ ] Add review queue.
+- [x] Add review queue (initial in-memory capture/review counters; persistence pending).
 - [ ] Approve/reject/edit training candidates.
 - [ ] Promote approved examples into versioned datasets.
 - [ ] Track provenance for every training record.
@@ -66,7 +66,7 @@ Last updated: 2026-09-27
 - [ ] Persona behavior profile.
 - [ ] Conversation memory.
 - [ ] Current-context assembly.
-- [ ] Automatic adapter load on persona selection.
+- [ ] Automatic adapter load on persona selection (UI/runtime resolution displayed; real adapter registry/load still pending).
 - [ ] Resolve complete runtime stack: Foundation -> LoRA -> Behavior Profile -> Conversation Memory -> Current Context.
 - [ ] Version pinning for reproducibility.
 
