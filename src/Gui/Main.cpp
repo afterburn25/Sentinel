@@ -93,7 +93,7 @@ std::filesystem::path AppDataRoot() {
         const std::filesystem::path local(p);
         CoTaskMemFree(p);
         const auto sara = local / L"SARA";
-        const auto legacy = local / L"SARA";
+        const auto legacy = local / L"Sentinel";
         if (std::filesystem::exists(sara)) return sara;
         if (std::filesystem::exists(legacy)) return legacy; // preserve existing Sentinel data on upgrade
         return sara;
@@ -196,6 +196,26 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
                 (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
             SelectObject(mem,old);
             DeleteDC(mem);
+        } else {
+            SetBkMode(dc,TRANSPARENT);
+            SetTextColor(dc,RGB(225,240,255));
+            HFONT title=CreateFontW(
+                -72,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+                DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+            HFONT sub=CreateFontW(
+                -24,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+                DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+            HFONT oldFont=(HFONT)SelectObject(dc,title);
+            RECT titleRc{0,rc.bottom/2-70,rc.right,rc.bottom/2+20};
+            DrawTextW(dc,L"SARA",-1,&titleRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            SelectObject(dc,sub);
+            RECT subRc{0,rc.bottom/2+10,rc.right,rc.bottom/2+60};
+            DrawTextW(dc,L"Synthetic Adaptive Response Agent",-1,&subRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+            SelectObject(dc,oldFont);
+            DeleteObject(title);
+            DeleteObject(sub);
         }
         EndPaint(hwnd,&ps);
         return 0;
@@ -205,9 +225,9 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 
 void ShowSaraSplash(HINSTANCE instance) {
     SplashState state;
-    if(!LoadBitmapWithWic(ExeDir()/L"assets"/L"SARA-Splash.jpg",
-            state.bitmap,state.imageWidth,state.imageHeight))
-        return;
+    const bool imageLoaded=LoadBitmapWithWic(
+        ExeDir()/L"assets"/L"SARA-Splash.jpg",
+        state.bitmap,state.imageWidth,state.imageHeight);
 
     constexpr wchar_t splashClass[]=L"SARAStartupSplash";
     WNDCLASSEXW wc{sizeof(wc)};
@@ -227,6 +247,11 @@ void ShowSaraSplash(HINSTANCE instance) {
     if(height>maxH) { height=maxH; width=height*16/9; }
     const int x=work.left+(work.right-work.left-width)/2;
     const int y=work.top+(work.bottom-work.top-height)/2;
+
+    if(!imageLoaded) {
+        state.imageWidth=960;
+        state.imageHeight=540;
+    }
 
     HWND splash=CreateWindowExW(
         WS_EX_TOOLWINDOW|WS_EX_TOPMOST,splashClass,L"SARA",
