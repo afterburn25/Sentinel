@@ -301,6 +301,8 @@ public:
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         trainingCorrectionEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1039,GetModuleHandleW(nullptr),nullptr);
+        trainingCategoryCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1044,GetModuleHandleW(nullptr),nullptr);
+        trainingReviewTargetEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1045,GetModuleHandleW(nullptr),nullptr);
         ruleNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1040,GetModuleHandleW(nullptr),nullptr);
         rulePatternEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
         ruleResponsesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
@@ -319,7 +321,7 @@ public:
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
-            trainingCorrectionEdit_,ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
+            trainingCorrectionEdit_,trainingReviewTargetEdit_,ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -327,7 +329,7 @@ public:
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,personaIntelligenceCombo_,personaSlangCombo_,
-            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,modelCombo_};
+            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,trainingCategoryCombo_,modelCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -350,6 +352,7 @@ public:
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
         SendMessageW(trainingCorrectionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Correction or instruction: e.g. Use shorter messages, or type the preferred response...");
+        SendMessageW(trainingReviewTargetEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Edit the approved target response...");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
@@ -387,6 +390,7 @@ public:
         const wchar_t* typoItems[]={L"None",L"Low",L"Medium",L"High"};
         const wchar_t* emojiItems[]={L"None",L"Low",L"Medium",L"High",L"Very high"};
         const wchar_t* moodItems[]={L"Neutral",L"Warm",L"Playful",L"Guarded",L"Serious",L"Excited"};
+        const wchar_t* correctionCategoryItems[]={L"Behavior",L"Style",L"Tone",L"Length",L"Memory",L"Rule",L"Formatting",L"Other"};
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
@@ -409,6 +413,8 @@ public:
         fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
         fillCombo(personaEmojiCombo_,emojiItems,std::size(emojiItems));
         fillCombo(personaMoodCombo_,moodItems,std::size(moodItems));
+        fillCombo(trainingCategoryCombo_,correctionCategoryItems,std::size(correctionCategoryItems));
+        SendMessageW(trainingCategoryCombo_,CB_SETCURSEL,0,0);
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
@@ -588,6 +594,10 @@ public:
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
             else if (b.id==L"foundation_rollback") RollbackFoundation();
             else if (b.id==L"dataset_snapshot") CreateDatasetSnapshot();
+            else if (b.id.rfind(L"training_example:",0)==0) SelectTrainingExample((int)std::stol(b.id.substr(17)));
+            else if (b.id==L"training_review_save") SaveSelectedTrainingTarget();
+            else if (b.id==L"training_review_approve") ReviewSelectedTrainingExample(true);
+            else if (b.id==L"training_review_reject") ReviewSelectedTrainingExample(false);
             else if (b.id==L"job_new") CreateTrainingJob();
             else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
             else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
@@ -777,7 +787,7 @@ private:
     HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
-    HWND trainingCorrectionEdit_{};
+    HWND trainingCorrectionEdit_{},trainingCategoryCombo_{},trainingReviewTargetEdit_{};
     HWND ruleNameEdit_{},rulePatternEdit_{},ruleResponsesEdit_{},rulePriorityEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
@@ -787,6 +797,7 @@ private:
     int trainingCaptured_{0};
     int trainingReviewPending_{0};
     int trainingApproved_{0};
+    int selectedTrainingExample_{-1};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
     size_t selectedCase_{0},selectedEvidence_{0};
@@ -1552,6 +1563,9 @@ private:
         const bool inTrain=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train;
         const bool showRuleEditor=inTrain && ruleEditorOpen_;
         if(trainingCorrectionEdit_) ShowWindow(trainingCorrectionEdit_,(inTrain && !ruleEditorOpen_)?SW_SHOW:SW_HIDE);
+        if(trainingCategoryCombo_) ShowWindow(trainingCategoryCombo_,(inTrain && !ruleEditorOpen_)?SW_SHOW:SW_HIDE);
+        const bool inDatasetReview=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0;
+        if(trainingReviewTargetEdit_) ShowWindow(trainingReviewTargetEdit_,inDatasetReview?SW_SHOW:SW_HIDE);
         HWND ruleControls[]={ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND h:ruleControls) if(h) ShowWindow(h,showRuleEditor?SW_SHOW:SW_HIDE);
         const bool showStyleCombos=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas;
@@ -1607,8 +1621,9 @@ private:
                 MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
             } else {
                 if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
-                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+238),(int)(leftW-148),44,TRUE);
-                RECT correctionRect{10,7,std::max(24,(int)(leftW-168)),38};
+                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+238),(int)(leftW-296),44,TRUE);
+                MoveControl(trainingCategoryCombo_,(int)(x+leftW-152),(int)(bodyY+238),136,140,TRUE);
+                RECT correctionRect{10,7,std::max(24,(int)(leftW-316)),38};
                 SendMessageW(trainingCorrectionEdit_,EM_SETRECTNP,0,(LPARAM)&correctionRect);
                 const int composerW=std::max(220,(int)(leftW-212));
                 const int composerH=44;
@@ -1616,6 +1631,16 @@ private:
                 RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
                 SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
             }
+        }
+
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0) {
+            const float x=kSidebar+28.0f, top=kHeader+102.0f, bodyY=top+116.0f;
+            const float contentW=w-x-28.0f, gap=12.0f, rightW=350.0f;
+            const float leftW=contentW-rightW-gap;
+            const float rx=x+leftW+gap;
+            MoveControl(trainingReviewTargetEdit_,(int)(rx+18),(int)(bodyY+142),(int)(rightW-36),70,TRUE);
+            RECT reviewRect{10,8,std::max(24,(int)rightW-56),62};
+            SendMessageW(trainingReviewTargetEdit_,EM_SETRECTNP,0,(LPARAM)&reviewRect);
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
@@ -2344,6 +2369,46 @@ private:
         } else statusText_=L"No archived LoRA is available for rollback";
     }
 
+    void SelectTrainingExample(int index) {
+        if(index<0 || index>=(int)trainingData_.Examples().size()) return;
+        selectedTrainingExample_=index;
+        SetWindowTextW(trainingReviewTargetEdit_,Widen(trainingData_.Examples()[(size_t)index].targetResponse).c_str());
+        ApplyPageControls();
+        statusText_=L"Training example selected for review";
+    }
+
+    void SaveSelectedTrainingTarget() {
+        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) return;
+        auto target=Narrow(EditText(trainingReviewTargetEdit_));
+        if(target.empty()) {
+            statusText_=L"Target response cannot be empty";
+            return;
+        }
+        auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+        e.targetResponse=target;
+        e.correction=target;
+        e.reviewer="local-operator";
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        statusText_=L"Training target updated";
+    }
+
+    void ReviewSelectedTrainingExample(bool approve) {
+        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) {
+            statusText_=L"Select a training example first";
+            return;
+        }
+        SaveSelectedTrainingTarget();
+        auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+        e.reviewer="local-operator";
+        trainingData_.SetState((size_t)selectedTrainingExample_,approve?
+            sentinel::simulation::TrainingExampleState::Approved:
+            sentinel::simulation::TrainingExampleState::Rejected);
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+        statusText_=approve?L"Training example approved":L"Training example rejected";
+    }
+
     void CreateDatasetSnapshot() {
         if(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)==0) {
             statusText_=L"Approve at least one training example before creating a dataset snapshot";
@@ -2563,10 +2628,12 @@ private:
         auto correction=Narrow(EditText(trainingCorrectionEdit_));
         if(correction.empty()) correction="Accept response as-is";
         const std::string target=(correction=="Accept response as-is")?original:correction;
+        auto category=ComboText(trainingCategoryCombo_);
+        if(category.empty()) category="Behavior";
 
         trainingData_.Capture(
             simSettings_.persona.name,foundationId,adapterId,currentConversationId_,
-            input,original,correction,target);
+            input,original,correction,target,category);
         trainingData_.Save(runtime_->root/"training-data.tsv");
         SetWindowTextW(trainingCorrectionEdit_,L"");
 
@@ -2840,6 +2907,7 @@ private:
         }
 
         TextLine(L"Correction / instruction",x+18,y+238,104,44,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Category",x+leftW-152,y+218,136,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         const float composerY=y+292;
         const float sendW=88.0f, icon=44.0f;
         const float sendX=x+leftW-16-sendW;
@@ -3062,8 +3130,10 @@ private:
         float yy=y+102;
         int shown=0;
         for(size_t i=trainingData_.Examples().size(); i>0 && shown<4; --i,++shown) {
-            const auto& e=trainingData_.Examples()[i-1];
-            Rounded(x+18,yy,leftW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            const size_t exampleIndex=i-1;
+            const auto& e=trainingData_.Examples()[exampleIndex];
+            const bool selected=(int)exampleIndex==selectedTrainingExample_;
+            Rounded(x+18,yy,leftW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),8);
             TextLine(Widen(e.id),x+28,yy+4,100,22,tinyFmt_.Get(),brush_.text.Get());
             TextLine(Widen(e.persona),x+140,yy+4,150,22,tinyFmt_.Get(),brush_.text.Get());
             TextLine(Widen(sentinel::simulation::ToString(e.state)),x+302,yy+4,92,22,tinyFmt_.Get(),
@@ -3071,6 +3141,7 @@ private:
                 e.state==sentinel::simulation::TrainingExampleState::Review?brush_.yellow.Get():brush_.muted.Get());
             TextLine(Widen(e.input),x+406,yy+2,leftW-434,22,tinyFmt_.Get(),brush_.text.Get());
             TextLine(Widen(e.targetResponse),x+406,yy+28,leftW-434,20,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+leftW-18,yy+58},L"training_example:"+std::to_wstring(exampleIndex)});
             yy+=66;
         }
         if(shown==0) {
@@ -3080,25 +3151,42 @@ private:
 
         const float rx=x+leftW+gap;
         Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Dataset Snapshots",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Snapshots freeze approved examples for reproducible jobs.",rx+18,y+42,rightW-36,36,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Review Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        float sy=y+92;
-        int sshown=0;
-        for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<4; --i,++sshown) {
-            const auto& s=trainingData_.Snapshots()[i-1];
-            Rounded(rx+18,sy,rightW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(Widen(s.name),rx+30,sy+4,rightW-60,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(s.id)+L" • "+std::to_wstring(s.exampleIds.size())+L" approved examples",
-                rx+30,sy+29,rightW-60,18,tinyFmt_.Get(),brush_.cyan.Get());
-            sy+=66;
+        if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
+            const auto& selected=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+            Badge(Widen(sentinel::simulation::ToString(selected.state)),rx+rightW-110,y+16,
+                selected.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
+                selected.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get(),92);
+            TextLine(L"Category",rx+18,y+52,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.category),rx+98,y+48,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Captured",rx+18,y+78,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.createdUtc.empty()?"Legacy record":selected.createdUtc),rx+98,y+74,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Input",rx+18,y+108,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.input),rx+98,y+104,rightW-116,26,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Target response",rx+18,y+132,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"training_review_save",L"Save Edit",rx+18,y+222,92,28,false);
+            AddButton(L"training_review_approve",L"Approve",rx+120,y+222,92,28,true);
+            AddButton(L"training_review_reject",L"Reject",rx+222,y+222,92,28,false);
+        } else {
+            Text(L"Select a training example on the left to edit its target response, approve it, or reject it.",
+                rx+18,y+54,rightW-36,60,smallFmt_.Get(),brush_.muted.Get());
         }
-        if(sshown==0) TextLine(L"No snapshots yet.",rx+28,sy,rightW-56,28,smallFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Captured",rx+18,y+322,78,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(trainingData_.Examples().size()),rx+102,y+318,54,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Approved",rx+166,y+322,78,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)),rx+250,y+318,54,24,smallFmt_.Get(),brush_.green.Get());
+        target_->DrawLine(D2D1::Point2F(rx+18,y+266),D2D1::Point2F(rx+rightW-18,y+266),brush_.border.Get(),1);
+        TextLine(L"Dataset Snapshots",rx+18,y+276,rightW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+        float sy=y+306;
+        int sshown=0;
+        for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<2; --i,++sshown) {
+            const auto& s=trainingData_.Snapshots()[i-1];
+            TextLine(Widen(s.name),rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(s.exampleIds.size())+L" approved examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            sy+=24;
+        }
+        if(sshown==0) TextLine(L"No snapshots yet.",rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Captured "+std::to_wstring(trainingData_.Examples().size())+L"  •  Approved "+
+            std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)),
+            rx+18,y+354,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawModelLabJobs(float x,float y,float contentW) {
