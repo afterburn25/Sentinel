@@ -342,3 +342,30 @@ Required application captures:
 Installer changes must also build the actual Inno Setup executable, launch its real wizard, capture the SARA Setup window, and upload that screenshot for review.
 
 This rule was added after source-only verification failed to catch visual regressions in the post-1.0.15 UI line.
+
+
+## SARA 1.0.18.2 — Reusable Persona Profiles
+
+Active branch: `sara-1.0.18.2-persona-profiles`
+
+This milestone restores a capability present in the approved 1.0.15 lineage that was lost in the post-1.0.15 rewrite: multiple reusable persona profiles.
+
+Implemented:
+- SQLite-backed reusable persona profile library.
+- Current PersonaProfile fields persist independently per named persona.
+- Per-persona response-start delay range persists.
+- Locked persona facts persist.
+- Existing active persona is auto-imported into the library on first run.
+- Personas can be selected from the hybrid Personas & LoRAs workspace.
+- Selecting a persona:
+  - loads the full behavior profile,
+  - loads its typing-delay settings,
+  - saves it as the last active persona,
+  - re-resolves the assigned LoRA,
+  - refreshes model context,
+  - starts a new conversation to prevent persona-context bleed.
+- New Persona opens a new reusable profile draft.
+- Saved persona profiles can be deleted while preventing deletion of the last remaining profile.
+- The Personas & LoRAs workspace shows profile count, active/saved state, linked LoRA, base model, and the current persona's LoRA versions.
+- Persona profile persistence has unit coverage for create/load/list/update/delete, locked facts, and delay settings.
+- The SARA 1.0.15 visual baseline and actual-build screenshot requirement remain unchanged.
