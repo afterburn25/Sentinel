@@ -35,6 +35,31 @@ struct FoundationModel {
     FoundationStage stage{FoundationStage::Candidate};
 };
 
+enum class AdapterStage { Training, Staging, Active, Archived };
+
+struct PersonaAdapter {
+    std::string id;
+    std::string personaName;
+    std::string adapterName;
+    std::string version;
+    std::string foundationId;
+    AdapterStage stage{AdapterStage::Staging};
+};
+
+class PersonaAdapterRegistry {
+public:
+    PersonaAdapter& Add(std::string personaName,std::string adapterName,std::string version,std::string foundationId);
+    void Activate(size_t index);
+    bool Rollback(std::string_view personaName);
+    std::vector<PersonaAdapter>& Adapters();
+    const std::vector<PersonaAdapter>& Adapters() const;
+    int ResolveActiveIndex(std::string_view personaName) const;
+    void Save(const std::filesystem::path& path) const;
+    void Load(const std::filesystem::path& path);
+private:
+    std::vector<PersonaAdapter> adapters_;
+};
+
 class TrainingJobRegistry {
 public:
     TrainingJob& Create(std::string baseModel,std::string dataset);
@@ -85,5 +110,6 @@ private:
 
 std::string ToString(ModelStage stage);
 std::string ToString(FoundationStage stage);
+std::string ToString(AdapterStage stage);
 
 }
