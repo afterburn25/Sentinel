@@ -97,3 +97,11 @@ The chat/trainer composer must use:
 7. Evaluation
 8. Deployment
 9. responsive-size and visual regression polish
+
+
+## Training architecture reference
+
+The UI must surface and respect the training/runtime behavior defined in:
+`SARA_MODEL_LAB_TRAINING_ARCHITECTURE_1.0.16.md`
+
+The UI is not merely visual; selectors, review states, runtime-resolution status, trigger diagnostics, candidate evaluation, deployment, and rollback must map to real underlying state.
