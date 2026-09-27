@@ -45,6 +45,7 @@
 #include <cmath>
 #include <filesystem>
 #include <chrono>
+#include <cctype>
 #include <memory>
 #include <iterator>
 #include <optional>
