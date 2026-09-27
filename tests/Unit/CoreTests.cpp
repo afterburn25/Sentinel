@@ -72,8 +72,10 @@ void TestSaraModelLabRegistries()
     assert(adapters.ResolveActiveIndex("Samantha")==0);
 
     TrainingDataRegistry data;
-    data.Capture("Samantha",fork1Id,adapter1Id,"conv-1","hello","hey","shorter","hey");
+    data.Capture("Samantha",fork1Id,adapter1Id,"conv-1","hello","hey","shorter","hey","Length");
     assert(data.Count(TrainingExampleState::Review)==1);
+    assert(data.Examples()[0].category=="Length");
+    assert(!data.Examples()[0].createdUtc.empty());
     data.SetState(0,TrainingExampleState::Approved);
     assert(data.Count(TrainingExampleState::Approved)==1);
     auto& snapshot=data.CreateSnapshot("dataset-1");
@@ -96,11 +98,13 @@ void TestSaraModelLabRegistries()
     assert(match->terminal);
 
     PersonaProfile persona;
+    persona.age=16;
     persona.slangLevel="High";
     persona.emojiTendency="High";
     persona.mood="Playful";
-    auto varied=ApplyPersonaWritingVariation(persona,"Okay, I really get it.",10);
+    auto varied=ApplyPersonaWritingVariation(persona,"Okay, I really get it. This is a deliberately longer sentence for age-aware style testing.",10);
     assert(!varied.empty());
+    assert(varied!=std::string("Okay, I really get it. This is a deliberately longer sentence for age-aware style testing."));
 }
 
 #ifdef _WIN32
