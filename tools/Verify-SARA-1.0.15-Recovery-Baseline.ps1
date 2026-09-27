@@ -46,6 +46,21 @@ Require-Contains $gui 'if(splashCtx.readyEvent) SetEvent(splashCtx.readyEvent);'
 Require-Contains $gui 'if(splashThread) WaitForSingleObject(splashThread,INFINITE);'
 Require-Contains $gui 'ShowWindow(hwnd,show);'
 
+
+# Startup must not perform slow AI repair/service/network work while the splash is waiting.
+$guiText = Get-Content -LiteralPath $gui -Raw
+$autoStart = $guiText.IndexOf('    void AutoInitializeLocalAi() {')
+$repairStart = $guiText.IndexOf('    void InstallOrRepairLocalAi()', $autoStart)
+if ($autoStart -lt 0 -or $repairStart -lt 0) {
+    throw 'Unable to locate AutoInitializeLocalAi recovery boundary.'
+}
+$autoBlock = $guiText.Substring($autoStart, $repairStart - $autoStart)
+foreach ($forbidden in @('RunBundledAiSetup(', 'StartBundledAiService(', 'DiscoverOpenAICompatibleModels(')) {
+    if ($autoBlock.Contains($forbidden)) {
+        throw "Splash-hang regression: AutoInitializeLocalAi contains blocking startup work: $forbidden"
+    }
+}
+
 # CI must still verify the exact approved splash.
 Require-Contains $workflow "assert im.size==(1672,941)"
 Require-Contains $workflow "dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4"
