@@ -165,3 +165,20 @@ Last updated: 2026-09-27
 ### UI
 - [x] Keep 1.0.17 inside the approved hybrid Model Lab design.
 - [x] Preserve no-overlap/minimum-window guarantees.
+
+
+## 1.0.18.2 — Reusable Persona Profiles
+
+- [x] Restore named reusable persona-profile persistence.
+- [x] Persist current persona behavior/style fields.
+- [x] Persist locked persona facts.
+- [x] Persist randomized response-start delay range per persona.
+- [x] Auto-import the current persona when upgrading from the single-profile settings model.
+- [x] Show reusable profiles in the hybrid Personas & LoRAs workspace.
+- [x] Add New Persona workflow.
+- [x] Add persona selection/switching.
+- [x] Add persona deletion with at-least-one-profile protection.
+- [x] Automatically resolve the selected persona's active LoRA.
+- [x] Reset the active conversation when switching personas to prevent context bleed.
+- [x] Add regression tests for reusable profile persistence and updates.
+- [ ] Validate SARA 1.0.18.2 through Windows build/tests, actual UI screenshots, installer build, and installer screenshot.
