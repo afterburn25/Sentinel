@@ -393,7 +393,7 @@ procedure ConfigureAI;
 var
   ResultCode: Integer;
 begin
-  SetStatus('Configuring Sentinel to use the local AI model...');
+  SetStatus('Configuring SARA to use the local AI model...');
   if not Exec(
       ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
       '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
