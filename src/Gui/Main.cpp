@@ -4328,92 +4328,142 @@ private:
     void DrawModelLabEvaluation(float x,float y,float contentW) {
         const float gap=12.0f;
 
-        GlowPanel(x,y,contentW,382,true,11);
-        TextLine(L"Evaluation Suite",x+18,y+10,260,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Persistent multidimensional regression testing for candidate models.",x+18,y+38,contentW-200,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"eval_export_run",L"Export Run",x+contentW-270,y+14,100,30,false);
-        AddButton(L"model_eval",L"Run Evaluation",x+contentW-160,y+14,142,30,true);
+        // Premium command-center header.
+        GlowPanel(x,y,contentW,76,true,12);
+        TextLine(L"Evaluation Command Center",x+20,y+8,340,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Test. Compare. Catch regressions before deployment.",x+20,y+38,420,22,smallFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"eval_export_run",L"Export Run",x+contentW-270,y+22,100,30,false);
+        AddButton(L"model_eval",L"Run Evaluation",x+contentW-160,y+22,142,30,true);
 
         const sentinel::simulation::EvaluationRun* selected=nullptr;
         if(selectedEvaluationRun_>=0 && selectedEvaluationRun_<(int)evaluationRuns_.Runs().size())
             selected=&evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_];
         else if(selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()) {
-            int idx=evaluationRuns_.LatestIndexForCandidate(modelRegistry_.Models()[(size_t)selectedRegistryModel_].id);
+            const int idx=evaluationRuns_.LatestIndexForCandidate(modelRegistry_.Models()[(size_t)selectedRegistryModel_].id);
             if(idx>=0) selected=&evaluationRuns_.Runs()[(size_t)idx];
         }
 
-        if(!selected) {
-            Rounded(x+18,y+72,contentW-36,112,brush_.sidebar.Get(),brush_.border.Get(),9);
-            TextLine(L"No persisted evaluation run selected.",x+34,y+88,contentW-68,28,bodyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Select a registered candidate and run the suite to create persona, policy, style, memory, trigger, and diversity scores.",
-                x+34,y+120,contentW-68,42,smallFmt_.Get(),brush_.muted.Get());
-        } else {
-            TextLine(Widen(selected->candidateName),x+18,y+66,220,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(selected->createdUtc),x+248,y+66,176,22,tinyFmt_.Get(),brush_.muted.Get());
+        const float mainY=y+88;
+        const float summaryW=236.0f;
+        const float compareW=300.0f;
+        const float dimsW=contentW-summaryW-compareW-gap*2.0f;
+
+        // Overall score / release gate.
+        GlowPanel(x,mainY,summaryW,238,false,11);
+        TextLine(L"Overall Score",x+16,mainY+10,summaryW-32,24,smallFmt_.Get(),brush_.text.Get());
+        if(selected) {
+            ID2D1Brush* accent=selected->overallScore>=80?brush_.green.Get():selected->overallScore>=60?brush_.yellow.Get():brush_.red.Get();
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+summaryW/2,mainY+92),48,48),brush_.border.Get(),7);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+summaryW/2,mainY+92),43,43),accent,3);
+            TextLine(std::to_wstring(selected->overallScore),x+summaryW/2-36,mainY+69,72,34,bigFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(L"/ 100",x+summaryW/2-30,mainY+102,60,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
 
             const std::wstring delta=selected->previousOverallScore<0
-                ? L"First run"
-                : (selected->regressionDelta>=0?L"+":L"")+std::to_wstring(selected->regressionDelta)+L" vs prior";
-            Badge(std::to_wstring(selected->overallScore)+L"/100",x+contentW-196,y+62,
-                selected->overallScore>=80?brush_.green.Get():selected->overallScore>=60?brush_.yellow.Get():brush_.red.Get(),82);
-            TextLine(delta,x+contentW-106,y+63,88,22,tinyFmt_.Get(),
-                selected->regressionDelta<0?brush_.yellow.Get():brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+                ? L"First evaluation"
+                : (selected->regressionDelta>=0?L"+":L"")+std::to_wstring(selected->regressionDelta)+L" vs previous";
+            TextLine(delta,x+18,mainY+150,summaryW-36,22,smallFmt_.Get(),
+                selected->regressionDelta<0?brush_.yellow.Get():brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
 
-            const float cardsY=y+94;
-            const float cardGap=8.0f;
-            const float cardW=(contentW-36-cardGap*2)/3.0f;
-            const float cardH=60.0f;
-
-            for(size_t i=0;i<selected->dimensions.size() && i<6;i++) {
-                const auto& d=selected->dimensions[i];
-                const int row=(int)i/3;
-                const int col=(int)i%3;
-                const float cx=x+18+col*(cardW+cardGap);
-                const float cy=cardsY+row*(cardH+8);
-                ID2D1Brush* accent=d.passed?brush_.green.Get():(d.score>=60?brush_.yellow.Get():brush_.red.Get());
-                Rounded(cx,cy,cardW,cardH,brush_.sidebar.Get(),brush_.border.Get(),8);
-                target_->DrawLine(D2D1::Point2F(cx+10,cy+1),D2D1::Point2F(cx+cardW-10,cy+1),accent,1.5f);
-                TextLine(Widen(sentinel::simulation::ToString(d.dimension)),cx+12,cy+6,cardW-88,18,tinyFmt_.Get(),brush_.muted.Get());
-                TextLine(std::to_wstring(d.score),cx+cardW-66,cy+5,54,22,bodyFmt_.Get(),accent,DWRITE_TEXT_ALIGNMENT_TRAILING);
-                TextLine(d.passed?L"PASS":L"REVIEW",cx+12,cy+30,72,18,tinyFmt_.Get(),accent);
-                TextLine(Widen(d.details),cx+90,cy+27,cardW-102,24,tinyFmt_.Get(),brush_.text.Get());
-            }
-
-            if(!selected->cases.empty()) {
-                size_t passed=0;
-                for(const auto& cr:selected->cases) if(cr.passed) ++passed;
-                TextLine(L"Named cases "+std::to_wstring(passed)+L"/"+std::to_wstring(selected->cases.size())+L" passed",
-                    x+18,y+222,contentW-36,18,tinyFmt_.Get(),passed==selected->cases.size()?brush_.green.Get():brush_.yellow.Get());
-            }
+            size_t passed=0;
+            for(const auto& d:selected->dimensions) if(d.passed) ++passed;
+            TextLine(std::to_wstring(passed)+L"/"+std::to_wstring(selected->dimensions.size())+L" dimensions passed",
+                x+18,mainY+180,summaryW-36,20,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            Badge(selected->overallScore>=80?L"READY":L"REVIEW",x+summaryW/2-42,mainY+205,
+                selected->overallScore>=80?brush_.green.Get():brush_.yellow.Get(),84);
+        } else {
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+summaryW/2,mainY+92),48,48),brush_.border.Get(),6);
+            TextLine(L"—",x+summaryW/2-30,mainY+70,60,34,bigFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(L"Run an evaluation to establish a release gate.",x+18,mainY+154,summaryW-36,56,smallFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
-        const float lowerY=y+232;
-        const float leftW=(contentW-gap)*0.55f;
-        const float rightW=contentW-gap-leftW;
+        // Six evaluation dimensions.
+        const float dx=x+summaryW+gap;
+        GlowPanel(dx,mainY,dimsW,238,false,11);
+        TextLine(L"Evaluation Dimensions",dx+16,mainY+10,dimsW-32,24,smallFmt_.Get(),brush_.text.Get());
+        if(selected && !selected->dimensions.empty()) {
+            const float cardGap=8.0f;
+            const float cardW=(dimsW-32-cardGap)/2.0f;
+            const float cardH=58.0f;
+            for(size_t i=0;i<selected->dimensions.size() && i<6;i++) {
+                const auto& d=selected->dimensions[i];
+                const int row=(int)i/2;
+                const int col=(int)i%2;
+                const float cx=dx+16+col*(cardW+cardGap);
+                const float cy=mainY+42+row*(cardH+7);
+                ID2D1Brush* accent=d.passed?brush_.green.Get():(d.score>=60?brush_.yellow.Get():brush_.red.Get());
+                Rounded(cx,cy,cardW,cardH,brush_.deepPanel.Get(),brush_.border.Get(),8);
+                target_->DrawLine(D2D1::Point2F(cx+8,cy+1),D2D1::Point2F(cx+cardW-8,cy+1),accent,1.6f);
+                TextLine(Widen(sentinel::simulation::ToString(d.dimension)),cx+10,cy+4,cardW-70,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(std::to_wstring(d.score),cx+cardW-54,cy+4,42,20,smallFmt_.Get(),accent,DWRITE_TEXT_ALIGNMENT_TRAILING);
+                TextLine(d.passed?L"PASS":L"REVIEW",cx+10,cy+26,64,18,tinyFmt_.Get(),accent);
+                std::wstring detail=Widen(d.details);
+                if(detail.size()>46) detail=detail.substr(0,43)+L"...";
+                TextLine(detail,cx+80,cy+24,cardW-92,22,tinyFmt_.Get(),brush_.text.Get());
+            }
+        } else {
+            TextLine(L"Persona • Policy • Style • Memory • Trigger • Diversity",dx+20,mainY+104,dimsW-40,30,smallFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
 
-        Rounded(x,lowerY,leftW,150,brush_.panel2.Get(),brush_.border.Get(),9);
-        TextLine(L"Recent Evaluation Runs",x+16,lowerY+8,leftW-32,24,smallFmt_.Get(),brush_.text.Get());
+        // Regression / named-case inspector.
+        const float rx=dx+dimsW+gap;
+        GlowPanel(rx,mainY,compareW,238,false,11);
+        TextLine(L"Regression Watch",rx+16,mainY+10,compareW-32,24,smallFmt_.Get(),brush_.text.Get());
+        if(selected) {
+            Badge(selected->warnings.empty()?L"STABLE":L"ATTENTION",rx+compareW-104,mainY+12,
+                selected->warnings.empty()?brush_.green.Get():brush_.yellow.Get(),86);
+            TextLine(L"Candidate",rx+16,mainY+48,82,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected->candidateName),rx+104,mainY+44,compareW-120,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Foundation",rx+16,mainY+76,82,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected->foundationName),rx+104,mainY+72,compareW-120,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Adapter",rx+16,mainY+104,82,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(selected->adapterName.empty()?L"No LoRA":Widen(selected->adapterName),rx+104,mainY+100,compareW-120,24,tinyFmt_.Get(),brush_.cyan.Get());
 
-        float ry=lowerY+38;
+            size_t casePassed=0;
+            for(const auto& cr:selected->cases) if(cr.passed) ++casePassed;
+            TextLine(L"Named cases",rx+16,mainY+136,82,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(casePassed)+L"/"+std::to_wstring(selected->cases.size())+L" passed",
+                rx+104,mainY+132,compareW-120,24,tinyFmt_.Get(),casePassed==selected->cases.size()?brush_.green.Get():brush_.yellow.Get());
+
+            target_->DrawLine(D2D1::Point2F(rx+16,mainY+164),D2D1::Point2F(rx+compareW-16,mainY+164),brush_.border.Get(),1);
+            if(selected->warnings.empty()) {
+                StatusDot(rx+20,mainY+190,4,brush_.green.Get());
+                TextLine(L"No regression warnings in this run.",rx+34,mainY+178,compareW-50,32,tinyFmt_.Get(),brush_.green.Get());
+            } else {
+                Text(Widen(selected->warnings.front()),rx+16,mainY+176,compareW-32,50,tinyFmt_.Get(),brush_.yellow.Get());
+            }
+        } else {
+            Text(L"No run selected. Evaluation never activates or deploys a model automatically.",
+                rx+18,mainY+60,compareW-36,72,smallFmt_.Get(),brush_.muted.Get());
+        }
+
+        // Run history + candidate comparison.
+        const float lowerY=mainY+250;
+        const float historyW=(contentW-gap)*0.58f;
+        const float compare2W=contentW-gap-historyW;
+        GlowPanel(x,lowerY,historyW,150,false,10);
+        TextLine(L"Recent Evaluation Runs",x+16,lowerY+8,historyW-32,24,smallFmt_.Get(),brush_.text.Get());
+
+        float hy=lowerY+38;
         int shown=0;
         for(size_t i=evaluationRuns_.Runs().size();i>0 && shown<4;--i,++shown) {
             const size_t idx=i-1;
             const auto& run=evaluationRuns_.Runs()[idx];
-            const bool isSelected=(int)idx==selectedEvaluationRun_;
-            if(isSelected) Rounded(x+12,ry-2,leftW-24,25,brush_.sidebar.Get(),brush_.cyan.Get(),5);
-            TextLine(Widen(run.candidateName),x+20,ry,leftW-220,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(run.overallScore),x+leftW-194,ry,46,20,tinyFmt_.Get(),
+            const bool chosen=(int)idx==selectedEvaluationRun_;
+            if(chosen) Rounded(x+12,hy-2,historyW-24,25,brush_.panel2.Get(),brush_.cyan.Get(),5);
+            TextLine(Widen(run.candidateName),x+20,hy,historyW-226,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(run.overallScore),x+historyW-196,hy,46,20,tinyFmt_.Get(),
                 run.overallScore>=80?brush_.green.Get():run.overallScore>=60?brush_.yellow.Get():brush_.red.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            TextLine(Widen(run.createdUtc),x+leftW-140,ry,120,20,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            buttons_.push_back({{x+12,ry-2,x+leftW-12,ry+23},L"evalrun:"+std::to_wstring(idx)});
-            ry+=26;
+            TextLine(Widen(run.createdUtc),x+historyW-142,hy,122,20,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{x+12,hy-2,x+historyW-12,hy+23},L"evalrun:"+std::to_wstring(idx)});
+            hy+=26;
         }
-        if(shown==0) TextLine(L"No evaluation history yet.",x+20,ry,leftW-40,22,tinyFmt_.Get(),brush_.muted.Get());
+        if(shown==0)
+            TextLine(L"No persisted evaluation history yet.",x+20,hy,historyW-40,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        const float rx=x+leftW+gap;
-        Rounded(rx,lowerY,rightW,150,brush_.panel2.Get(),brush_.border.Get(),9);
-        TextLine(L"Candidate Comparison",rx+16,lowerY+8,rightW-154,24,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"eval_export_compare",L"Export",rx+rightW-100,lowerY+8,82,24,false);
+        const float cx=x+historyW+gap;
+        GlowPanel(cx,lowerY,compare2W,150,false,10);
+        TextLine(L"Candidate Comparison",cx+16,lowerY+8,compare2W-128,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"eval_export_compare",L"Export",cx+compare2W-92,lowerY+8,74,24,false);
 
         const sentinel::simulation::EvaluationRun* compare=nullptr;
         if(comparisonEvaluationRun_>=0 && comparisonEvaluationRun_<(int)evaluationRuns_.Runs().size())
@@ -4423,87 +4473,133 @@ private:
         int candidates=0;
         for(size_t i=0;i<modelRegistry_.Models().size() && candidates<3;i++) {
             const auto& model=modelRegistry_.Models()[i];
-            int latest=evaluationRuns_.LatestIndexForCandidate(model.id);
+            const int latest=evaluationRuns_.LatestIndexForCandidate(model.id);
             if(latest<0) continue;
             const auto& run=evaluationRuns_.Runs()[(size_t)latest];
             const bool chosen=latest==comparisonEvaluationRun_;
-            if(chosen) Rounded(rx+12,cy-2,rightW-24,24,brush_.sidebar.Get(),brush_.blue.Get(),5);
-            TextLine(Widen(model.modelName),rx+20,cy,rightW-150,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(run.overallScore),rx+rightW-124,cy,42,20,tinyFmt_.Get(),
-                run.overallScore>=80?brush_.green.Get():run.overallScore>=60?brush_.yellow.Get():brush_.red.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            if(selected) {
-                const int delta=run.overallScore-selected->overallScore;
-                TextLine((delta>=0?L"+":L"")+std::to_wstring(delta),rx+rightW-72,cy,52,20,tinyFmt_.Get(),
-                    delta<0?brush_.yellow.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-            }
-            buttons_.push_back({{rx+12,cy-2,rx+rightW-12,cy+22},L"evalcompare:"+std::to_wstring(latest)});
-            cy+=25;
-            ++candidates;
+            if(chosen) Rounded(cx+12,cy-2,compare2W-24,24,brush_.panel2.Get(),brush_.blue.Get(),5);
+            TextLine(Widen(model.modelName),cx+20,cy,compare2W-128,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(run.overallScore),cx+compare2W-100,cy,36,20,tinyFmt_.Get(),
+                run.overallScore>=80?brush_.green.Get():brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            if(selected)
+                TextLine((run.overallScore-selected->overallScore>=0?L"+":L"")+std::to_wstring(run.overallScore-selected->overallScore),
+                    cx+compare2W-56,cy,38,20,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{cx+12,cy-2,cx+compare2W-12,cy+22},L"evalcompare:"+std::to_wstring(latest)});
+            cy+=26; ++candidates;
         }
-        if(candidates==0) TextLine(L"No evaluated candidates.",rx+20,cy,rightW-40,22,tinyFmt_.Get(),brush_.muted.Get());
+        if(candidates==0)
+            TextLine(L"No evaluated candidates to compare.",cx+20,cy,compare2W-40,24,tinyFmt_.Get(),brush_.muted.Get());
 
         if(selected && compare) {
-            const auto dims=std::array<sentinel::simulation::EvaluationDimension,3>{
-                sentinel::simulation::EvaluationDimension::PersonaConsistency,
-                sentinel::simulation::EvaluationDimension::MemoryRecall,
-                sentinel::simulation::EvaluationDimension::TriggerRegression
-            };
-            std::wstring summary;
-            for(size_t i=0;i<dims.size();++i) {
-                const int a=sentinel::simulation::DimensionScore(*selected,dims[i]);
-                const int b=sentinel::simulation::DimensionScore(*compare,dims[i]);
-                if(i) summary+=L"  ";
-                summary+=Widen(sentinel::simulation::ToString(dims[i]))+L" "+std::to_wstring(a-b);
-            }
-            TextLine(summary,rx+16,lowerY+116,rightW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
-        } else if(selected && !selected->warnings.empty()) {
-            TextLine(L"Regression / warnings: "+Widen(selected->warnings.front()),rx+16,lowerY+116,rightW-32,20,tinyFmt_.Get(),brush_.yellow.Get());
+            const int personaDelta=sentinel::simulation::DimensionScore(*selected,sentinel::simulation::EvaluationDimension::PersonaConsistency)-
+                sentinel::simulation::DimensionScore(*compare,sentinel::simulation::EvaluationDimension::PersonaConsistency);
+            const int memoryDelta=sentinel::simulation::DimensionScore(*selected,sentinel::simulation::EvaluationDimension::MemoryRecall)-
+                sentinel::simulation::DimensionScore(*compare,sentinel::simulation::EvaluationDimension::MemoryRecall);
+            TextLine(L"Persona "+std::to_wstring(personaDelta)+L"   Memory "+std::to_wstring(memoryDelta),
+                cx+16,lowerY+116,compare2W-32,20,tinyFmt_.Get(),brush_.cyan.Get());
         }
     }
 
     void DrawModelLabDeployment(float x,float y,float contentW) {
         const float gap=12.0f;
-        const float leftW=(contentW-gap)*0.58f;
-        const float rightW=contentW-leftW-gap;
 
-        GlowPanel(x,y,leftW,382,true,11);
-        TextLine(L"Deployment",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Explicit promotion only — production stays pinned until activated.",x+18,y+40,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        GlowPanel(x,y,contentW,76,true,12);
+        TextLine(L"Deployment Command Center",x+20,y+8,340,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Explicit promotion. Pinned runtime. Safe rollback.",x+20,y+38,390,22,smallFmt_.Get(),brush_.cyan.Get());
+        Badge(modelRegistry_.ActiveIndex()>=0?L"PRODUCTION ACTIVE":L"NO ACTIVE DEPLOYMENT",
+            x+contentW-184,y+24,modelRegistry_.ActiveIndex()>=0?brush_.green.Get():brush_.yellow.Get(),166);
 
-        int active=modelRegistry_.ActiveIndex();
-        Rounded(x+18,y+76,leftW-36,94,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"PRODUCTION MODEL",x+34,y+86,leftW-68,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(active>=0?Widen(modelRegistry_.Models()[(size_t)active].modelName):L"No active deployment",
-            x+34,y+108,leftW-68,30,h1Fmt_.Get(),active>=0?brush_.green.Get():brush_.muted.Get());
-        TextLine(active>=0?L"Pinned and rollback-protected":L"Approve and activate a candidate to deploy",
-            x+34,y+140,leftW-68,20,tinyFmt_.Get(),brush_.cyan.Get());
+        const float mainY=y+88;
+        const float leftW=(contentW-gap)*0.57f;
+        const float rightW=contentW-gap-leftW;
 
-        Rounded(x+18,y+184,leftW-36,178,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"Release Controls",x+34,y+194,180,24,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"model_activate",L"Activate Selected",x+34,y+232,140,32,true);
-        AddButton(L"model_rollback",L"Rollback",x+186,y+232,100,32,false);
-        Text(L"Candidates must be approved before activation. Rollback returns to the previous active model without rewriting model history.",
-            x+34,y+278,leftW-68,52,tinyFmt_.Get(),brush_.muted.Get());
+        // Production stack.
+        GlowPanel(x,mainY,leftW,238,false,11);
+        TextLine(L"Production Runtime",x+18,mainY+10,leftW-36,28,h1Fmt_.Get(),brush_.text.Get());
 
+        const int active=modelRegistry_.ActiveIndex();
+        const std::wstring activeModel=active>=0 && active<(int)modelRegistry_.Models().size()
+            ? Widen(modelRegistry_.Models()[(size_t)active].modelName)
+            : L"No model activated";
+        TextLine(L"MODEL",x+22,mainY+54,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(activeModel,x+120,mainY+50,leftW-142,26,smallFmt_.Get(),active>=0?brush_.text.Get():brush_.muted.Get());
+
+        std::wstring activeFoundation=L"Base / unresolved";
+        if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()) {
+            const auto& f=foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()];
+            activeFoundation=Widen(f.name+" "+f.version);
+        } else if(!foundationRegistry_.Models().empty()) {
+            const auto& f=foundationRegistry_.Models()[0];
+            activeFoundation=Widen(f.name+" "+f.version);
+        }
+        TextLine(L"FOUNDATION",x+22,mainY+88,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(activeFoundation,x+120,mainY+84,leftW-142,26,smallFmt_.Get(),brush_.cyan.Get());
+
+        TextLine(L"PERSONA",x+22,mainY+122,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),x+120,mainY+118,leftW-142,26,smallFmt_.Get(),brush_.text.Get());
+
+        TextLine(L"LORA",x+22,mainY+156,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(assignedPersonaLoRA_,x+120,mainY+152,leftW-142,26,smallFmt_.Get(),brush_.cyan.Get());
+
+        const sentinel::simulation::EvaluationRun* latestEval=nullptr;
+        if(active>=0 && active<(int)modelRegistry_.Models().size()) {
+            const int ei=evaluationRuns_.LatestIndexForCandidate(modelRegistry_.Models()[(size_t)active].id);
+            if(ei>=0) latestEval=&evaluationRuns_.Runs()[(size_t)ei];
+        }
+        target_->DrawLine(D2D1::Point2F(x+18,mainY+190),D2D1::Point2F(x+leftW-18,mainY+190),brush_.border.Get(),1);
+        TextLine(L"Release gate",x+22,mainY+202,88,18,tinyFmt_.Get(),brush_.muted.Get());
+        if(latestEval) {
+            Badge(std::to_wstring(latestEval->overallScore)+L"/100",
+                x+120,mainY+198,latestEval->overallScore>=80?brush_.green.Get():brush_.yellow.Get(),78);
+            TextLine(latestEval->overallScore>=80?L"Evaluation gate passed":L"Review recommended before deployment",
+                x+208,mainY+198,leftW-226,24,tinyFmt_.Get(),latestEval->overallScore>=80?brush_.green.Get():brush_.yellow.Get());
+        } else {
+            TextLine(L"No evaluation attached to active model.",x+120,mainY+198,leftW-142,24,tinyFmt_.Get(),brush_.yellow.Get());
+        }
+
+        // Release controls.
         const float rx=x+leftW+gap;
-        GlowPanel(rx,y,rightW,382,false,11);
-        TextLine(L"Runtime Stack",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Foundation",rx+18,y+62,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[(size_t)std::max(0,foundationRegistry_.ActiveIndex())].name):L"Base",
-            rx+118,y+58,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Persona",rx+18,y+96,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.name),rx+118,y+92,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"LoRA",rx+18,y+130,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(assignedPersonaLoRA_,rx+118,y+126,rightW-136,24,smallFmt_.Get(),brush_.cyan.Get());
+        GlowPanel(rx,mainY,rightW,238,false,11);
+        TextLine(L"Release Controls",rx+18,mainY+10,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Deployment is explicit. Evaluation never activates a candidate automatically.",
+            rx+18,mainY+46,rightW-36,44,tinyFmt_.Get(),brush_.muted.Get());
 
-        target_->DrawLine(D2D1::Point2F(rx+18,y+166),D2D1::Point2F(rx+rightW-18,y+166),brush_.border.Get(),1);
-        TextLine(L"Trigger Engine",rx+18,y+180,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(triggerRules_.Rules().size())+L" rules",rx+148,y+176,90,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Last match",rx+18,y+214,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastTriggerMatch_,rx+148,y+210,rightW-166,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Training jobs",rx+18,y+248,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(trainingJobRegistry_.Jobs().size()),rx+148,y+244,90,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Production weights change only through explicit deployment.",rx+18,y+302,rightW-36,42,tinyFmt_.Get(),brush_.green.Get());
+        AddButton(L"model_approve",L"Approve Candidate",rx+18,mainY+98,rightW-36,32,false);
+        AddButton(L"model_activate",L"Activate Selected",rx+18,mainY+140,rightW-36,34,true);
+        AddButton(L"model_rollback",L"Rollback Previous",rx+18,mainY+184,rightW-36,32,false);
+
+        // Candidate history.
+        const float lowerY=mainY+250;
+        GlowPanel(x,lowerY,contentW,150,false,10);
+        TextLine(L"Release History & Candidates",x+16,lowerY+8,260,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"MODEL",x+28,lowerY+38,250,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+290,lowerY+38,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"EVAL",x+402,lowerY+38,72,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+486,lowerY+38,contentW-514,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=lowerY+60;
+        int shown=0;
+        for(size_t i=0;i<modelRegistry_.Models().size() && shown<3;i++,shown++) {
+            const auto& m=modelRegistry_.Models()[i];
+            const bool selected=(int)i==selectedRegistryModel_;
+            Rounded(x+18,yy,contentW-36,28,selected?brush_.panel2.Get():brush_.deepPanel.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),5);
+            TextLine(Widen(m.modelName),x+28,yy+1,250,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+290,yy+1,100,24,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():
+                m.stage==sentinel::simulation::ModelStage::Approved?brush_.cyan.Get():brush_.muted.Get());
+            const int ei=evaluationRuns_.LatestIndexForCandidate(m.id);
+            TextLine(ei>=0?std::to_wstring(evaluationRuns_.Runs()[(size_t)ei].overallScore):L"—",
+                x+402,yy+1,72,24,tinyFmt_.Get(),ei>=0?brush_.green.Get():brush_.muted.Get());
+            TextLine(Widen(m.endpoint),x+486,yy+1,contentW-520,24,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+contentW-18,yy+28},L"regmodel:"+std::to_wstring(i)});
+            yy+=34;
+        }
+        if(shown==0)
+            TextLine(L"No registered candidates yet.",x+28,yy+12,contentW-56,24,smallFmt_.Get(),brush_.muted.Get());
+
+        TextLine(L"Production weights change only through explicit operator-controlled deployment.",
+            x+18,lowerY+128,contentW-36,18,tinyFmt_.Get(),brush_.green.Get());
     }
 
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
