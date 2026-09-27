@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sentinel VERSION 1.0.7 LANGUAGES CXX RC)
+project(Sentinel VERSION 1.0.16 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,6 +32,8 @@ add_library(sentinel_core
     src/Simulation/SessionStore.cpp
     src/Simulation/ConversationMemory.cpp
     src/Simulation/ModelRegistry.cpp
+    src/Simulation/TriggerRules.cpp
+    src/Simulation/TrainingData.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Agency/AgencyServer.cpp
@@ -70,6 +72,7 @@ if(WIN32 AND SENTINEL_BUILD_GUI)
         comctl32
     )
     target_compile_definitions(Sentinel PRIVATE UNICODE _UNICODE)
+    set_target_properties(Sentinel PROPERTIES OUTPUT_NAME SARA)
 endif()
 
 if(SENTINEL_BUILD_TOOLS)
@@ -118,6 +121,9 @@ install(DIRECTORY migrations/ DESTINATION migrations)
 install(FILES README.md DESTINATION .)
 
 install(FILES
+    resources/SARAConsole.cmd
+    resources/Install-SARA.ps1
+    resources/Uninstall-SARA.ps1
     resources/SentinelConsole.cmd
     resources/Install-Sentinel.ps1
     resources/Uninstall-Sentinel.ps1

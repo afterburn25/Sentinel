@@ -1,4 +1,4 @@
-# Sentinel release: 1.0.7
+# SARA release: 1.0.16
 name: Windows Build
 
 on:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: sentinel-v107-${{ github.workflow }}-${{ github.ref }}
+  group: sara-v1016-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -88,7 +88,7 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/Sentinel-1.0.7-windows-x64
+          --prefix package/SARA-1.0.16-windows-x64
 
       - name: Azure login for Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
@@ -105,20 +105,20 @@ jobs:
           endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\package\Sentinel-1.0.7-windows-x64
+          files-folder: ${{ github.workspace }}\package\SARA-1.0.16-windows-x64
           files-folder-filter: exe
           files-folder-recurse: true
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
-          description: Sentinel Secure Evidence & Integrity
+          description: SARA Synthetic Adaptive Response Agent
           description-url: https://github.com/afterburn25/Sentinel
 
       - name: Verify Authenticode signatures
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $root = Resolve-Path package/Sentinel-1.0.7-windows-x64
+          $root = Resolve-Path package/SARA-1.0.16-windows-x64
           $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
           if (-not $executables) { throw "No executables found for signature verification" }
 
@@ -135,7 +135,7 @@ jobs:
         shell: pwsh
         run: |
           @"
-          SENTINEL DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
+          SARA DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
 
           This build was produced without a configured trusted code-signing identity.
           Windows SmartScreen may show "Windows protected your PC" for unsigned or low-reputation builds.
@@ -143,32 +143,115 @@ jobs:
           Production releases should be signed using Microsoft Artifact Signing.
           Repository: https://github.com/afterburn25/Sentinel
           Commit: ${{ github.sha }}
-          "@ | Set-Content -Encoding utf8 package/Sentinel-1.0.7-windows-x64/SIGNING-STATUS.txt
+          "@ | Set-Content -Encoding utf8 package/SARA-1.0.16-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/Sentinel-1.0.7-windows-x64
+          $root = Resolve-Path package/SARA-1.0.16-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\\','/')
+            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\','/')
             "$hash  $relative"
           }
           $lines | Set-Content -Encoding ascii "$root/SHA256SUMS.txt"
 
+      - name: Verify SHA-256 manifest
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/SARA-1.0.16-windows-x64
+          $manifest = Get-Content "$root/SHA256SUMS.txt"
+          foreach ($line in $manifest) {
+            if (-not $line.Trim()) { continue }
+            $parts = $line -split '  ', 2
+            if ($parts.Count -ne 2) { throw "Invalid SHA-256 manifest line: $line" }
+            $expected = $parts[0].Trim().ToLowerInvariant()
+            $relative = $parts[1].Trim().Replace('/','\')
+            $path = Join-Path $root $relative
+            if (-not (Test-Path $path)) { throw "SHA-256 manifest file missing: $relative" }
+            $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $expected) { throw "SHA-256 mismatch: $relative" }
+          }
+
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/Sentinel-1.0.7-windows-x64"
-          if (-not (Test-Path "$root/Sentinel.exe")) { throw "Sentinel.exe GUI missing" }
+          $root = "package/SARA-1.0.16-windows-x64"
+          if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
+
+      - name: Build SARA installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+          }
+
+          $candidates = @(
+            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $isccPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $isccPath) {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $isccPath = $cmd.Source }
+          }
+          if (-not $isccPath) { throw "Inno Setup compiler ISCC.exe not found" }
+
+          $source = (Resolve-Path "package/SARA-1.0.16-windows-x64").Path
+          & $isccPath "/DMyAppVersion=1.0.16" "/DSourceDir=$source" "release/SARA-Installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+          $installer = "installer-output/SARA-Setup-1.0.16.exe"
+          if (-not (Test-Path $installer)) { throw "SARA installer output missing" }
+
+      - name: Sign SARA installer with Microsoft Artifact Signing
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\installer-output
+          files-folder-filter: exe
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: SARA Synthetic Adaptive Response Agent Installer
+          description-url: https://github.com/afterburn25/Sentinel
+
+      - name: Verify SARA installer signature
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.16.exe"
+          $signature = Get-AuthenticodeSignature $installer
+          Write-Host "Installer signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") { throw "Invalid or missing installer signature" }
+
+      - name: Create installer SHA-256
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.16.exe"
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  SARA-Setup-1.0.16.exe" | Set-Content -Encoding ascii "installer-output/SARA-Setup-1.0.16-SHA256.txt"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: Sentinel-1.0.7-windows-x64
-          path: package/Sentinel-1.0.7-windows-x64/
+          name: SARA-1.0.16-windows-x64
+          path: package/SARA-1.0.16-windows-x64/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SARA installer package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-1.0.16-Installer-Package
+          path: installer-output/
           if-no-files-found: error
           retention-days: 30

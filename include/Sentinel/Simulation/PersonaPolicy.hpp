@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,12 @@ struct PersonaProfile {
     std::string background{"Fictional synthetic test persona"};
     std::string interests{"music, movies, casual conversation"};
     std::string writingStyle{"Casual"};
+    std::string intelligenceLevel{"Average"};
+    std::string slangLevel{"Medium"};
+    std::string grammarQuality{"Natural"};
+    std::string typoTendency{"Low"};
+    std::string emojiTendency{"Medium"};
+    std::string mood{"Neutral"};
     std::vector<std::string> lockedFacts;
 };
 
@@ -48,5 +55,6 @@ struct PolicyDecision {
 std::string ToString(AgeKnowledgeState state);
 AgeKnowledgeState AgeStateFromString(const std::string& value);
 PolicyDecision EvaluateSimulationPolicy(AgeKnowledgeState state,const std::string& candidateText);
+std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::string text,size_t variationSeed);
 
 }

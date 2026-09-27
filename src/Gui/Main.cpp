@@ -14,6 +14,8 @@
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/TriggerRules.hpp"
+#include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -36,6 +38,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -55,7 +59,9 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
-enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
+enum class ModelLabSection { Overview, Train, Datasets, Personas, FoundationForks, Jobs, Evaluation, Deployment };
+enum class TrainingMode { BehaviorTuning, DatasetTraining, PersonaLoRA, FoundationFork, EvaluationTest };
+enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat, Smile, Paperclip };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
 
@@ -78,7 +84,7 @@ std::string Narrow(const std::wstring& s) {
 std::filesystem::path AppDataRoot() {
     PWSTR p{};
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p))) {
-        std::filesystem::path out = std::filesystem::path(p) / L"Sentinel";
+        std::filesystem::path out = std::filesystem::path(p) / L"SARA";
         CoTaskMemFree(p);
         return out;
     }
@@ -288,8 +294,21 @@ public:
         personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
         personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
         personaBackgroundEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
+        personaIntelligenceCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
+        personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
+        personaGrammarCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
+        personaTypoCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1036,GetModuleHandleW(nullptr),nullptr);
+        personaEmojiCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1037,GetModuleHandleW(nullptr),nullptr);
+        personaMoodCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
+        trainingCorrectionEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1039,GetModuleHandleW(nullptr),nullptr);
+        trainingCategoryCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1044,GetModuleHandleW(nullptr),nullptr);
+        trainingReviewTargetEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1045,GetModuleHandleW(nullptr),nullptr);
+        ruleNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1040,GetModuleHandleW(nullptr),nullptr);
+        rulePatternEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
+        ruleResponsesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
+        rulePriorityEdit_=CreateWindowExW(0,L"EDIT",L"100",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1043,GetModuleHandleW(nullptr),nullptr);
         SendMessageW(caseNumberEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         SendMessageW(caseTitleEdit_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         chatFont_=CreateFontW(
@@ -303,14 +322,16 @@ public:
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
-            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
+            trainingCorrectionEdit_,trainingReviewTargetEdit_,ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
-            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_};
+            personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,personaIntelligenceCombo_,personaSlangCombo_,
+            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,trainingCategoryCombo_,modelCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -332,6 +353,8 @@ public:
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
+        SendMessageW(trainingCorrectionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Correction or instruction: e.g. Use shorter messages, or type the preferred response...");
+        SendMessageW(trainingReviewTargetEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Edit the approved target response...");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
@@ -363,6 +386,13 @@ public:
         const wchar_t* confidenceItems[]={
             L"Very low",L"Low",L"Medium",L"High",L"Very high"
         };
+        const wchar_t* intelligenceItems[]={L"Simple",L"Average",L"High",L"Very high"};
+        const wchar_t* slangItems[]={L"None",L"Low",L"Medium",L"High",L"Very high"};
+        const wchar_t* grammarItems[]={L"Polished",L"Natural",L"Casual",L"Loose"};
+        const wchar_t* typoItems[]={L"None",L"Low",L"Medium",L"High"};
+        const wchar_t* emojiItems[]={L"None",L"Low",L"Medium",L"High",L"Very high"};
+        const wchar_t* moodItems[]={L"Neutral",L"Warm",L"Playful",L"Guarded",L"Serious",L"Excited"};
+        const wchar_t* correctionCategoryItems[]={L"Behavior",L"Style",L"Tone",L"Length",L"Memory",L"Rule",L"Formatting",L"Other"};
         auto fillCombo=[&](HWND combo,const wchar_t* const* items,size_t count){
             SendMessageW(combo,CB_RESETCONTENT,0,0);
             for(size_t i=0;i<count;i++) SendMessageW(combo,CB_ADDSTRING,0,(LPARAM)items[i]);
@@ -379,12 +409,34 @@ public:
         fillCombo(personaPersonalityCombo_,personalityItems,std::size(personalityItems));
         fillCombo(personaSocialCombo_,socialItems,std::size(socialItems));
         fillCombo(personaConfidenceCombo_,confidenceItems,std::size(confidenceItems));
+        fillCombo(personaIntelligenceCombo_,intelligenceItems,std::size(intelligenceItems));
+        fillCombo(personaSlangCombo_,slangItems,std::size(slangItems));
+        fillCombo(personaGrammarCombo_,grammarItems,std::size(grammarItems));
+        fillCombo(personaTypoCombo_,typoItems,std::size(typoItems));
+        fillCombo(personaEmojiCombo_,emojiItems,std::size(emojiItems));
+        fillCombo(personaMoodCombo_,moodItems,std::size(moodItems));
+        fillCombo(trainingCategoryCombo_,correctionCategoryItems,std::size(correctionCategoryItems));
+        SendMessageW(trainingCategoryCombo_,CB_SETCURSEL,0,0);
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
+        foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
+        personaAdapterRegistry_.Load(runtime_->root/"persona-adapters.tsv");
+        trainingJobRegistry_.Load(runtime_->root/"training-jobs.tsv");
+        triggerRules_.Load(runtime_->root/"trigger-rules.tsv");
+        trainingData_.Load(runtime_->root/"training-data.tsv");
+        trainingCaptured_=(int)trainingData_.Examples().size();
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+        if(foundationRegistry_.Models().empty()) {
+            foundationRegistry_.EnsureBase(simSettings_.model.empty()?"Original Base Model":simSettings_.model,"base");
+            foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        }
+        selectedFoundation_=foundationRegistry_.ActiveIndex()>=0?foundationRegistry_.ActiveIndex():0;
+        ResolvePersonaAdapter();
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
@@ -438,6 +490,145 @@ public:
         if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
     }
 
+    static std::string CurrentUtcText() {
+        auto now=std::chrono::system_clock::now();
+        auto t=std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm,&t);
+#else
+        gmtime_r(&t,&tm);
+#endif
+        std::ostringstream out;
+        out<<std::put_time(&tm,"%Y-%m-%dT%H:%M:%SZ");
+        return out.str();
+    }
+
+    void AppendTriggerMatchLog(const sentinel::simulation::TriggerMatch& match,const std::string& input,const std::string& response) {
+        auto path=runtime_->root/"trigger-matches.tsv";
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream out(path,std::ios::app);
+        auto clean=[](std::string s){
+            std::replace(s.begin(),s.end(),'\t',' ');
+            std::replace(s.begin(),s.end(),'\n',' ');
+            std::replace(s.begin(),s.end(),'\r',' ');
+            return s;
+        };
+        out<<CurrentUtcText()<<"\t"<<clean(currentConversationId_)<<"\t"<<clean(simSettings_.persona.name)
+           <<"\t"<<clean(match.ruleId)<<"\t"<<clean(match.ruleName)<<"\t"<<(match.terminal?1:0)
+           <<"\t"<<clean(input)<<"\t"<<clean(response)<<"\n";
+    }
+
+    void ExportModelLabDiagnostics() {
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-1.0.16-Diagnostics.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<"SARA 1.0.16 MODEL LAB DIAGNOSTICS\n";
+        out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
+        out<<"Persona: "<<simSettings_.persona.name<<"\n";
+        out<<"Age: "<<simSettings_.persona.age<<"\n";
+        out<<"Personality: "<<simSettings_.persona.personality<<"\n";
+        out<<"Writing style: "<<simSettings_.persona.writingStyle<<"\n";
+        out<<"Intelligence: "<<simSettings_.persona.intelligenceLevel<<"\n";
+        out<<"Slang: "<<simSettings_.persona.slangLevel<<"\n";
+        out<<"Grammar: "<<simSettings_.persona.grammarQuality<<"\n";
+        out<<"Typos: "<<simSettings_.persona.typoTendency<<"\n";
+        out<<"Emoji tendency: "<<simSettings_.persona.emojiTendency<<"\n";
+        out<<"Mood: "<<simSettings_.persona.mood<<"\n";
+        out<<"Training mode: "<<Narrow(TrainingModeName())<<"\n";
+        out<<"Foundation: "<<simContext_.foundationName<<" ["<<simContext_.foundationId<<"]\n";
+        out<<"Adapter: "<<simContext_.adapterName<<" ["<<simContext_.adapterId<<"]\n";
+        out<<"Model status: "<<Narrow(modelStatus_)<<"\n";
+        out<<"Last trigger match: "<<Narrow(lastTriggerMatch_)<<"\n";
+        out<<"Trigger rules: "<<triggerRules_.Rules().size()<<"\n";
+        out<<"Training examples: "<<trainingData_.Examples().size()<<"\n";
+        out<<"Review pending: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Review)<<"\n";
+        out<<"Approved: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)<<"\n";
+        out<<"Rejected: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Rejected)<<"\n";
+        out<<"Dataset snapshots: "<<trainingData_.Snapshots().size()<<"\n";
+        out<<"Training jobs: "<<trainingJobRegistry_.Jobs().size()<<"\n";
+        out<<"Registered models: "<<modelRegistry_.Models().size()<<"\n";
+        out<<"Foundation versions: "<<foundationRegistry_.Models().size()<<"\n";
+        out<<"Persona adapters: "<<personaAdapterRegistry_.Adapters().size()<<"\n";
+        out<<"Last evaluation score: "<<lastEvaluation_.score<<"\n";
+        out<<"Policy allowed: "<<(lastEvaluation_.policyAllowed?"yes":"no")<<"\n";
+        out<<"Persona consistent: "<<(lastEvaluation_.personaConsistent?"yes":"no")<<"\n\n";
+
+        out<<"TRIGGER RULES\n";
+        for(const auto& rule:triggerRules_.Rules())
+            out<<rule.id<<" | "<<rule.name<<" | pattern="<<rule.pattern<<" | priority="<<rule.priority
+               <<" | "<<(rule.terminal?"terminal":"continue")<<" | responses="<<rule.responses.size()<<"\n";
+
+        out<<"\nRECENT PERSONA CONVERSATION\n";
+        size_t historyStart=simContext_.history.size()>20?simContext_.history.size()-20:0;
+        for(size_t i=historyStart;i<simContext_.history.size();++i) {
+            const auto& turn=simContext_.history[i];
+            const char* speaker=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator?"Investigator":
+                turn.speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject?"SARA":"Model Suggestion";
+            out<<speaker<<": "<<turn.text<<"\n";
+        }
+
+        out<<"\nRECENT TRAINING EXAMPLES\n";
+        size_t start=trainingData_.Examples().size()>10?trainingData_.Examples().size()-10:0;
+        for(size_t i=start;i<trainingData_.Examples().size();++i) {
+            const auto& e=trainingData_.Examples()[i];
+            out<<e.id<<" | "<<sentinel::simulation::ToString(e.state)<<" | "<<e.category
+               <<" | persona="<<e.persona<<" | created="<<e.createdUtc<<" | reviewer="<<e.reviewer<<"\n";
+        }
+        out.close();
+        statusText_=L"Model Lab diagnostics exported";
+    }
+
+    std::wstring HoverHelpFor(const std::wstring& id) const {
+        if(id==L"sim_emoji") return L"Emoji";
+        if(id==L"sim_attach") return L"Attach a file";
+        if(id==L"ml_capture") return L"Capture the latest user/SARA pair for human review";
+        if(id==L"ml_approve") return L"Approve the latest reviewed training example";
+        if(id==L"ml_rules_manage") return L"View, add, edit, prioritize, or delete trigger rules";
+        if(id==L"dataset_snapshot") return L"Freeze approved examples into a versioned dataset snapshot";
+        if(id==L"job_new") return L"Queue a new training job from the selected foundation and dataset";
+        if(id==L"foundation_new_fork") return L"Create a versioned SARA Foundation descendant without altering the base";
+        if(id==L"model_activate") return L"Activate the selected approved candidate";
+        if(id==L"model_rollback") return L"Roll back to the previous active model";
+        if(id==L"ml_diagnostics_export") return L"Export Model Lab state, persona settings, rules, datasets, jobs, and evaluation diagnostics";
+        return {};
+    }
+
+    void Hover(float x,float y) {
+        std::wstring next;
+        for(const auto& b:buttons_) {
+            if(b.rect.Contains(x,y)) { next=b.id; break; }
+        }
+        if(next==hoveredButtonId_) return;
+        hoveredButtonId_=next;
+        hoverHelp_=HoverHelpFor(next);
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void Press(float x,float y) {
+        pressedButtonId_.clear();
+        for(const auto& b:buttons_) {
+            if(b.rect.Contains(x,y)) { pressedButtonId_=b.id; break; }
+        }
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
+    void ReleasePress() {
+        if(pressedButtonId_.empty()) return;
+        pressedButtonId_.clear();
+        InvalidateRect(hwnd_,nullptr,FALSE);
+    }
+
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
             int idx=(int)((y-kHeader-18)/48);
@@ -460,6 +651,8 @@ public:
             else if (b.id==L"integrity") VerifyAudit();
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
+            else if (b.id==L"sim_emoji") InsertComposerEmoji();
+            else if (b.id==L"sim_attach") SelectComposerAttachment();
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset" || b.id==L"sim_new_chat") ResetSimulation();
             else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
@@ -472,6 +665,49 @@ public:
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
+            else if (b.id.rfind(L"mltab:",0)==0) {
+                modelLabSection_=(ModelLabSection)std::clamp((int)std::stol(b.id.substr(6)),0,7);
+                statusText_=L"Model Lab workspace changed";
+            }
+            else if (b.id==L"ml_diagnostics_export") ExportModelLabDiagnostics();
+            else if (b.id==L"ml_rules_manage") OpenRuleEditor();
+            else if (b.id==L"ml_rule_cancel") CloseRuleEditor();
+            else if (b.id==L"ml_rule_new") NewTriggerRuleDraft();
+            else if (b.id==L"ml_rule_save") SaveTriggerRuleDraft();
+            else if (b.id==L"ml_rule_delete") DeleteSelectedTriggerRule();
+            else if (b.id==L"ml_rule_terminal") { ruleEditorTerminal_=!ruleEditorTerminal_; statusText_=ruleEditorTerminal_?L"Rule set to stop generation":L"Rule set to continue generation"; }
+            else if (b.id.rfind(L"trigger:",0)==0) SelectTriggerRule((int)std::stol(b.id.substr(8)));
+            else if (b.id==L"ml_capture") CaptureLatestTrainingExample();
+            else if (b.id==L"ml_approve") ApproveTrainingCapture();
+            else if (b.id==L"ml_training_mode") {
+                trainingMode_=(TrainingMode)(((int)trainingMode_+1)%5);
+                ResolvePersonaAdapter();
+                statusText_=L"Training mode changed to "+TrainingModeName();
+            }
+            else if (b.id==L"ml_persona_editor") {
+                page_=Page::Persona;
+                statusText_=L"Persona editor opened";
+            }
+            else if (b.id==L"ml_style_save") SaveProfileEditors();
+            else if (b.id==L"adapter_new") CreatePersonaAdapter();
+            else if (b.id.rfind(L"adapter_activate:",0)==0) ActivatePersonaAdapter((size_t)std::stoul(b.id.substr(17)));
+            else if (b.id==L"adapter_rollback") RollbackPersonaAdapter();
+            else if (b.id==L"foundation_new_fork") CreateFoundationFork();
+            else if (b.id==L"foundation_approve") ApproveSelectedFoundation();
+            else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
+            else if (b.id==L"foundation_rollback") RollbackFoundation();
+            else if (b.id==L"dataset_snapshot") CreateDatasetSnapshot();
+            else if (b.id.rfind(L"training_example:",0)==0) SelectTrainingExample((int)std::stol(b.id.substr(17)));
+            else if (b.id==L"training_review_save") SaveSelectedTrainingTarget();
+            else if (b.id==L"training_review_approve") ReviewSelectedTrainingExample(true);
+            else if (b.id==L"training_review_reject") ReviewSelectedTrainingExample(false);
+            else if (b.id==L"job_new") CreateTrainingJob();
+            else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
+            else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
+            else if (b.id.rfind(L"foundation:",0)==0) {
+                selectedFoundation_=std::clamp((int)std::stol(b.id.substr(11)),0,std::max(0,(int)foundationRegistry_.Models().size()-1));
+                statusText_=L"Foundation selection changed";
+            }
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
@@ -578,8 +814,22 @@ public:
             UpdateWindow(hwnd_);
 
             try {
-                if(model_) {
+                auto triggerMatch=triggerRules_.Match(simPendingMessage_,simContext_.personaSummary,simContext_.history.size());
+                if(triggerMatch && !triggerMatch->response.empty()) {
+                    simPreparedReply_=triggerMatch->response;
+                    lastTriggerMatch_=Widen(triggerMatch->ruleName);
+                    if(!triggerMatch->terminal && model_) {
+                        auto generated=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                        if(!generated.empty()) simPreparedReply_+=" "+generated;
+                    }
+                    AppendTriggerMatchLog(*triggerMatch,simPendingMessage_,simPreparedReply_);
+                } else if(model_) {
+                    lastTriggerMatch_=L"None";
                     simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
+                }
+                if(!simPreparedReply_.empty() && simPreparedReply_.rfind("Model error:",0)!=0) {
+                    simPreparedReply_=sentinel::simulation::ApplyPersonaWritingVariation(
+                        simSettings_.persona,simPreparedReply_,simContext_.history.size()+simPendingMessage_.size());
                 }
             } catch(const std::exception& e) {
                 simPreparedReply_=std::string("Model error: ")+e.what();
@@ -638,10 +888,20 @@ private:
     HWND personaNameEdit_{},personaAgeCombo_{},personaLocationEdit_{},personaInterestsEdit_{},personaStyleEdit_{};
     HWND personaOccupationEdit_{},personaEducationEdit_{},personaFamilyEdit_{},personaBackgroundEdit_{};
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
+    HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
+    HWND trainingCorrectionEdit_{},trainingCategoryCombo_{},trainingReviewTargetEdit_{};
+    HWND ruleNameEdit_{},rulePatternEdit_{},ruleResponsesEdit_{},rulePriorityEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
+    ModelLabSection modelLabSection_{ModelLabSection::Overview};
+    TrainingMode trainingMode_{TrainingMode::BehaviorTuning};
+    std::wstring assignedPersonaLoRA_=L"Auto-resolve";
+    int trainingCaptured_{0};
+    int trainingReviewPending_{0};
+    int trainingApproved_{0};
+    int selectedTrainingExample_{-1};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
     size_t selectedCase_{0},selectedEvidence_{0};
@@ -664,12 +924,22 @@ private:
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
+    sentinel::simulation::FoundationRegistry foundationRegistry_;
+    sentinel::simulation::PersonaAdapterRegistry personaAdapterRegistry_;
+    sentinel::simulation::TrainingJobRegistry trainingJobRegistry_;
+    sentinel::simulation::TriggerRuleRegistry triggerRules_;
+    sentinel::simulation::TrainingDataRegistry trainingData_;
     int selectedRegistryModel_{-1};
+    int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
+    std::wstring lastTriggerMatch_=L"None";
+    bool ruleEditorOpen_{false};
+    bool ruleEditorTerminal_{true};
+    int selectedTriggerRule_{-1};
 
     HFONT chatFont_{};
     ComPtr<ID2D1Factory> factory_;
@@ -679,6 +949,9 @@ private:
     BrushSet brush_;
     bool brushesReady_{false};
     std::vector<Button> buttons_;
+    std::wstring hoveredButtonId_;
+    std::wstring pressedButtonId_;
+    std::wstring hoverHelp_;
 
     void CreateResources() {
         if (!target_) {
@@ -747,9 +1020,30 @@ private:
     }
 
     void AddButton(const std::wstring& id,const std::wstring& label,float x,float y,float w,float h,bool primary=false) {
-        Rounded(x,y,w,h,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),7);
-        TextLine(label,x+10,y+1,w-20,h-2,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        const bool hover=hoveredButtonId_==id;
+        const bool pressed=pressedButtonId_==id;
+        ID2D1Brush* fill=primary?brush_.blue.Get():brush_.panel2.Get();
+        ID2D1Brush* stroke=primary?brush_.cyan.Get():brush_.border.Get();
+        if(pressed) fill=brush_.sidebar.Get();
+        else if(hover && !primary) fill=brush_.panel.Get();
+        if(hover) stroke=brush_.cyan.Get();
+        Rounded(x,y,w,h,fill,stroke,7);
+        TextLine(label,x+10,y+1,w-20,h-2,smallFmt_.Get(),hover?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         buttons_.push_back({{x,y,x+w,y+h},id});
+    }
+
+    void AddIconButton(const std::wstring& id,IconKind icon,float x,float y,float size,bool primary=false) {
+        const bool hover=hoveredButtonId_==id;
+        const bool pressed=pressedButtonId_==id;
+        ID2D1Brush* fill=primary?brush_.blue.Get():brush_.panel2.Get();
+        ID2D1Brush* stroke=primary?brush_.cyan.Get():brush_.border.Get();
+        if(pressed) fill=brush_.sidebar.Get();
+        else if(hover && !primary) fill=brush_.panel.Get();
+        if(hover) stroke=brush_.cyan.Get();
+        Rounded(x,y,size,size,fill,stroke,8);
+        const float iconSize=size*0.54f;
+        DrawIcon(icon,x+(size-iconSize)/2.0f,y+(size-iconSize)/2.0f,iconSize,hover?brush_.cyan.Get():brush_.text.Get());
+        buttons_.push_back({{x,y,x+size,y+size},id});
     }
 
     void StatusDot(float x,float y,float r,ID2D1Brush* color) {
@@ -854,6 +1148,45 @@ private:
                 target_->DrawLine(D2D1::Point2F(x+s*0.30f,y+s*0.72f),D2D1::Point2F(x+s*0.23f,y+s*0.90f),color,t);
                 target_->DrawLine(D2D1::Point2F(x+s*0.23f,y+s*0.90f),D2D1::Point2F(x+s*0.46f,y+s*0.73f),color,t);
                 break;
+            case IconKind::Smile:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.36f,s*0.36f),color,t);
+                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.37f,y+s*0.42f),s*0.035f,s*0.035f),color);
+                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.63f,y+s*0.42f),s*0.035f,s*0.035f),color);
+                {
+                    ComPtr<ID2D1PathGeometry> geo; factory_->CreatePathGeometry(&geo);
+                    ComPtr<ID2D1GeometrySink> sink; geo->Open(&sink);
+                    sink->BeginFigure(D2D1::Point2F(x+s*0.34f,y+s*0.58f),D2D1_FIGURE_BEGIN_HOLLOW);
+                    sink->AddBezier(D2D1::BezierSegment(
+                        D2D1::Point2F(x+s*0.40f,y+s*0.70f),
+                        D2D1::Point2F(x+s*0.60f,y+s*0.70f),
+                        D2D1::Point2F(x+s*0.66f,y+s*0.58f)));
+                    sink->EndFigure(D2D1_FIGURE_END_OPEN); sink->Close();
+                    target_->DrawGeometry(geo.Get(),color,t);
+                }
+                break;
+            case IconKind::Paperclip: {
+                ComPtr<ID2D1PathGeometry> geo; factory_->CreatePathGeometry(&geo);
+                ComPtr<ID2D1GeometrySink> sink; geo->Open(&sink);
+                sink->BeginFigure(D2D1::Point2F(x+s*0.66f,y+s*0.22f),D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.83f,y+s*0.38f),
+                    D2D1::Point2F(x+s*0.83f,y+s*0.62f),
+                    D2D1::Point2F(x+s*0.66f,y+s*0.78f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.43f,y+s*0.91f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.27f,y+s*0.98f),
+                    D2D1::Point2F(x+s*0.12f,y+s*0.83f),
+                    D2D1::Point2F(x+s*0.20f,y+s*0.66f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.55f,y+s*0.31f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.63f,y+s*0.23f),
+                    D2D1::Point2F(x+s*0.75f,y+s*0.31f),
+                    D2D1::Point2F(x+s*0.67f,y+s*0.40f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.37f,y+s*0.70f));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN); sink->Close();
+                target_->DrawGeometry(geo.Get(),color,t);
+                break;
+            }
         }
     }
 
@@ -868,8 +1201,8 @@ private:
     void DrawBrand() {
         DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
         DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
-        Text(L"Sentinel",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
+        Text(L"SYNTHETIC ADAPTIVE RESPONSE AGENT",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -887,7 +1220,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v1.0.7",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.16",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -909,6 +1242,8 @@ private:
 
         StatusDot(w-174,67,4,brush_.green.Get());
         Text(statusText_,w-163,58,153,18,tinyFmt_.Get(),brush_.green.Get());
+        if(!hoverHelp_.empty())
+            TextLine(hoverHelp_,kSidebar+300,56,std::max(180.0f,w-kSidebar-500.0f),20,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
     void PageTitle(const std::wstring& title,const std::wstring& sub) {
@@ -1248,9 +1583,17 @@ private:
 
         UpdateSimulationScrollbar();
 
-        // The EDIT control itself is the full composer.  Its formatting rectangle
-        // vertically centers the caret/text without shrinking the textbox.
-        AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
+        // Composer: message field + icon-only emoji/attachment controls + primary Send.
+        // Icons are vector-drawn so rendering is consistent across Windows installations.
+        const float composerY=y+452;
+        const float sendW=116.0f;
+        const float iconSize=46.0f;
+        const float sendX=x+chatW-18-sendW;
+        const float attachX=sendX-8-iconSize;
+        const float emojiX=attachX-8-iconSize;
+        AddIconButton(L"sim_emoji",IconKind::Smile,emojiX,composerY,iconSize,false);
+        AddIconButton(L"sim_attach",IconKind::Paperclip,attachX,composerY,iconSize,false);
+        AddButton(L"sim_send",L"Send",sendX,composerY,sendW,46,true);
 
         // Model / scenario card
         const float rx=x+chatW+gap;
@@ -1317,7 +1660,21 @@ private:
     void ApplyPageControls() {
         ShowCaseEditors(page_==Page::Cases);
         ShowChatEditor(page_==Page::Simulation);
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train) {
+            if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
+        }
         ShowPersonaEditors(page_==Page::Persona);
+        const bool inTrain=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train;
+        const bool showRuleEditor=inTrain && ruleEditorOpen_;
+        if(trainingCorrectionEdit_) ShowWindow(trainingCorrectionEdit_,(inTrain && !ruleEditorOpen_)?SW_SHOW:SW_HIDE);
+        if(trainingCategoryCombo_) ShowWindow(trainingCategoryCombo_,(inTrain && !ruleEditorOpen_)?SW_SHOW:SW_HIDE);
+        const bool inDatasetReview=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0;
+        if(trainingReviewTargetEdit_) ShowWindow(trainingReviewTargetEdit_,inDatasetReview?SW_SHOW:SW_HIDE);
+        HWND ruleControls[]={ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
+        for(HWND h:ruleControls) if(h) ShowWindow(h,showRuleEditor?SW_SHOW:SW_HIDE);
+        const bool showStyleCombos=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas;
+        HWND styleCombos[]={personaIntelligenceCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_};
+        for(HWND h:styleCombos) if(h) ShowWindow(h,showStyleCombos?SW_SHOW:SW_HIDE);
         ShowAgencyEditors(page_==Page::Agency);
         LayoutNativeControls();
     }
@@ -1342,7 +1699,7 @@ private:
 
             MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
 
-            const int composerW=(int)(chatW-236);
+            const int composerW=(int)(chatW-266);
             const int composerH=46;
             MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
             RECT composerTextRect{12,9,std::max(24,composerW-12),composerH-8};
@@ -1351,6 +1708,58 @@ private:
             MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
             MoveControl(modelCombo_,(int)(rx+158),(int)(y+201),(int)(sideW-176),150,TRUE);
             MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+251),(int)(sideW-140),32,TRUE);
+        }
+
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train) {
+            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float bodyY=top+116.0f;
+            const float contentW=w-x-28.0f;
+            const float rightW=340.0f;
+            const float gap=12.0f;
+            const float leftW=contentW-rightW-gap;
+            if(ruleEditorOpen_) {
+                if(chatEdit_) ShowWindow(chatEdit_,SW_HIDE);
+                MoveControl(ruleNameEdit_,(int)(x+142),(int)(bodyY+74),(int)(leftW-164),30,TRUE);
+                MoveControl(rulePatternEdit_,(int)(x+142),(int)(bodyY+116),(int)(leftW-164),30,TRUE);
+                MoveControl(ruleResponsesEdit_,(int)(x+142),(int)(bodyY+158),(int)(leftW-164),94,TRUE);
+                MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
+            } else {
+                if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
+                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+238),(int)(leftW-296),44,TRUE);
+                MoveControl(trainingCategoryCombo_,(int)(x+leftW-152),(int)(bodyY+238),136,140,TRUE);
+                RECT correctionRect{10,7,std::max(24,(int)(leftW-316)),38};
+                SendMessageW(trainingCorrectionEdit_,EM_SETRECTNP,0,(LPARAM)&correctionRect);
+                const int composerW=std::max(220,(int)(leftW-212));
+                const int composerH=44;
+                MoveControl(chatEdit_,(int)(x+16),(int)(bodyY+292),composerW,composerH,TRUE);
+                RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
+                SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
+            }
+        }
+
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0) {
+            const float x=kSidebar+28.0f, top=kHeader+102.0f, bodyY=top+116.0f;
+            const float contentW=w-x-28.0f, gap=12.0f, rightW=350.0f;
+            const float leftW=contentW-rightW-gap;
+            const float rx=x+leftW+gap;
+            MoveControl(trainingReviewTargetEdit_,(int)(rx+18),(int)(bodyY+142),(int)(rightW-36),70,TRUE);
+            RECT reviewRect{10,8,std::max(24,(int)rightW-56),62};
+            SendMessageW(trainingReviewTargetEdit_,EM_SETRECTNP,0,(LPARAM)&reviewRect);
+        }
+
+        if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
+            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float bodyY=top+116.0f;
+            const float contentW=w-x-28.0f, gap=12.0f, inspectorW=360.0f;
+            const float listW=contentW-inspectorW-gap;
+            const float rx=x+listW+gap;
+            const int comboW=150, comboH=130;
+            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(bodyY+244),comboW,comboH,TRUE);
+            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(bodyY+244),comboW,comboH,TRUE);
+            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(bodyY+282),comboW,comboH,TRUE);
+            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(bodyY+282),comboW,comboH,TRUE);
+            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(bodyY+320),comboW,comboH,TRUE);
+            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(bodyY+320),comboW,comboH,TRUE);
         }
 
         if(page_==Page::Persona) {
@@ -1429,6 +1838,12 @@ private:
         SendMessageW(personaPersonalityCombo_,CB_SETCURSEL,FindComboText(personaPersonalityCombo_,simSettings_.persona.personality),0);
         SendMessageW(personaSocialCombo_,CB_SETCURSEL,FindComboText(personaSocialCombo_,simSettings_.persona.socialStyle),0);
         SendMessageW(personaConfidenceCombo_,CB_SETCURSEL,FindComboText(personaConfidenceCombo_,simSettings_.persona.confidenceLevel),0);
+        SendMessageW(personaIntelligenceCombo_,CB_SETCURSEL,FindComboText(personaIntelligenceCombo_,simSettings_.persona.intelligenceLevel),0);
+        SendMessageW(personaSlangCombo_,CB_SETCURSEL,FindComboText(personaSlangCombo_,simSettings_.persona.slangLevel),0);
+        SendMessageW(personaGrammarCombo_,CB_SETCURSEL,FindComboText(personaGrammarCombo_,simSettings_.persona.grammarQuality),0);
+        SendMessageW(personaTypoCombo_,CB_SETCURSEL,FindComboText(personaTypoCombo_,simSettings_.persona.typoTendency),0);
+        SendMessageW(personaEmojiCombo_,CB_SETCURSEL,FindComboText(personaEmojiCombo_,simSettings_.persona.emojiTendency),0);
+        SendMessageW(personaMoodCombo_,CB_SETCURSEL,FindComboText(personaMoodCombo_,simSettings_.persona.mood),0);
 
         SetWindowTextW(scenarioNameEdit_,Widen(simSettings_.scenario.name).c_str());
         SetWindowTextW(scenarioObjectiveEdit_,Widen(simSettings_.scenario.objective).c_str());
@@ -1457,6 +1872,12 @@ private:
             simSettings_.persona.background=Narrow(EditText(personaBackgroundEdit_));
             simSettings_.persona.interests=Narrow(EditText(personaInterestsEdit_));
             simSettings_.persona.writingStyle=Narrow(EditText(personaStyleEdit_));
+            simSettings_.persona.intelligenceLevel=ComboText(personaIntelligenceCombo_);
+            simSettings_.persona.slangLevel=ComboText(personaSlangCombo_);
+            simSettings_.persona.grammarQuality=ComboText(personaGrammarCombo_);
+            simSettings_.persona.typoTendency=ComboText(personaTypoCombo_);
+            simSettings_.persona.emojiTendency=ComboText(personaEmojiCombo_);
+            simSettings_.persona.mood=ComboText(personaMoodCombo_);
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
@@ -1478,6 +1899,7 @@ private:
                 ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
                 ", writing style "+simSettings_.persona.writingStyle+".";
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
+            ResolvePersonaAdapter();
             statusText_=L"Persona, policy, scenario, and delay settings saved";
         } catch(const std::exception& e) {
             statusText_=L"Profile save failed";
@@ -1637,6 +2059,34 @@ private:
         }
     }
 
+    void InsertComposerEmoji() {
+        if(!chatEdit_) return;
+        DWORD start=0,end=0;
+        SendMessageW(chatEdit_,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
+        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)L"\U0001F642");
+        SetFocus(chatEdit_);
+        statusText_=L"Emoji inserted";
+    }
+
+    void SelectComposerAttachment() {
+        wchar_t file[MAX_PATH]{};
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"All Files\0*.*\0Images\0*.png;*.jpg;*.jpeg;*.gif;*.webp\0\0";
+        ofn.nFilterIndex=1;
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+        std::filesystem::path selected(file);
+        const std::wstring marker=L" [Attachment: "+selected.filename().wstring()+L"]";
+        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)marker.c_str());
+        SetFocus(chatEdit_);
+        statusText_=L"Attachment added to draft";
+    }
+
     void SendSimulationMessage() {
         if(simBotTyping_ || simReplyPending_) return;
         wchar_t buffer[2048]{};
@@ -1789,7 +2239,7 @@ private:
 
     void PreserveSimulationTranscript() {
         if(cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -1797,7 +2247,7 @@ private:
             std::filesystem::create_directories(exportDir);
             auto path=exportDir/"simulation-transcript.txt";
             std::ofstream out(path,std::ios::trunc);
-            out<<"Sentinel Simulation Transcript\n";
+            out<<"SARA Simulation Transcript\n";
             out<<"Scenario: "<<simSettings_.scenario.name<<"\n";
             out<<"Persona: "<<simSettings_.persona.name<<"\n";
             out<<"Age state: "<<sentinel::simulation::ToString(simSettings_.ageState)<<"\n\n";
@@ -1961,6 +2411,357 @@ private:
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void ResolvePersonaAdapter() {
+        simContext_.foundationId.clear();
+        simContext_.foundationName.clear();
+        simContext_.adapterId.clear();
+        simContext_.adapterName.clear();
+        simContext_.trainingMode=Narrow(TrainingModeName());
+
+        int fi=foundationRegistry_.ActiveIndex();
+        if(fi<0 && !foundationRegistry_.Models().empty()) fi=0;
+        if(fi>=0 && fi<(int)foundationRegistry_.Models().size()) {
+            const auto& f=foundationRegistry_.Models()[(size_t)fi];
+            simContext_.foundationId=f.id;
+            simContext_.foundationName=f.name+" "+f.version;
+        }
+
+        int idx=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        if(idx>=0 && idx<(int)personaAdapterRegistry_.Adapters().size()) {
+            const auto& a=personaAdapterRegistry_.Adapters()[(size_t)idx];
+            assignedPersonaLoRA_=Widen(a.adapterName+" "+a.version);
+            simContext_.adapterId=a.id;
+            simContext_.adapterName=a.adapterName+" "+a.version;
+        } else {
+            assignedPersonaLoRA_=L"No active LoRA";
+        }
+    }
+
+    void CreatePersonaAdapter() {
+        std::string persona=simSettings_.persona.name.empty()?"Default Persona":simSettings_.persona.name;
+        std::string foundationId;
+        if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size())
+            foundationId=foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].id;
+        else if(!foundationRegistry_.Models().empty()) foundationId=foundationRegistry_.Models()[0].id;
+
+        int count=0;
+        for(const auto& a:personaAdapterRegistry_.Adapters()) if(a.personaName==persona) ++count;
+        auto& adapter=personaAdapterRegistry_.Add(persona,persona+".lora","v"+std::to_string(count+1),foundationId);
+        personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+        assignedPersonaLoRA_=Widen(adapter.adapterName+" "+adapter.version);
+        statusText_=L"Persona LoRA created in staging";
+    }
+
+    void ActivatePersonaAdapter(size_t index) {
+        if(index>=personaAdapterRegistry_.Adapters().size()) return;
+        const auto persona=personaAdapterRegistry_.Adapters()[index].personaName;
+        if(persona!=simSettings_.persona.name) {
+            statusText_=L"Adapter belongs to a different persona";
+            return;
+        }
+        personaAdapterRegistry_.Activate(index);
+        personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+        ResolvePersonaAdapter();
+        statusText_=L"Persona LoRA activated";
+    }
+
+    void RollbackPersonaAdapter() {
+        if(personaAdapterRegistry_.Rollback(simSettings_.persona.name)) {
+            personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+            ResolvePersonaAdapter();
+            statusText_=L"Persona LoRA rollback completed";
+        } else statusText_=L"No archived LoRA is available for rollback";
+    }
+
+    void SelectTrainingExample(int index) {
+        if(index<0 || index>=(int)trainingData_.Examples().size()) return;
+        selectedTrainingExample_=index;
+        SetWindowTextW(trainingReviewTargetEdit_,Widen(trainingData_.Examples()[(size_t)index].targetResponse).c_str());
+        ApplyPageControls();
+        statusText_=L"Training example selected for review";
+    }
+
+    bool SaveSelectedTrainingTarget() {
+        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) return false;
+        auto target=Narrow(EditText(trainingReviewTargetEdit_));
+        if(target.empty()) {
+            statusText_=L"Target response cannot be empty";
+            return false;
+        }
+        auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+        e.targetResponse=target;
+        e.correction=target;
+        e.reviewer="local-operator";
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        statusText_=L"Training target updated";
+        return true;
+    }
+
+    void ReviewSelectedTrainingExample(bool approve) {
+        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) {
+            statusText_=L"Select a training example first";
+            return;
+        }
+        if(!SaveSelectedTrainingTarget()) return;
+        auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+        e.reviewer="local-operator";
+        trainingData_.SetState((size_t)selectedTrainingExample_,approve?
+            sentinel::simulation::TrainingExampleState::Approved:
+            sentinel::simulation::TrainingExampleState::Rejected);
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+        statusText_=approve?L"Training example approved":L"Training example rejected";
+    }
+
+    void CreateDatasetSnapshot() {
+        if(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)==0) {
+            statusText_=L"Approve at least one training example before creating a dataset snapshot";
+            return;
+        }
+        auto& snap=trainingData_.CreateSnapshot("SARA Dataset "+std::to_string(trainingData_.Snapshots().size()+1));
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        statusText_=L"Created dataset snapshot "+Widen(snap.name);
+    }
+
+    void CreateTrainingJob() {
+        std::string foundation="SARA Foundation";
+        if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()) {
+            const auto& f=foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()];
+            foundation=f.name+" "+f.version;
+        } else if(!foundationRegistry_.Models().empty()) {
+            const auto& f=foundationRegistry_.Models()[0];
+            foundation=f.name+" "+f.version;
+        }
+        std::string dataset;
+        if(!trainingData_.Snapshots().empty()) dataset=trainingData_.Snapshots().back().id;
+        else dataset="approved-captures-"+std::to_string(trainingApproved_);
+        trainingJobRegistry_.Create(foundation,dataset);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job queued";
+    }
+
+    void StartTrainingJob(size_t index) {
+        trainingJobRegistry_.SetState(index,"RUNNING",5);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job marked running";
+    }
+
+    void CompleteTrainingJob(size_t index) {
+        trainingJobRegistry_.SetState(index,"COMPLETED",100);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job marked completed";
+    }
+
+    void CreateFoundationFork() {
+        if(foundationRegistry_.Models().empty()) return;
+        selectedFoundation_=std::clamp(selectedFoundation_,0,(int)foundationRegistry_.Models().size()-1);
+        const int next=(int)foundationRegistry_.Models().size();
+        const std::string version="1."+std::to_string(std::max(0,next));
+        const std::string name="SARA Foundation";
+        auto& created=foundationRegistry_.CreateFork((size_t)selectedFoundation_,name,version);
+        selectedFoundation_=(int)foundationRegistry_.Models().size()-1;
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        statusText_=L"Created "+Widen(created.name+" "+created.version);
+    }
+
+    void ApproveSelectedFoundation() {
+        if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
+        foundationRegistry_.Approve((size_t)selectedFoundation_);
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        statusText_=L"Foundation fork approved";
+    }
+
+    void ActivateSelectedFoundation() {
+        if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
+        foundationRegistry_.Activate((size_t)selectedFoundation_);
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        if(foundationRegistry_.ActiveIndex()==selectedFoundation_) {
+            ResolvePersonaAdapter();
+            statusText_=L"Foundation fork activated";
+        }
+        else statusText_=L"Approve a non-base foundation fork before activation";
+    }
+
+    void RollbackFoundation() {
+        if(foundationRegistry_.Rollback()) {
+            selectedFoundation_=foundationRegistry_.ActiveIndex();
+            foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+            ResolvePersonaAdapter();
+            statusText_=L"Foundation rollback completed";
+        } else statusText_=L"No prior foundation version is available for rollback";
+    }
+
+    static std::vector<std::string> SplitRuleResponses(const std::string& text) {
+        std::vector<std::string> out;
+        size_t start=0;
+        while(start<=text.size()) {
+            auto pos=text.find("||",start);
+            auto item=text.substr(start,pos==std::string::npos?std::string::npos:pos-start);
+            while(!item.empty() && (item.front()==' ' || item.front()=='\r' || item.front()=='\n')) item.erase(item.begin());
+            while(!item.empty() && (item.back()==' ' || item.back()=='\r' || item.back()=='\n')) item.pop_back();
+            if(!item.empty()) out.push_back(item);
+            if(pos==std::string::npos) break;
+            start=pos+2;
+        }
+        return out;
+    }
+
+    void LoadTriggerRuleEditor(int index) {
+        if(index<0 || index>=(int)triggerRules_.Rules().size()) return;
+        const auto& rule=triggerRules_.Rules()[(size_t)index];
+        SetWindowTextW(ruleNameEdit_,Widen(rule.name).c_str());
+        SetWindowTextW(rulePatternEdit_,Widen(rule.pattern).c_str());
+        std::string joined;
+        for(size_t i=0;i<rule.responses.size();++i) { if(i) joined+=" || "; joined+=rule.responses[i]; }
+        SetWindowTextW(ruleResponsesEdit_,Widen(joined).c_str());
+        SetWindowTextW(rulePriorityEdit_,std::to_wstring(rule.priority).c_str());
+        ruleEditorTerminal_=rule.terminal;
+    }
+
+    void OpenRuleEditor() {
+        ruleEditorOpen_=true;
+        if(selectedTriggerRule_>=0) LoadTriggerRuleEditor(selectedTriggerRule_);
+        else NewTriggerRuleDraft();
+        ApplyPageControls();
+        statusText_=L"Trigger rule manager opened";
+    }
+
+    void CloseRuleEditor() {
+        ruleEditorOpen_=false;
+        ApplyPageControls();
+        statusText_=L"Trigger rule manager closed";
+    }
+
+    void NewTriggerRuleDraft() {
+        selectedTriggerRule_=-1;
+        SetWindowTextW(ruleNameEdit_,L"");
+        SetWindowTextW(rulePatternEdit_,L"");
+        SetWindowTextW(ruleResponsesEdit_,L"");
+        SetWindowTextW(rulePriorityEdit_,L"100");
+        ruleEditorTerminal_=true;
+        ruleEditorOpen_=true;
+        ApplyPageControls();
+        if(ruleNameEdit_) SetFocus(ruleNameEdit_);
+    }
+
+    void SelectTriggerRule(int index) {
+        if(index<0 || index>=(int)triggerRules_.Rules().size()) return;
+        selectedTriggerRule_=index;
+        ruleEditorOpen_=true;
+        LoadTriggerRuleEditor(index);
+        ApplyPageControls();
+        statusText_=L"Trigger rule selected";
+    }
+
+    void SaveTriggerRuleDraft() {
+        auto name=Narrow(EditText(ruleNameEdit_));
+        auto pattern=Narrow(EditText(rulePatternEdit_));
+        auto responses=SplitRuleResponses(Narrow(EditText(ruleResponsesEdit_)));
+        int priority=100;
+        try { priority=std::stoi(Narrow(EditText(rulePriorityEdit_))); } catch(...) {}
+        priority=std::clamp(priority,0,9999);
+        if(name.empty() || pattern.empty() || responses.empty()) {
+            statusText_=L"Rule name, pattern, and at least one response are required";
+            return;
+        }
+        if(selectedTriggerRule_>=0 && selectedTriggerRule_<(int)triggerRules_.Rules().size()) {
+            auto& rule=triggerRules_.Rules()[(size_t)selectedTriggerRule_];
+            rule.name=name; rule.pattern=pattern; rule.responses=responses; rule.priority=priority; rule.terminal=ruleEditorTerminal_;
+        } else {
+            triggerRules_.Add(name,pattern,responses,priority,ruleEditorTerminal_);
+            selectedTriggerRule_=(int)triggerRules_.Rules().size()-1;
+        }
+        triggerRules_.Save(runtime_->root/"trigger-rules.tsv");
+        statusText_=L"Trigger rule saved and active";
+    }
+
+    void DeleteSelectedTriggerRule() {
+        if(selectedTriggerRule_<0 || selectedTriggerRule_>=(int)triggerRules_.Rules().size()) {
+            statusText_=L"Select a trigger rule first";
+            return;
+        }
+        triggerRules_.Remove((size_t)selectedTriggerRule_);
+        triggerRules_.Save(runtime_->root/"trigger-rules.tsv");
+        selectedTriggerRule_=-1;
+        NewTriggerRuleDraft();
+        statusText_=L"Trigger rule deleted";
+    }
+
+    std::wstring TrainingModeName() const {
+        switch(trainingMode_) {
+            case TrainingMode::BehaviorTuning: return L"Behavior Tuning";
+            case TrainingMode::DatasetTraining: return L"Dataset Training";
+            case TrainingMode::PersonaLoRA: return L"Persona LoRA Training";
+            case TrainingMode::FoundationFork: return L"Foundation Fork Training";
+            case TrainingMode::EvaluationTest: return L"Evaluation / Test";
+        }
+        return L"Behavior Tuning";
+    }
+
+    void CaptureLatestTrainingExample() {
+        if(simContext_.history.size()<2) {
+            statusText_=L"A user/model turn pair is required before capture";
+            return;
+        }
+
+        std::string input,original;
+        for(auto it=simContext_.history.rbegin(); it!=simContext_.history.rend(); ++it) {
+            if(original.empty() && it->speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject) {
+                original=it->text;
+                continue;
+            }
+            if(!original.empty() && it->speaker==sentinel::simulation::ChatTurn::Speaker::Investigator) {
+                input=it->text;
+                break;
+            }
+        }
+        if(input.empty() || original.empty()) {
+            statusText_=L"No complete conversational pair is available to capture";
+            return;
+        }
+
+        std::string foundationId;
+        int fi=foundationRegistry_.ActiveIndex();
+        if(fi<0 && !foundationRegistry_.Models().empty()) fi=0;
+        if(fi>=0 && fi<(int)foundationRegistry_.Models().size()) foundationId=foundationRegistry_.Models()[(size_t)fi].id;
+
+        std::string adapterId;
+        int ai=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        if(ai>=0 && ai<(int)personaAdapterRegistry_.Adapters().size()) adapterId=personaAdapterRegistry_.Adapters()[(size_t)ai].id;
+
+        auto correction=Narrow(EditText(trainingCorrectionEdit_));
+        if(correction.empty()) correction="Accept response as-is";
+        const std::string target=(correction=="Accept response as-is")?original:correction;
+        auto category=ComboText(trainingCategoryCombo_);
+        if(category.empty()) category="Behavior";
+
+        trainingData_.Capture(
+            simSettings_.persona.name,foundationId,adapterId,currentConversationId_,
+            input,original,correction,target,category);
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        SetWindowTextW(trainingCorrectionEdit_,L"");
+
+        trainingCaptured_=(int)trainingData_.Examples().size();
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+        statusText_=L"Training example captured for review";
+    }
+
+    void ApproveTrainingCapture() {
+        for(size_t i=trainingData_.Examples().size(); i>0; --i) {
+            if(trainingData_.Examples()[i-1].state==sentinel::simulation::TrainingExampleState::Review) {
+                trainingData_.SetState(i-1,sentinel::simulation::TrainingExampleState::Approved);
+                trainingData_.Save(runtime_->root/"training-data.tsv");
+                trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+                trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+                statusText_=L"Training example approved for dataset promotion";
+                return;
+            }
+        }
+        statusText_=L"No captured training example is awaiting review";
+    }
+
     void RegisterCurrentModel() {
         auto endpoint=Narrow(EditText(modelEndpointEdit_));
         auto name=Narrow(EditText(modelNameEdit_));
@@ -1984,7 +2785,7 @@ private:
         try {
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
             sentinel::simulation::ModelContext ctx;
-            ctx.scenario="Sentinel Model Lab candidate evaluation";
+            ctx.scenario="SARA Model Lab candidate evaluation";
             ctx.personaSummary=simContext_.personaSummary;
             ctx.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,"Hello, introduce yourself briefly."});
             auto reply=candidate->GenerateSyntheticReply("Hello, introduce yourself briefly.",ctx);
@@ -2041,77 +2842,622 @@ private:
         statusText_=L"Model rollback completed";
     }
 
-    void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab",L"Evaluate, approve, activate, and roll back model candidates");
-        const float x=kSidebar+28.0f;
-        const float y=kHeader+104.0f;
-        const float contentW=w-x-28.0f;
+    void DrawModelLabTabs(float x,float y,float contentW) {
+        const wchar_t* tabs[]={L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"};
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        const int active=(int)modelLabSection_;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool selected=i==active;
+            Rounded(tx,y,tabW,34,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabs[i],tx+6,y+1,tabW-12,32,tinyFmt_.Get(),selected?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+34},L"mltab:"+std::to_wstring(i)});
+        }
+    }
 
-        Rounded(x,y,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Registry Actions",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+    void DrawModelLabContext(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float contextW=(contentW-gap*3.0f)/4.0f;
+        const std::wstring modelName=foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()
+            ? Widen(foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].name+" "+foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].version)
+            : (!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[0].name+" "+foundationRegistry_.Models()[0].version):
+               (modelStatus_.find(L"Built-in")!=std::wstring::npos?L"Built-in test model":modelStatus_));
+        const std::wstring contextValues[]={
+            modelName,
+            Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
+            assignedPersonaLoRA_,
+            TrainingModeName()
+        };
+        const wchar_t* contextLabels[]={L"FOUNDATION MODEL",L"PERSONA",L"ASSIGNED LORA",L"TRAINING MODE"};
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(contextW+gap);
+            Rounded(cx,y,contextW,60,brush_.panel.Get(),brush_.border.Get(),9);
+            TextLine(contextLabels[i],cx+14,y+6,contextW-28,17,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(contextValues[i],cx+14,y+24,contextW-42,27,smallFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get());
+            if(i==3) {
+                TextLine(L"▼",cx+contextW-28,y+25,18,24,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+                buttons_.push_back({{cx,y,cx+contextW,y+60},L"ml_training_mode"});
+            }
+        }
+    }
 
-        const float gap=10.0f;
-        const float bw=136.0f;
-        float bx=x+18;
-        AddButton(L"model_register",L"Register Current",bx,y+50,bw,36,true); bx+=bw+gap;
-        AddButton(L"model_eval",L"Evaluate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_approve",L"Approve",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_activate",L"Activate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_rollback",L"Rollback",bx,y+50,bw,36,false);
+    void DrawModelLabOverview(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float rightW=std::max(330.0f,contentW*0.34f);
+        const float leftW=contentW-rightW-gap;
 
-        Rounded(x,y+116,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Registered Models",x+18,y+128,260,30,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(x,y,leftW,286,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Registry",x+18,y+10,240,30,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_diagnostics_export",L"Export Diagnostics",x+leftW-492,y+14,128,32,false);
+        TextLine(L"Candidate models, evaluation state, and activation",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"model_register",L"Register",x+leftW-354,y+14,82,32,false);
+        AddButton(L"model_eval",L"Evaluate",x+leftW-262,y+14,82,32,false);
+        AddButton(L"model_activate",L"Activate",x+leftW-170,y+14,76,32,true);
+        AddButton(L"model_rollback",L"Rollback",x+leftW-84,y+14,70,32,false);
 
-        TextLine(L"MODEL",x+34,y+165,280,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+332,y+165,100,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+452,y+165,72,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"LATENCY",x+544,y+165,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+646,y+165,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"MODEL",x+28,y+70,210,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+250,y+70,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+344,y+70,62,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+418,y+70,76,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        float yy=y+191;
+        float yy=y+94;
         if(modelRegistry_.Models().empty()) {
-            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
-                x+34,yy+7,contentW-68,38,bodyFmt_.Get(),brush_.muted.Get());
+            Rounded(x+18,yy,leftW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No registered candidates yet",x+32,yy+6,leftW-64,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Connect a model in Simulation Lab, then register it here.",x+32,yy+28,leftW-64,20,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
+                const auto& m=modelRegistry_.Models()[i];
+                const bool selected=(int)i==selectedRegistryModel_;
+                Rounded(x+18,yy,leftW-36,50,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),8);
+                TextLine(Widen(m.modelName),x+28,yy+3,210,22,smallFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+250,yy+3,82,22,tinyFmt_.Get(),
+                    m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+                TextLine(std::to_wstring(m.evaluationScore),x+344,yy+3,62,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(m.latencyMs)+L" ms",x+418,yy+3,76,22,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(m.endpoint),x+28,yy+26,leftW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+18,yy,x+leftW-18,yy+50},L"regmodel:"+std::to_wstring(i)});
+                yy+=58;
+            }
         }
 
-        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
-            const auto& m=modelRegistry_.Models()[i];
-            const bool selected=(int)i==selectedRegistryModel_;
-            Rounded(x+22,yy,contentW-44,52,selected?brush_.panel2.Get():brush_.sidebar.Get(),
-                selected?brush_.cyan.Get():brush_.border.Get(),8);
-            TextLine(Widen(m.modelName),x+34,yy+4,280,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+332,yy+4,100,22,tinyFmt_.Get(),
-                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
-            TextLine(std::to_wstring(m.evaluationScore),x+452,yy+4,72,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+544,yy+4,80,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(m.endpoint),x+646,yy+4,contentW-680,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"ID "+Widen(m.id),x+34,yy+28,contentW-68,18,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{x+22,yy,x+contentW-22,yy+52},L"regmodel:"+std::to_wstring(i)});
-            yy+=62;
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,132,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Pipeline",rx+16,y+10,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        const wchar_t* stages[]={L"Capture",L"Review",L"Dataset",L"Train",L"Evaluate",L"Deploy"};
+        const float stageGap=(rightW-52)/5.0f;
+        for(int i=0;i<6;i++) {
+            const float sx=rx+26+i*stageGap;
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(sx,y+66),12,12),i==0?brush_.cyan.Get():brush_.border.Get(),2);
+            if(i==0) target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(sx,y+66),6,6),brush_.cyan.Get());
+            if(i<5) target_->DrawLine(D2D1::Point2F(sx+13,y+66),D2D1::Point2F(sx+stageGap-13,y+66),brush_.border.Get(),1);
+            TextLine(stages[i],sx-28,y+85,56,20,tinyFmt_.Get(),i==0?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
-        Rounded(x,y+456,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Last Evaluation",x+18,y+468,220,30,h1Fmt_.Get(),brush_.text.Get());
-
-        const float metricY=y+516;
-        Rounded(x+22,metricY,110,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Score",x+34,metricY+4,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(lastEvaluation_.score),x+34,metricY+20,86,22,bodyFmt_.Get(),
+        Rounded(rx,y+144,rightW,142,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation & Deployment",rx+16,y+154,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Latest score",rx+18,y+194,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),rx+18,y+212,92,34,bigFmt_.Get(),
             lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
+        TextLine(modelRegistry_.ActiveIndex()>=0?L"Production model active":L"No production deployment",
+            rx+126,y+210,rightW-144,26,smallFmt_.Get(),modelRegistry_.ActiveIndex()>=0?brush_.green.Get():brush_.muted.Get());
 
-        Rounded(x+144,metricY,180,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Policy",x+156,metricY+4,156,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked",x+156,metricY+20,156,22,smallFmt_.Get(),
+        const float by=y+300;
+        const float metricW=(contentW-gap*3.0f)/4.0f;
+        const std::wstring values[]={
+            std::to_wstring(trainingCaptured_),
+            std::to_wstring(trainingReviewPending_),
+            std::to_wstring(trainingApproved_),
+            std::to_wstring(lastEvaluation_.score)
+        };
+        const wchar_t* labels[]={L"CAPTURED",L"NEEDS REVIEW",L"APPROVED",L"LATEST EVAL"};
+        const wchar_t* subs[]={L"training examples",L"awaiting approval",L"dataset-ready",L"candidate score"};
+        for(int i=0;i<4;i++) {
+            const float mx=x+i*(metricW+gap);
+            Rounded(mx,by,metricW,82,brush_.panel.Get(),brush_.border.Get(),9);
+            TextLine(labels[i],mx+14,by+8,metricW-28,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(values[i],mx+14,by+27,metricW-28,28,bodyFmt_.Get(),brush_.text.Get());
+            TextLine(subs[i],mx+14,by+56,metricW-28,17,tinyFmt_.Get(),i==1?brush_.yellow.Get():brush_.cyan.Get());
+        }
+    }
+
+    void DrawModelLabTrain(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float rightW=340.0f;
+        const float leftW=contentW-rightW-gap;
+        const float panelH=382.0f;
+
+        Rounded(x,y,leftW,panelH,brush_.panel.Get(),brush_.border.Get(),10);
+        if(ruleEditorOpen_) {
+            TextLine(L"Trigger Rule Manager",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Rules execute before normal generation. Terminal rules stop generic fall-through.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_new",L"New Rule",x+leftW-274,y+14,78,28,false);
+            AddButton(L"ml_rule_cancel",L"Back to Trainer",x+leftW-186,y+14,168,28,false);
+
+            TextLine(L"Name",x+20,y+74,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Match pattern",x+20,y+116,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Responses",x+20,y+158,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Use || between alternate responses",x+20,y+184,108,58,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Priority",x+20,y+264,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_terminal",ruleEditorTerminal_?L"Terminal: YES":L"Terminal: NO",x+270,y+264,116,30,false);
+            AddButton(L"ml_rule_save",L"Save Rule",x+20,y+318,110,34,true);
+            AddButton(L"ml_rule_delete",L"Delete",x+142,y+318,90,34,false);
+
+            float listY=y+74;
+            const float listX=x+leftW+12;
+        } else {
+        TextLine(L"Conversational Trainer",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Talk to SARA, correct behavior, and capture reviewed training examples.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        Badge(L"LIVE",x+leftW-76,y+14,brush_.green.Get(),58);
+
+        const float transcriptTop=y+66;
+        const float transcriptBottom=y+228;
+        const int total=(int)simContext_.history.size();
+        const int visible=std::min(3,total);
+        float yy=transcriptBottom-visible*68.0f;
+        for(int i=std::max(0,total-visible); i<total; ++i) {
+            const auto& turn=simContext_.history[(size_t)i];
+            const bool operatorTurn=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
+            const float bubbleW=std::min(leftW-100.0f,560.0f);
+            const float bx=operatorTurn?x+leftW-bubbleW-20:x+20;
+            Rounded(bx,yy,bubbleW,58,operatorTurn?brush_.panel2.Get():brush_.sidebar.Get(),
+                operatorTurn?brush_.blue.Get():brush_.border.Get(),9);
+            TextLine(operatorTurn?L"You":L"SARA",bx+12,yy+3,bubbleW-24,18,tinyFmt_.Get(),operatorTurn?brush_.cyan.Get():brush_.green.Get());
+            Text(Widen(turn.text),bx+12,yy+21,bubbleW-24,31,tinyFmt_.Get(),brush_.text.Get());
+            yy+=68;
+        }
+        if(total==0) {
+            TextLine(L"Start a training conversation below. Corrections stay non-production until reviewed.",
+                x+28,transcriptTop+54,leftW-56,30,bodyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+
+        TextLine(L"Correction / instruction",x+18,y+238,104,44,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Category",x+leftW-152,y+218,136,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        const float composerY=y+292;
+        const float sendW=88.0f, icon=44.0f;
+        const float sendX=x+leftW-16-sendW;
+        const float attachX=sendX-8-icon;
+        const float emojiX=attachX-8-icon;
+        AddIconButton(L"sim_emoji",IconKind::Smile,emojiX,composerY,icon,false);
+        AddIconButton(L"sim_attach",IconKind::Paperclip,attachX,composerY,icon,false);
+        AddButton(L"sim_send",L"Send",sendX,composerY,sendW,44,true);
+
+        AddButton(L"ml_capture",L"Capture for Review",x+18,y+344,150,28,false);
+        AddButton(L"ml_approve",L"Approve Latest",x+178,y+344,118,28,false);
+        TextLine(L"Nothing silently changes production weights.",x+310,y+344,leftW-328,28,tinyFmt_.Get(),brush_.muted.Get());
+
+        }
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,184,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Review Queue",rx+16,y+10,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Captured",rx+18,y+52,84,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingCaptured_),rx+112,y+48,70,24,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"Needs review",rx+18,y+82,84,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingReviewPending_),rx+112,y+78,70,24,bodyFmt_.Get(),trainingReviewPending_?brush_.yellow.Get():brush_.green.Get());
+        TextLine(L"Approved",rx+18,y+112,84,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingApproved_),rx+112,y+108,70,24,bodyFmt_.Get(),brush_.green.Get());
+        Text(L"Captured -> Review -> Approved -> Dataset",rx+18,y+142,rightW-36,26,tinyFmt_.Get(),brush_.cyan.Get());
+
+        Rounded(rx,y+196,rightW,88,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Runtime Resolution",rx+16,y+204,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Foundation → LoRA → Behavior → Memory → Context",rx+18,y+238,rightW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(assignedPersonaLoRA_,rx+18,y+258,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(rx,y+296,rightW,86,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Trigger Rules",rx+16,y+304,rightW-132,24,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_rules_manage",L"Manage",rx+rightW-104,y+304,86,24,false);
+        TextLine(L"Last match: "+lastTriggerMatch_,rx+16,y+330,rightW-32,18,tinyFmt_.Get(),brush_.cyan.Get());
+        float ry=y+350;
+        int rshown=0;
+        for(size_t i=0;i<triggerRules_.Rules().size() && rshown<2;i++,rshown++) {
+            const auto& rule=triggerRules_.Rules()[i];
+            TextLine(Widen(rule.name)+L"  ["+Widen(rule.pattern)+L"]",rx+18,ry,rightW-112,16,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(rule.priority)+(rule.terminal?L" • stop":L" • continue"),rx+rightW-98,ry,80,16,tinyFmt_.Get(),
+                rule.terminal?brush_.yellow.Get():brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{rx+16,ry,rx+rightW-16,ry+16},L"trigger:"+std::to_wstring(i)});
+            ry+=16;
+        }
+        if(triggerRules_.Rules().empty()) {
+            TextLine(L"No rules configured.",rx+18,ry,rightW-36,16,tinyFmt_.Get(),brush_.muted.Get());
+        }
+    }
+
+    void DrawModelLabPersonas(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float inspectorW=360.0f;
+        const float listW=contentW-inspectorW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Personas & LoRAs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Reusable persona behavior profiles and their assigned adapters.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"ml_persona_editor",L"Open Persona Editor",x+listW-158,y+14,140,30,true);
+
+        TextLine(L"PERSONA",x+28,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"FOUNDATION",x+210,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ASSIGNED LORA",x+392,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",x+574,y+78,listW-602,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float rowY=y+102;
+        Rounded(x+18,rowY,listW-36,70,brush_.panel2.Get(),brush_.cyan.Get(),8);
+        TextLine(Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
+            x+28,rowY+7,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(Widen(simSettings_.persona.personality.empty()?std::string("Configured behavior profile"):simSettings_.persona.personality),
+            x+28,rowY+34,170,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        const std::wstring foundation=selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()
+            ? Widen(modelRegistry_.Models()[(size_t)selectedRegistryModel_].modelName)
+            : L"SARA Foundation / base";
+        TextLine(foundation,x+210,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Version-pinned",x+210,rowY+36,170,18,tinyFmt_.Get(),brush_.cyan.Get());
+
+        TextLine(assignedPersonaLoRA_,x+392,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Augments foundation",x+392,rowY+36,170,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Badge(L"ACTIVE",x+574,rowY+20,brush_.green.Get(),74);
+
+        Rounded(x+18,y+188,listW-36,174,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Adapter Versions",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"adapter_new",L"New Persona LoRA",x+listW-160,y+198,128,28,true);
+        AddButton(L"adapter_rollback",L"Rollback",x+listW-258,y+198,88,28,false);
+        float ay=y+236;
+        int shown=0;
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
+            const auto& a=personaAdapterRegistry_.Adapters()[i];
+            if(a.personaName!=simSettings_.persona.name) continue;
+            TextLine(Widen(a.adapterName+" "+a.version),x+32,ay,220,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+264,ay,90,22,tinyFmt_.Get(),
+                a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(Widen(a.foundationId),x+366,ay,listW-520,22,tinyFmt_.Get(),brush_.muted.Get());
+            if(a.stage!=sentinel::simulation::AdapterStage::Active)
+                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-126,ay-2,94,26,false);
+            ay+=38; ++shown;
+        }
+        if(shown==0) {
+            TextLine(L"No LoRA versions for this persona yet.",x+32,ay,300,22,smallFmt_.Get(),brush_.muted.Get());
+        }
+
+        const float rx=x+listW+gap;
+        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        Badge(L"RUNTIME",rx+inspectorW-104,y+16,brush_.cyan.Get(),86);
+
+        TextLine(L"Name",rx+18,y+62,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rx+118,y+58,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Age",rx+18,y+92,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(simSettings_.persona.age),rx+118,y+88,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Personality",rx+18,y+122,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.personality),rx+118,y+118,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Writing style",rx+18,y+152,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.writingStyle),rx+118,y+148,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+184),D2D1::Point2F(rx+inspectorW-18,y+184),brush_.border.Get(),1);
+        TextLine(L"Style Tuning",rx+18,y+196,inspectorW-140,24,smallFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"ml_style_save",L"Save Style",rx+inspectorW-112,y+194,94,28,true);
+        TextLine(L"Intelligence",rx+18,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Slang",rx+184,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Grammar",rx+18,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Typos",rx+184,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Emoji",rx+18,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Mood",rx+184,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Foundation → LoRA → Behavior → Memory → Context",rx+18,y+350,inspectorW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
+    }
+
+    void DrawModelLabFoundationForks(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float detailW=350.0f;
+        const float listW=contentW-detailW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Foundation Forks",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Original base models stay immutable; SARA descendants are versioned independently.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"foundation_new_fork",L"Create Fork",x+listW-114,y+14,96,30,true);
+
+        TextLine(L"NAME / VERSION",x+28,y+78,210,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PARENT",x+250,y+78,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"TYPE",x+412,y+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+514,y+78,listW-540,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+102;
+        for(size_t i=0;i<foundationRegistry_.Models().size() && i<4;i++) {
+            const auto& m=foundationRegistry_.Models()[i];
+            const bool selected=(int)i==selectedFoundation_;
+            Rounded(x+18,yy,listW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(m.name+" "+m.version),x+28,yy+4,210,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(m.parentId.empty()?"—":m.parentId),x+250,yy+4,150,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(m.immutableBase?L"IMMUTABLE BASE":L"SARA FORK",x+412,yy+4,92,22,tinyFmt_.Get(),m.immutableBase?brush_.yellow.Get():brush_.cyan.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+514,yy+4,listW-540,22,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::FoundationStage::Active?brush_.green.Get():brush_.text.Get());
+            TextLine(L"ID "+Widen(m.id),x+28,yy+31,listW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+listW-18,yy+58},L"foundation:"+std::to_wstring(i)});
+            yy+=66;
+        }
+
+        const float rx=x+listW+gap;
+        Rounded(rx,y,detailW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Selected Foundation",rx+18,y+12,detailW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        if(!foundationRegistry_.Models().empty()) {
+            selectedFoundation_=std::clamp(selectedFoundation_,0,(int)foundationRegistry_.Models().size()-1);
+            const auto& m=foundationRegistry_.Models()[(size_t)selectedFoundation_];
+            Badge(m.immutableBase?L"BASE":Widen(sentinel::simulation::ToString(m.stage)),rx+detailW-112,y+16,
+                m.immutableBase?brush_.yellow.Get():(m.stage==sentinel::simulation::FoundationStage::Active?brush_.green.Get():brush_.cyan.Get()),94);
+            TextLine(L"Name",rx+18,y+64,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.name),rx+108,y+60,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Version",rx+18,y+94,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.version),rx+108,y+90,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Parent",rx+18,y+124,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.parentId.empty()?"Original downloaded model":m.parentId),rx+108,y+120,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+
+            target_->DrawLine(D2D1::Point2F(rx+18,y+156),D2D1::Point2F(rx+detailW-18,y+156),brush_.border.Get(),1);
+            if(m.immutableBase) {
+                Text(L"This entry is immutable. Create a SARA Foundation fork to train or evolve it without touching the original model.",
+                    rx+18,y+174,detailW-36,54,smallFmt_.Get(),brush_.yellow.Get());
+            } else {
+                AddButton(L"foundation_approve",L"Approve",rx+18,y+176,94,32,false);
+                AddButton(L"foundation_activate",L"Activate",rx+122,y+176,94,32,true);
+                AddButton(L"foundation_rollback",L"Rollback",rx+226,y+176,106,32,false);
+            }
+
+            TextLine(L"Version Safety",rx+18,y+232,detailW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+            Text(L"Base remains intact • child lineage retained • previous active fork kept for rollback",
+                rx+18,y+258,detailW-36,34,tinyFmt_.Get(),brush_.muted.Get());
+
+            const sentinel::simulation::FoundationModel* parent=nullptr;
+            if(!m.parentId.empty()) {
+                for(const auto& candidate:foundationRegistry_.Models())
+                    if(candidate.id==m.parentId) { parent=&candidate; break; }
+            }
+            TextLine(L"Compare",rx+18,y+300,detailW-36,20,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Selected",rx+18,y+324,62,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.name+" "+m.version),rx+86,y+320,detailW-104,22,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Parent",rx+18,y+348,62,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(parent?Widen(parent->name+" "+parent->version):L"Original downloaded model",
+                rx+86,y+344,detailW-104,22,tinyFmt_.Get(),parent?brush_.text.Get():brush_.yellow.Get());
+        }
+    }
+
+    void DrawModelLabDatasets(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float rightW=350.0f;
+        const float leftW=contentW-rightW-gap;
+
+        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Reviewed training examples and immutable dataset snapshots.",x+18,y+40,leftW-190,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"dataset_snapshot",L"Create Snapshot",x+leftW-152,y+14,134,30,true);
+
+        TextLine(L"EXAMPLE",x+28,y+78,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PERSONA",x+140,y+78,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+302,y+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"INPUT / TARGET",x+406,y+78,leftW-434,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+102;
+        int shown=0;
+        for(size_t i=trainingData_.Examples().size(); i>0 && shown<4; --i,++shown) {
+            const size_t exampleIndex=i-1;
+            const auto& e=trainingData_.Examples()[exampleIndex];
+            const bool selected=(int)exampleIndex==selectedTrainingExample_;
+            Rounded(x+18,yy,leftW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(e.id),x+28,yy+4,100,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(e.persona),x+140,yy+4,150,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(e.state)),x+302,yy+4,92,22,tinyFmt_.Get(),
+                e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
+                e.state==sentinel::simulation::TrainingExampleState::Review?brush_.yellow.Get():brush_.muted.Get());
+            TextLine(Widen(e.input),x+406,yy+2,leftW-434,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(e.targetResponse),x+406,yy+28,leftW-434,20,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+leftW-18,yy+58},L"training_example:"+std::to_wstring(exampleIndex)});
+            yy+=66;
+        }
+        if(shown==0) {
+            Rounded(x+18,yy,leftW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No captured examples yet. Use Train → Capture for Review.",x+34,yy+10,leftW-68,40,bodyFmt_.Get(),brush_.muted.Get());
+        }
+
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Review Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
+            const auto& selected=trainingData_.Examples()[(size_t)selectedTrainingExample_];
+            Badge(Widen(sentinel::simulation::ToString(selected.state)),rx+rightW-110,y+16,
+                selected.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
+                selected.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get(),92);
+            TextLine(L"Category",rx+18,y+52,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.category),rx+98,y+48,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Captured",rx+18,y+78,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.createdUtc.empty()?"Legacy record":selected.createdUtc),rx+98,y+74,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Input",rx+18,y+108,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.input),rx+98,y+104,rightW-116,26,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Target response",rx+18,y+132,rightW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"training_review_save",L"Save Edit",rx+18,y+222,92,28,false);
+            AddButton(L"training_review_approve",L"Approve",rx+120,y+222,92,28,true);
+            AddButton(L"training_review_reject",L"Reject",rx+222,y+222,92,28,false);
+        } else {
+            Text(L"Select a training example on the left to edit its target response, approve it, or reject it.",
+                rx+18,y+54,rightW-36,60,smallFmt_.Get(),brush_.muted.Get());
+        }
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+266),D2D1::Point2F(rx+rightW-18,y+266),brush_.border.Get(),1);
+        TextLine(L"Dataset Snapshots",rx+18,y+276,rightW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+        float sy=y+306;
+        int sshown=0;
+        for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<2; --i,++sshown) {
+            const auto& s=trainingData_.Snapshots()[i-1];
+            TextLine(Widen(s.name),rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(s.exampleIds.size())+L" approved examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            sy+=24;
+        }
+        if(sshown==0) TextLine(L"No snapshots yet.",rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Captured "+std::to_wstring(trainingData_.Examples().size())+L"  •  Approved "+
+            std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)),
+            rx+18,y+354,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void DrawModelLabJobs(float x,float y,float contentW) {
+        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Persistent job records ready for handoff to the isolated training service.",x+18,y+40,contentW-180,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"job_new",L"New Training Job",x+contentW-152,y+14,134,30,true);
+
+        TextLine(L"JOB",x+28,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"FOUNDATION",x+140,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"DATASET",x+372,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+604,y+80,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PROGRESS",x+726,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+104;
+        if(trainingJobRegistry_.Jobs().empty()) {
+            Rounded(x+18,yy,contentW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No training jobs yet. Queue one from the current foundation and approved capture set.",
+                x+34,yy+8,contentW-68,42,bodyFmt_.Get(),brush_.muted.Get());
+            return;
+        }
+
+        for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
+            const auto& job=trainingJobRegistry_.Jobs()[i];
+            Rounded(x+18,yy,contentW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(job.baseModel),x+140,yy+5,220,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(job.dataset),x+372,yy+5,220,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.state),x+604,yy+5,110,22,tinyFmt_.Get(),
+                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
+            TextLine(std::to_wstring(job.progress)+L"%",x+726,yy+5,80,22,tinyFmt_.Get(),brush_.text.Get());
+
+            const float barX=x+826, barW=std::max(70.0f,contentW-1020.0f);
+            Rounded(barX,yy+10,barW,8,brush_.panel2.Get(),nullptr,4);
+            if(job.progress>0) Rounded(barX,yy+10,barW*(job.progress/100.0f),8,brush_.cyan.Get(),nullptr,4);
+
+            if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+contentW-170,yy+14,68,28,false);
+            else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+contentW-184,yy+14,82,28,true);
+
+            TextLine(L"Training execution remains isolated from live inference.",x+28,yy+32,contentW-240,18,tinyFmt_.Get(),brush_.muted.Get());
+            yy+=66;
+        }
+    }
+
+    void DrawModelLabEvaluation(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float scoreW=220.0f;
+        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Candidate comparison and release gates",x+18,y+40,contentW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x+18,y+74,scoreW,112,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"LATEST SCORE",x+34,y+84,scoreW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),x+34,y+104,scoreW-32,48,bigFmt_.Get(),
+            lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"Policy gate passed":L"Policy gate blocked",x+34,y+156,scoreW-32,20,tinyFmt_.Get(),
             lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
 
-        Rounded(x+336,metricY,220,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Persona consistency",x+348,metricY+4,196,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Contradiction",x+348,metricY+20,196,22,smallFmt_.Get(),
+        const float cx=x+scoreW+gap+18;
+        const float cw=contentW-scoreW-gap-54;
+        Rounded(cx,y+74,cw,112,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Evaluation Gates",cx+16,y+84,cw-32,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Persona consistency",cx+16,y+118,160,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.personaConsistent?L"PASS":L"REVIEW",cx+188,y+114,80,24,smallFmt_.Get(),
             lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+        TextLine(L"Policy",cx+300,y+118,80,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"PASS":L"BLOCK",cx+386,y+114,80,24,smallFmt_.Get(),
+            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
 
-        if(!lastEvaluation_.warnings.empty()) {
-            TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
+        Rounded(x+18,y+202,contentW-36,160,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Candidate Models",x+34,y+212,200,24,smallFmt_.Get(),brush_.text.Get());
+        float yy=y+248;
+        for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
+            const auto& m=modelRegistry_.Models()[i];
+            TextLine(Widen(m.modelName),x+34,yy,240,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+286,yy,100,22,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(std::to_wstring(m.evaluationScore),x+398,yy,70,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+480,yy,90,22,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"regmodel:"+std::to_wstring(i),L"Select",x+contentW-116,yy-3,80,26,false);
+            yy+=36;
+        }
+        AddButton(L"model_eval",L"Run Evaluation",x+contentW-160,y+14,142,30,true);
+    }
+
+    void DrawModelLabDeployment(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float leftW=(contentW-gap)*0.58f;
+        const float rightW=contentW-leftW-gap;
+
+        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Deployment",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Explicit promotion only — production stays pinned until activated.",x+18,y+40,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        int active=modelRegistry_.ActiveIndex();
+        Rounded(x+18,y+76,leftW-36,94,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"PRODUCTION MODEL",x+34,y+86,leftW-68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(active>=0?Widen(modelRegistry_.Models()[(size_t)active].modelName):L"No active deployment",
+            x+34,y+108,leftW-68,30,h1Fmt_.Get(),active>=0?brush_.green.Get():brush_.muted.Get());
+        TextLine(active>=0?L"Pinned and rollback-protected":L"Approve and activate a candidate to deploy",
+            x+34,y+140,leftW-68,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+        Rounded(x+18,y+184,leftW-36,178,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Release Controls",x+34,y+194,180,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"model_activate",L"Activate Selected",x+34,y+232,140,32,true);
+        AddButton(L"model_rollback",L"Rollback",x+186,y+232,100,32,false);
+        Text(L"Candidates must be approved before activation. Rollback returns to the previous active model without rewriting model history.",
+            x+34,y+278,leftW-68,52,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Runtime Stack",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Foundation",rx+18,y+62,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[(size_t)std::max(0,foundationRegistry_.ActiveIndex())].name):L"Base",
+            rx+118,y+58,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Persona",rx+18,y+96,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rx+118,y+92,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"LoRA",rx+18,y+130,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(assignedPersonaLoRA_,rx+118,y+126,rightW-136,24,smallFmt_.Get(),brush_.cyan.Get());
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+166),D2D1::Point2F(rx+rightW-18,y+166),brush_.border.Get(),1);
+        TextLine(L"Trigger Engine",rx+18,y+180,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(triggerRules_.Rules().size())+L" rules",rx+148,y+176,90,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Last match",rx+18,y+214,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastTriggerMatch_,rx+148,y+210,rightW-166,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Training jobs",rx+18,y+248,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingJobRegistry_.Jobs().size()),rx+148,y+244,90,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Production weights change only through explicit deployment.",rx+18,y+302,rightW-36,42,tinyFmt_.Get(),brush_.green.Get());
+    }
+
+    void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
+        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(sub,x+20,y+52,contentW-40,24,bodyFmt_.Get(),brush_.muted.Get());
+        Rounded(x+20,y+94,contentW-40,78,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Structured workspace reserved for SARA 1.0.16",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
+        Text(L"This section is now a first-class Model Lab destination and will use the shared foundation, persona, LoRA, review, evaluation, and deployment state.",
+            x+38,y+132,contentW-76,34,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void DrawModelLab(float w,float h) {
+        PageTitle(L"Model Lab / Trainer",L"Train, adapt, evaluate, and deploy SARA from one polished workspace");
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+102.0f;
+        const float contentW=w-x-28.0f;
+
+        DrawModelLabTabs(x,y,contentW);
+        DrawModelLabContext(x,y+44,contentW);
+        const float bodyY=y+116;
+
+        switch(modelLabSection_) {
+            case ModelLabSection::Overview: DrawModelLabOverview(x,bodyY,contentW); break;
+            case ModelLabSection::Train: DrawModelLabTrain(x,bodyY,contentW); break;
+            case ModelLabSection::Datasets:
+                DrawModelLabDatasets(x,bodyY,contentW); break;
+            case ModelLabSection::Personas:
+                DrawModelLabPersonas(x,bodyY,contentW); break;
+            case ModelLabSection::FoundationForks:
+                DrawModelLabFoundationForks(x,bodyY,contentW); break;
+            case ModelLabSection::Jobs:
+                DrawModelLabJobs(x,bodyY,contentW); break;
+            case ModelLabSection::Evaluation:
+                DrawModelLabEvaluation(x,bodyY,contentW); break;
+            case ModelLabSection::Deployment:
+                DrawModelLabDeployment(x,bodyY,contentW); break;
         }
     }
 
@@ -2294,13 +3640,13 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.7");
+            auto info=service.Check(url,"1.0.16");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
-                statusText_=L"Sentinel update available";
+                statusText_=L"SARA update available";
             } else {
-                updateStatus_=L"Current version 1.0.7 is up to date";
-                statusText_=L"No Sentinel update available";
+                updateStatus_=L"Current version 1.0.16 is up to date";
+                statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
             updateStatus_=L"Update check failed: "+Widen(e.what());
@@ -2338,7 +3684,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Sentinel 1.0.7",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"SARA 1.0.16",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
@@ -2385,7 +3731,7 @@ private:
         GetWindowTextW(caseTitleEdit_,tbuf,512);
         std::wstring wn=nbuf,wt=tbuf;
         if (wn.empty()||wt.empty()) {
-            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"SARA",MB_OK|MB_ICONINFORMATION);
             page_=Page::Cases; ShowCaseEditors(true); return;
         }
         try {
@@ -2418,7 +3764,7 @@ private:
 
     void ImportEvidence() {
         if (cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create a case first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create a case first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         auto file=PickFile(); if (!file) return;
@@ -2436,7 +3782,7 @@ private:
 
     void VerifySelected() {
         if (cases_.empty()||evidence_.empty()) {
-            MessageBoxW(hwnd_,L"Select or import evidence first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Select or import evidence first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -2457,7 +3803,7 @@ private:
         bool ok=runtime_->audit.VerifyChain();
         statusText_=ok?L"Audit chain verified":L"Audit integrity failure";
         MessageBoxW(hwnd_,ok?L"Audit chain is VALID. No tampering detected.":L"Audit chain verification FAILED.",
-            L"Sentinel Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
+            L"SARA Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
     }
 };
 
@@ -2468,10 +3814,16 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_CREATE:
             try { g_app=new App(); g_app->Init(hwnd); }
             catch (const std::exception& e) {
-                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"Sentinel Startup Failed",MB_OK|MB_ICONERROR);
+                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"SARA Startup Failed",MB_OK|MB_ICONERROR);
                 return -1;
             }
             return 0;
+        case WM_GETMINMAXINFO: {
+            auto* info=reinterpret_cast<MINMAXINFO*>(lp);
+            info->ptMinTrackSize.x=1280;
+            info->ptMinTrackSize.y=760;
+            return 0;
+        }
         case WM_SIZE: if(g_app) g_app->Resize(); return 0;
         case WM_PAINT: {
             PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
@@ -2486,8 +3838,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_VSCROLL: if(g_app) g_app->HandleSimScroll(wp); return 0;
         case WM_MOUSEWHEEL: if(g_app) g_app->HandleSimWheel(GET_WHEEL_DELTA_WPARAM(wp)); return 0;
         case WM_TIMER: if(g_app) g_app->HandleTimer((UINT_PTR)wp); return 0;
+        case WM_MOUSEMOVE: if(g_app) g_app->Hover((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONDOWN: if(g_app) g_app->Press((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
         case WM_RBUTTONUP: if(g_app) g_app->RightClick((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
-        case WM_LBUTTONUP: if(g_app) g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp)); return 0;
+        case WM_LBUTTONUP:
+            if(g_app) {
+                g_app->ReleasePress();
+                g_app->Click((float)GET_X_LPARAM(lp),(float)GET_Y_LPARAM(lp));
+            }
+            return 0;
         case WM_DESTROY: delete g_app; g_app=nullptr; PostQuitMessage(0); return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
@@ -2508,7 +3867,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
-        0,kClassName,L"Sentinel - Secure Evidence & Integrity",
+        0,kClassName,L"SARA - Synthetic Adaptive Response Agent",
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);

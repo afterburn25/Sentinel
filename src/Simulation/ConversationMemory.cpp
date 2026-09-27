@@ -267,7 +267,7 @@ std::string ConversationMemoryStore::RecallRelevant(
     if(candidates.empty()) return {};
 
     std::ostringstream out;
-    out<<"Verbatim recalled messages from earlier Sentinel conversations. Treat these as exact historical quotes, not summaries:\n";
+    out<<"Verbatim recalled messages from earlier SARA conversations. Treat these as exact historical quotes, not summaries:\n";
     std::string lastSession;
     for(const auto& c:candidates) {
         if(c.session!=lastSession) {

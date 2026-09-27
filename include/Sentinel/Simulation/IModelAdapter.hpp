@@ -21,6 +21,11 @@ struct ChatTurn {
 struct ModelContext {
     std::string scenario;
     std::string personaSummary;
+    std::string foundationId;
+    std::string foundationName;
+    std::string adapterId;
+    std::string adapterName;
+    std::string trainingMode;
     // Relevant material retrieved from older conversations. This is model-only
     // background memory, not text that should be repeated verbatim to the user.
     std::string recalledMemory;

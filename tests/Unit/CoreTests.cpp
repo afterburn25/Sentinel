@@ -6,6 +6,10 @@
 #include "Sentinel/Storage/SqliteDatabase.hpp"
 #include "Sentinel/Storage/MigrationService.hpp"
 #include "Sentinel/Core/CaseRepository.hpp"
+#include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/TrainingData.hpp"
+#include "Sentinel/Simulation/TriggerRules.hpp"
+#include "Sentinel/Simulation/PersonaPolicy.hpp"
 
 #include <array>
 #include <cassert>
@@ -29,6 +33,78 @@ void TestIdsAndHashes()
     auto h = sentinel::Hash256::FromHex(std::string(64, '0'));
     assert(h.has_value());
     assert(h->ToHex() == std::string(64, '0'));
+}
+
+
+void TestSaraModelLabRegistries()
+{
+    using namespace sentinel::simulation;
+
+    FoundationRegistry foundations;
+    foundations.EnsureBase("Base Model","base");
+    assert(foundations.Models()[0].immutableBase);
+    const auto baseId=foundations.Models()[0].id;
+    foundations.CreateFork(0,"SARA Foundation","1.0");
+    assert(!foundations.Models()[1].immutableBase);
+    assert(foundations.Models()[1].parentId==baseId);
+    const auto fork1Id=foundations.Models()[1].id;
+    foundations.Approve(1);
+    foundations.Activate(1);
+    assert(foundations.ActiveIndex()==1);
+
+    auto& fork2=foundations.CreateFork(1,"SARA Foundation","1.1");
+    foundations.Approve(2);
+    foundations.Activate(2);
+    assert(foundations.ActiveIndex()==2);
+    assert(foundations.Rollback());
+    assert(foundations.ActiveIndex()==1);
+
+    PersonaAdapterRegistry adapters;
+    adapters.Add("Samantha","Samantha.lora","v1",fork1Id);
+    assert(adapters.Adapters()[0].stage==AdapterStage::Staging);
+    const auto adapter1Id=adapters.Adapters()[0].id;
+    adapters.Activate(0);
+    assert(adapters.ResolveActiveIndex("Samantha")==0);
+    adapters.Add("Samantha","Samantha.lora","v2",fork1Id);
+    adapters.Activate(1);
+    assert(adapters.ResolveActiveIndex("Samantha")==1);
+    assert(adapters.Rollback("Samantha"));
+    assert(adapters.ResolveActiveIndex("Samantha")==0);
+
+    TrainingDataRegistry data;
+    data.Capture("Samantha",fork1Id,adapter1Id,"conv-1","hello","hey","shorter","hey","Length");
+    assert(data.Count(TrainingExampleState::Review)==1);
+    assert(data.Examples()[0].category=="Length");
+    assert(!data.Examples()[0].createdUtc.empty());
+    data.SetState(0,TrainingExampleState::Approved);
+    assert(data.Count(TrainingExampleState::Approved)==1);
+    auto& snapshot=data.CreateSnapshot("dataset-1");
+    assert(snapshot.exampleIds.size()==1);
+
+    TrainingJobRegistry jobs;
+    auto& job=jobs.Create("SARA Foundation 1.0",snapshot.id);
+    assert(job.state=="QUEUED");
+    jobs.SetState(0,"RUNNING",35);
+    assert(jobs.Jobs()[0].progress==35);
+    jobs.SetState(0,"COMPLETED",100);
+    assert(jobs.Jobs()[0].state=="COMPLETED");
+
+    TriggerRuleRegistry rules;
+    rules.Add("priority-low","hello",{"low"},200,true);
+    rules.Add("priority-high","hello",{"one","two"},10,true);
+    auto match=rules.Match("hello there","Samantha",3);
+    assert(match.has_value());
+    assert(match->ruleName=="priority-high");
+    assert(match->terminal);
+
+    PersonaProfile persona;
+    persona.age=16;
+    persona.slangLevel="High";
+    persona.emojiTendency="High";
+    persona.mood="Playful";
+    auto varied=ApplyPersonaWritingVariation(persona,"Okay, I really get it. This is a deliberately longer sentence for age-aware style testing.",10);
+    assert(!varied.empty());
+    assert(varied!=std::string("Okay, I really get it. This is a deliberately longer sentence for age-aware style testing."));
 }
 
 #ifdef _WIN32
@@ -153,8 +229,9 @@ void TestWindowsCryptoAndSev()
 int main()
 {
     TestIdsAndHashes();
+    TestSaraModelLabRegistries();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
-    std::cout << "SentinelCoreTests passed\n";
+    std::cout << "SARA Core Tests passed\n";
 }
