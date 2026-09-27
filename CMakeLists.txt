@@ -32,6 +32,7 @@ add_library(sentinel_core
     src/Simulation/SessionStore.cpp
     src/Simulation/ConversationMemory.cpp
     src/Simulation/ModelRegistry.cpp
+    src/Simulation/TriggerRules.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Agency/AgencyServer.cpp
