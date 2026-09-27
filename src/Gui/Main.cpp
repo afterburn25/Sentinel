@@ -924,7 +924,7 @@ public:
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
             if(page_==Page::ModelLab) {
-                const int idx=(int)((y-kHeader-18)/42);
+                const int idx=(int)((y-kHeader-30)/42);
                 if(idx==0) {
                     page_=Page::Dashboard;
                 } else if(idx>=1 && idx<=8) {
@@ -1024,6 +1024,10 @@ public:
             else if (b.id==L"training_review_save") SaveSelectedTrainingTarget();
             else if (b.id==L"training_review_approve") ReviewSelectedTrainingExample(true);
             else if (b.id==L"training_review_reject") ReviewSelectedTrainingExample(false);
+            else if (b.id.rfind(L"training_row_approve:",0)==0)
+                ReviewTrainingExampleByIndex((size_t)std::stoul(b.id.substr(21)),true);
+            else if (b.id.rfind(L"training_row_reject:",0)==0)
+                ReviewTrainingExampleByIndex((size_t)std::stoul(b.id.substr(20)),false);
             else if (b.id==L"job_new") CreateTrainingJob();
             else if (b.id.rfind(L"job_select:",0)==0) SelectTrainingJob((int)std::stol(b.id.substr(11)));
             else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
@@ -3009,6 +3013,22 @@ private:
         return true;
     }
 
+    void ReviewTrainingExampleByIndex(size_t index,bool approve) {
+        if(index>=trainingData_.Examples().size()) return;
+        auto& e=trainingData_.Examples()[index];
+        e.reviewer="local-operator";
+        trainingData_.SetState(index,approve?
+            sentinel::simulation::TrainingExampleState::Approved:
+            sentinel::simulation::TrainingExampleState::Rejected);
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        selectedTrainingExample_=(int)index;
+        SetWindowTextW(trainingReviewTargetEdit_,Widen(e.targetResponse).c_str());
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+        statusText_=approve?L"Training example approved":L"Training example rejected";
+        ApplyPageControls();
+    }
+
     void ReviewSelectedTrainingExample(bool approve) {
         if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) {
             statusText_=L"Select a training example first";
@@ -4186,8 +4206,8 @@ private:
                 e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
                 e.state==sentinel::simulation::TrainingExampleState::Rejected?brush_.red.Get():brush_.yellow.Get());
             if(e.state==sentinel::simulation::TrainingExampleState::Review) {
-                AddButton(L"training_review_approve",L"✓",x+leftW-118,yy+6,34,26,true);
-                AddButton(L"training_review_reject",L"×",x+leftW-76,yy+6,34,26,false);
+                AddButton(L"training_row_approve:"+std::to_wstring(idx),L"✓",x+leftW-118,yy+6,34,26,true);
+                AddButton(L"training_row_reject:"+std::to_wstring(idx),L"×",x+leftW-76,yy+6,34,26,false);
             }
             buttons_.push_back({{x+18,yy,x+leftW-130,yy+38},L"training_example:"+std::to_wstring(idx)});
             yy+=44;
@@ -4999,7 +5019,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_GETMINMAXINFO: {
             auto* info=reinterpret_cast<MINMAXINFO*>(lp);
             info->ptMinTrackSize.x=1280;
-            info->ptMinTrackSize.y=760;
+            info->ptMinTrackSize.y=840;
             return 0;
         }
         case WM_SIZE: if(g_app) g_app->Resize(); return 0;
