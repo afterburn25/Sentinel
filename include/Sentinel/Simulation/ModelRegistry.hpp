@@ -35,6 +35,18 @@ struct FoundationModel {
     FoundationStage stage{FoundationStage::Candidate};
 };
 
+class TrainingJobRegistry {
+public:
+    TrainingJob& Create(std::string baseModel,std::string dataset);
+    void SetState(size_t index,std::string state,int progress);
+    std::vector<TrainingJob>& Jobs();
+    const std::vector<TrainingJob>& Jobs() const;
+    void Save(const std::filesystem::path& path) const;
+    void Load(const std::filesystem::path& path);
+private:
+    std::vector<TrainingJob> jobs_;
+};
+
 class FoundationRegistry {
 public:
     FoundationModel& EnsureBase(std::string name,std::string version="base");
