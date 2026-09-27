@@ -293,3 +293,22 @@ Implemented / in progress:
 - Exportable candidate comparison report.
 - Evaluation never activates or deploys a candidate automatically.
 - SARA 1.0.18 release/version separation across executable, CI, installer, updater, runtime, diagnostics, and manifest.
+
+
+## Validated 1.0.18 evaluation build
+
+SARA 1.0.18 Evaluation Suite implementation was validated by GitHub Actions run **#524** (run ID `36323329898`) on implementation commit `d4199ffbda9803db3ca4d2fe246e98d59540fe44`.
+
+Validation: MSVC build PASS, tests PASS, dependency check PASS, portable manifest verification PASS, Inno installer PASS, checksum generation PASS, both artifact uploads PASS.
+
+Portable:
+- Artifact ID `10933201804`
+- ZIP SHA-256 `34ab53efdc3651d02ef2bdae893f6eb0954071f3162ff48c4652acd2c0cd2c00`
+- `SARA.exe` SHA-256 `c4ea53fa7fbc90692d6b7413e3e975d1a8416828b53e2d3340115717ccee1e1b`
+
+Installer:
+- Artifact ID `10933401512`
+- ZIP SHA-256 `ad64836bd7fc9a94e42ca379b53b5a382d5dc043070593d4b4338efd257c9d0f`
+- `SARA-Setup-1.0.18.exe` SHA-256 `67caa997fda660db4a9ed587da1b71b7819145a7aa8363a7bb4df93fb9b23a79`
+
+Artifact Signing remains configured but secrets are absent, so this is an unsigned development build.
