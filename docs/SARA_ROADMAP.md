@@ -165,3 +165,20 @@ Last updated: 2026-09-27
 ### UI
 - [x] Keep 1.0.17 inside the approved hybrid Model Lab design.
 - [x] Preserve no-overlap/minimum-window guarantees.
+
+
+## Visual restoration — mandatory before further feature work
+
+- [ ] Recover exact 1.0.15 visual behavior from the installer/assets.
+- [ ] Restore exact approved splash screen artwork and startup timing/transition.
+- [ ] Restore approved SARA main logo.
+- [ ] Restore approved fingerprint/circuit app/setup/shortcut icon.
+- [ ] Restore premium dark futuristic/neon shell.
+- [ ] Restore branded left navigation rail.
+- [ ] Restore approved window chrome and card/panel visual language.
+- [ ] Rebuild Model Lab using the actual approved hybrid layout, not the flat legacy utility layout.
+- [ ] Preserve real full-height composer control.
+- [ ] Keep smiley emoji and paperclip attachment controls.
+- [ ] Restore installer visual design and upgrade/preserved-data messaging.
+- [ ] Verify no 1.0.15 UI element is lost while reapplying newer functional work.
+- [ ] Perform visual regression comparison against approved 1.0.15 artifacts before release.
