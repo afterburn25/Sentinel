@@ -16,6 +16,7 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
+#include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
@@ -579,6 +580,7 @@ struct Runtime {
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::simulation::TrainingReviewStore trainingReviews;
+    sentinel::simulation::TrainerStore trainer;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -593,6 +595,7 @@ struct Runtime {
           conversationMemory(db),
           personaProfiles(db),
           trainingReviews(db),
+          trainer(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
@@ -601,6 +604,10 @@ struct Runtime {
         db.Open(root/"sentinel.db");
         migrations.ApplyDirectory(MigrationsDir());
         jurisdictionRules.EnsureBuiltInBaselines();
+        trainer.EnsureDefaultFoundation(
+            "SARA Foundation 1",
+            "Qwen3.5-9B",
+            (ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf").string());
         keys.Initialize();
     }
 
