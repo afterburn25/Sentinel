@@ -1,6 +1,6 @@
 {
-  "version": "1.0.18.2",
+  "version": "1.0.18.3",
   "download_url": "",
   "sha256": "",
-  "notes": "SARA 1.0.18.2 Persona Profiles: keeps the restored 1.0.15 visual baseline and restores multiple reusable persona profiles with save/load/delete, typing delays, automatic LoRA resolution, and persona-safe conversation reset."
+  "notes": "SARA 1.0.18.3 Channel Core: reconciles the restored 1.0.15 visual baseline and reusable persona profiles with persona-scoped conversation memory, the provider-neutral channel core, local messaging bridge, automation review gates, and jurisdiction-profile selection."
 }
