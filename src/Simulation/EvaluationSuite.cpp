@@ -445,11 +445,32 @@ EvaluationCaseResult ScoreNamedCase(
 
     for(const auto& expected:testCase.expectedContains) {
         if(expected.empty()) continue;
-        if(normalized.find(Lower(expected))==std::string::npos) {
-            score-=55;
-            if(!result.details.empty()) result.details+=" ";
-            result.details+="Missing expected fact '"+expected+"'.";
+        const auto expectedLower=Lower(expected);
+        if(normalized.find(expectedLower)!=std::string::npos) continue;
+
+        std::istringstream words(Normalize(expected));
+        std::string word;
+        int totalWords=0;
+        int matchedWords=0;
+        while(words>>word) {
+            if(word.size()<2) continue;
+            ++totalWords;
+            if(normalized.find(word)!=std::string::npos) ++matchedWords;
         }
+
+        if(totalWords>1 && matchedWords>0) {
+            const int coverage=(matchedWords*100)/totalWords;
+            if(coverage>=50) {
+                score-=20;
+                if(!result.details.empty()) result.details+=" ";
+                result.details+="Partially matched expected fact '"+expected+"' ("+std::to_string(coverage)+"% token coverage).";
+                continue;
+            }
+        }
+
+        score-=55;
+        if(!result.details.empty()) result.details+=" ";
+        result.details+="Missing expected fact '"+expected+"'.";
     }
 
     for(const auto& forbidden:testCase.forbiddenContains) {
