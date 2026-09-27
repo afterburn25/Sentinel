@@ -2136,7 +2136,7 @@ private:
             const float x=kSidebar+28.0f, top=kHeader+102.0f;
             const float bodyY=top+116.0f;
             const float contentW=w-x-28.0f;
-            const float rightW=340.0f;
+            const float rightW=350.0f;
             const float gap=12.0f;
             const float leftW=contentW-rightW-gap;
             if(ruleEditorOpen_) {
@@ -2147,9 +2147,9 @@ private:
                 MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
             } else {
                 if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
-                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+238),(int)(leftW-296),44,TRUE);
-                MoveControl(trainingCategoryCombo_,(int)(x+leftW-152),(int)(bodyY+238),136,140,TRUE);
-                RECT correctionRect{10,7,std::max(24,(int)(leftW-316)),38};
+                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+252),(int)(leftW-296),32,TRUE);
+                MoveControl(trainingCategoryCombo_,(int)(x+leftW-152),(int)(bodyY+252),136,140,TRUE);
+                RECT correctionRect{10,5,std::max(24,(int)(leftW-316)),28};
                 SendMessageW(trainingCorrectionEdit_,EM_SETRECTNP,0,(LPARAM)&correctionRect);
                 const int composerW=std::max(220,(int)(leftW-212));
                 const int composerH=44;
