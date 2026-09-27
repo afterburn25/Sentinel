@@ -120,6 +120,8 @@ struct SplashState {
     HBITMAP bitmap{};
     UINT imageWidth{};
     UINT imageHeight{};
+    ULONGLONG started{};
+    int frame{};
 };
 
 bool LoadBitmapWithWic(const std::filesystem::path& path,HBITMAP& bitmap,UINT& width,UINT& height) {
@@ -183,6 +185,13 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         return TRUE;
     }
     if(msg==WM_ERASEBKGND) return 1;
+    if(msg==WM_TIMER) {
+        if(state) {
+            state->frame=(state->frame+1)%240;
+            InvalidateRect(hwnd,nullptr,FALSE);
+        }
+        return 0;
+    }
     if(msg==WM_PAINT) {
         PAINTSTRUCT ps{};
         HDC dc=BeginPaint(hwnd,&ps);
@@ -217,6 +226,46 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             DeleteObject(title);
             DeleteObject(sub);
         }
+        if(state) {
+            const int w=rc.right-rc.left;
+            const int h=rc.bottom-rc.top;
+            const int trackW=(int)(w*0.18);
+            const int trackH=5;
+            const int trackX=(w-trackW)/2;
+            const int trackY=(int)(h*0.864);
+            HBRUSH track=CreateSolidBrush(RGB(18,67,118));
+            HBRUSH cyan=CreateSolidBrush(RGB(0,224,255));
+            RECT tr{trackX,trackY,trackX+trackW,trackY+trackH};
+            FillRect(dc,&tr,track);
+
+            const int sweepW=std::max(28,trackW/4);
+            const int travel=trackW+sweepW;
+            const int pos=(state->frame*7)%travel-sweepW;
+            RECT fill{
+                std::max(trackX,trackX+pos),
+                trackY,
+                std::min(trackX+trackW,trackX+pos+sweepW),
+                trackY+trackH
+            };
+            if(fill.right>fill.left) FillRect(dc,&fill,cyan);
+
+            const int dotY=trackY-22;
+            for(int i=0;i<3;i++) {
+                const int phase=(state->frame/7+i)%3;
+                HBRUSH dot=CreateSolidBrush(phase==0?RGB(50,235,255):RGB(29,116,178));
+                const int x=w/2-18+i*18;
+                HGDIOBJ oldBrush=SelectObject(dc,dot);
+                HPEN pen=CreatePen(PS_NULL,0,RGB(0,0,0));
+                HGDIOBJ oldPen=SelectObject(dc,pen);
+                Ellipse(dc,x-4,dotY-4,x+4,dotY+4);
+                SelectObject(dc,oldPen);
+                SelectObject(dc,oldBrush);
+                DeleteObject(pen);
+                DeleteObject(dot);
+            }
+            DeleteObject(cyan);
+            DeleteObject(track);
+        }
         EndPaint(hwnd,&ps);
         return 0;
     }
@@ -226,8 +275,9 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 void ShowSaraSplash(HINSTANCE instance) {
     SplashState state;
     const bool imageLoaded=LoadBitmapWithWic(
-        ExeDir()/L"assets"/L"SARA-Splash.jpg",
+        ExeDir()/L"assets"/L"SARA-Splash.png",
         state.bitmap,state.imageWidth,state.imageHeight);
+    state.started=GetTickCount64();
 
     constexpr wchar_t splashClass[]=L"SARAStartupSplash";
     WNDCLASSEXW wc{sizeof(wc)};
@@ -240,17 +290,21 @@ void ShowSaraSplash(HINSTANCE instance) {
 
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
-    int width=960, height=540;
-    const int maxW=(int)((work.right-work.left)*0.90);
-    const int maxH=(int)((work.bottom-work.top)*0.90);
-    if(width>maxW) { width=maxW; height=width*9/16; }
-    if(height>maxH) { height=maxH; width=height*16/9; }
+    int width=imageLoaded?(int)state.imageWidth:1672;
+    int height=imageLoaded?(int)state.imageHeight:941;
+    const int maxW=(int)((work.right-work.left)*0.96);
+    const int maxH=(int)((work.bottom-work.top)*0.96);
+    if(width>maxW || height>maxH) {
+        const double scale=std::min((double)maxW/width,(double)maxH/height);
+        width=(int)(width*scale);
+        height=(int)(height*scale);
+    }
     const int x=work.left+(work.right-work.left-width)/2;
     const int y=work.top+(work.bottom-work.top-height)/2;
 
     if(!imageLoaded) {
-        state.imageWidth=960;
-        state.imageHeight=540;
+        state.imageWidth=1672;
+        state.imageHeight=941;
     }
 
     HWND splash=CreateWindowExW(
@@ -259,6 +313,7 @@ void ShowSaraSplash(HINSTANCE instance) {
     if(splash) {
         ShowWindow(splash,SW_SHOWNORMAL);
         UpdateWindow(splash);
+        SetTimer(splash,1,30,nullptr);
         const ULONGLONG until=GetTickCount64()+7000ULL;
         while(GetTickCount64()<until) {
             MSG msg{};
@@ -268,6 +323,7 @@ void ShowSaraSplash(HINSTANCE instance) {
             }
             Sleep(10);
         }
+        KillTimer(splash,1);
         DestroyWindow(splash);
     }
     DeleteObject(state.bitmap);
@@ -1655,7 +1711,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.8",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.9",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -3175,17 +3231,43 @@ private:
 
     void ExportPersonaConversationLog() {
         try {
-            auto exportDir=runtime_->root/"exports";
-            std::filesystem::create_directories(exportDir);
             const auto stamp=std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             std::string safeName=simSettings_.persona.name.empty()?"persona":simSettings_.persona.name;
             for(char& ch:safeName)
                 if(!(std::isalnum((unsigned char)ch) || ch=='-' || ch=='_')) ch='_';
-            const auto path=exportDir/("persona-log-"+safeName+"-"+std::to_string(stamp)+".txt");
 
+            const auto defaultName=Widen(
+                "SARA-persona-log-"+safeName+"-"+std::to_string(stamp)+".txt");
+            wchar_t fileName[MAX_PATH]{};
+            wcsncpy_s(fileName,defaultName.c_str(),_TRUNCATE);
+
+            const wchar_t filter[]=
+                L"Text log (*.txt)\0*.txt\0All files (*.*)\0*.*\0\0";
+            OPENFILENAMEW ofn{};
+            ofn.lStructSize=sizeof(ofn);
+            ofn.hwndOwner=hwnd_;
+            ofn.lpstrFilter=filter;
+            ofn.lpstrFile=fileName;
+            ofn.nMaxFile=MAX_PATH;
+            ofn.lpstrDefExt=L"txt";
+            ofn.lpstrTitle=L"Save SARA Persona Log";
+            ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+
+            if(!GetSaveFileNameW(&ofn)) {
+                const DWORD err=CommDlgExtendedError();
+                if(err==0) {
+                    statusText_=L"Persona log export cancelled";
+                    return;
+                }
+                throw std::runtime_error("Windows Save As dialog failed");
+            }
+
+            const std::filesystem::path path(fileName);
             std::ofstream out(path,std::ios::binary|std::ios::trunc);
-            out<<"SENTINEL PERSONA CONVERSATION DEBUG LOG\n";
+            if(!out) throw std::runtime_error("could not create selected persona log file");
+
+            out<<"SARA PERSONA CONVERSATION DEBUG LOG\n";
             out<<"Persona: "<<simSettings_.persona.name<<"\n";
             out<<"Conversation ID: "<<currentConversationId_<<"\n";
             out<<"Model: "<<(model_?model_->Name():"")<<"\n";
@@ -3229,12 +3311,12 @@ private:
                 out<<who<<": "<<turn.text<<"\n";
             }
             out.close();
+            if(!out) throw std::runtime_error("failed while writing persona log");
 
-            statusText_=L"Persona debug log exported: "+path.wstring();
+            statusText_=L"Persona log saved: "+path.wstring();
             MessageBoxW(hwnd_,
-                (L"Persona debug log exported to:\n\n"+path.wstring()+
-                 L"\n\nUpload this .txt file to ChatGPT when you want the persona behavior reviewed.").c_str(),
-                L"Persona Log Exported",MB_OK|MB_ICONINFORMATION);
+                (L"Persona log saved directly to:\n\n"+path.wstring()).c_str(),
+                L"Persona Log Saved",MB_OK|MB_ICONINFORMATION);
         } catch(const std::exception& e) {
             statusText_=L"Persona log export failed";
             MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Persona Log Export Failed",MB_OK|MB_ICONERROR);
