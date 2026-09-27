@@ -1444,6 +1444,16 @@ public:
                         simLastStartDelayMs_,simLastTypingDelayMs_);
                     if(!simPreparedFromRule_)
                         RecordLearnedPersonaNote(simPreparedReply_,"reactive_persona_claim");
+                    if(simPendingPersonaMediaIndex_>=0 &&
+                       simPendingPersonaMediaIndex_<(int)personaMedia_.size()) {
+                        const auto& media=personaMedia_[(size_t)simPendingPersonaMediaIndex_];
+                        StoreConversationImage(
+                            sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                            std::filesystem::path(Widen(media.storedPath)),
+                            "Persona image");
+                        simPendingPersonaMediaIndex_=-1;
+                    }
+
                     if(simPreparedFromRule_) {
                         statusText_=simRuleResponseMode_=="persona_variation"
                             ? L"Response rule applied in persona voice"
@@ -3395,18 +3405,20 @@ private:
     }
 
     void StageApprovedPersonaMedia(const std::string& triggerText) {
+        simPendingPersonaMediaIndex_=-1;
         if(!LooksLikeBenignPictureRequest(triggerText)) return;
         const int idx=FindApprovedPersonaMedia();
         if(idx<0) {
             statusText_=L"Picture requested, but no approved benign persona image is available";
             return;
         }
-        const auto& item=personaMedia_[(size_t)idx];
-        const std::string caption="Here you go.";
-        const std::string action=
-            "media:local-sim:"+item.id+"|"+item.sha256+"|"+item.storedPath+"|"+caption;
-        approvals_.push_back(sentinel::operations::CreateApprovalRequest(action,"local-investigator"));
-        statusText_=L"Benign persona image staged for supervisor approval";
+
+        simPendingPersonaMediaIndex_=idx;
+        if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+        simContext_.recalledMemory+=
+            "MEDIA FACT: This persona has an approved benign image available and it is being sent in this conversation. "
+            "Do not claim that you have no pictures or cannot send one. Respond naturally and briefly around the image.";
+        statusText_=L"Approved persona image ready to send";
     }
 
     void UpdateSimulationScrollbar() {
@@ -3498,6 +3510,7 @@ private:
         simReplyPending_=false;
         simPendingMessage_.clear();
         simPreparedReply_.clear();
+        simPendingPersonaMediaIndex_=-1;
         KillTimer(hwnd_,kSimTypingStartTimer);
         KillTimer(hwnd_,kSimReplyTimer);
         KillTimer(hwnd_,kSimEngagementTimer);
