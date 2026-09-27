@@ -31,6 +31,7 @@
 #include <commctrl.h>
 #include <d2d1.h>
 #include <dwrite.h>
+#include <wincodec.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <shlobj.h>
@@ -40,6 +41,7 @@
 #include <array>
 #include <filesystem>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <iomanip>
 #include <memory>
@@ -54,6 +56,7 @@ using Microsoft::WRL::ComPtr;
 namespace {
 
 constexpr wchar_t kClassName[] = L"SentinelNativeWindow";
+constexpr int kSaraIconResource = 101;
 constexpr int kSidebar = 220;
 constexpr int kHeader = 78;
 constexpr UINT_PTR kSimTypingStartTimer = 4101;
@@ -106,6 +109,280 @@ std::filesystem::path MigrationsDir() {
     if (std::filesystem::exists(p)) return p;
     p = std::filesystem::current_path() / "migrations";
     return p;
+}
+
+
+struct SplashState {
+    HBITMAP bitmap{};
+    UINT imageWidth{};
+    UINT imageHeight{};
+    HANDLE readyEvent{};
+    ULONGLONG started{};
+    int progressPercent{};
+};
+
+struct SplashThreadContext {
+    HINSTANCE instance{};
+    HANDLE readyEvent{};
+    HANDLE createdEvent{};
+};
+
+bool LoadBitmapWithWic(const std::filesystem::path& path,HBITMAP& bitmap,UINT& width,UINT& height) {
+    bitmap=nullptr; width=0; height=0;
+    if(!std::filesystem::exists(path)) return false;
+
+    ComPtr<IWICImagingFactory> factory;
+    if(FAILED(CoCreateInstance(
+            CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,
+            __uuidof(IWICImagingFactory),reinterpret_cast<void**>(factory.GetAddressOf()))) || !factory)
+        return false;
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    if(FAILED(factory->CreateDecoderFromFilename(
+            path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnLoad,&decoder)) || !decoder)
+        return false;
+
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if(FAILED(decoder->GetFrame(0,&frame)) || !frame) return false;
+    if(FAILED(frame->GetSize(&width,&height)) || width==0 || height==0) return false;
+
+    ComPtr<IWICFormatConverter> converter;
+    if(FAILED(factory->CreateFormatConverter(&converter)) || !converter) return false;
+    if(FAILED(converter->Initialize(
+            frame.Get(),GUID_WICPixelFormat32bppBGR,
+            WICBitmapDitherTypeNone,nullptr,0.0,WICBitmapPaletteTypeCustom)))
+        return false;
+
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth=(LONG)width;
+    bmi.bmiHeader.biHeight=-(LONG)height;
+    bmi.bmiHeader.biPlanes=1;
+    bmi.bmiHeader.biBitCount=32;
+    bmi.bmiHeader.biCompression=BI_RGB;
+
+    void* bits=nullptr;
+    HDC dc=GetDC(nullptr);
+    bitmap=CreateDIBSection(dc,&bmi,DIB_RGB_COLORS,&bits,nullptr,0);
+    ReleaseDC(nullptr,dc);
+    if(!bitmap || !bits) {
+        if(bitmap) DeleteObject(bitmap);
+        bitmap=nullptr;
+        return false;
+    }
+
+    const UINT stride=width*4;
+    if(FAILED(converter->CopyPixels(nullptr,stride,stride*height,reinterpret_cast<BYTE*>(bits)))) {
+        DeleteObject(bitmap);
+        bitmap=nullptr;
+        return false;
+    }
+    return true;
+}
+
+void PaintSplashImage(HWND hwnd,SplashState* state,HDC dc) {
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    if(state && state->bitmap) {
+        HDC mem=CreateCompatibleDC(dc);
+        HGDIOBJ old=SelectObject(mem,state->bitmap);
+        const int clientW=rc.right-rc.left;
+        const int clientH=rc.bottom-rc.top;
+        if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
+            BitBlt(dc,0,0,clientW,clientH,mem,0,0,SRCCOPY);
+        } else {
+            SetStretchBltMode(dc,HALFTONE);
+            SetBrushOrgEx(dc,0,0,nullptr);
+            StretchBlt(dc,0,0,clientW,clientH,mem,0,0,
+                (int)state->imageWidth,(int)state->imageHeight,SRCCOPY);
+        }
+        SelectObject(mem,old);
+        DeleteDC(mem);
+        return;
+    }
+
+    FillRect(dc,&rc,(HBRUSH)GetStockObject(BLACK_BRUSH));
+    SetBkMode(dc,TRANSPARENT);
+    SetTextColor(dc,RGB(225,240,255));
+    HFONT title=CreateFontW(
+        -72,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+    HFONT sub=CreateFontW(
+        -24,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,
+        DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI");
+    HFONT oldFont=(HFONT)SelectObject(dc,title);
+    RECT titleRc{0,rc.bottom/2-70,rc.right,rc.bottom/2+20};
+    DrawTextW(dc,L"SARA",-1,&titleRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    SelectObject(dc,sub);
+    RECT subRc{0,rc.bottom/2+10,rc.right,rc.bottom/2+60};
+    DrawTextW(dc,L"Synthetic Adaptive Response Agent",-1,&subRc,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+    SelectObject(dc,oldFont);
+    DeleteObject(title);
+    DeleteObject(sub);
+}
+
+void PaintSplashProgress(HWND hwnd,SplashState* state,HDC dc) {
+    if(!state || !state->bitmap || state->imageWidth==0 || state->imageHeight==0) return;
+
+    RECT rc{}; GetClientRect(hwnd,&rc);
+    const int clientW=rc.right-rc.left;
+    const int clientH=rc.bottom-rc.top;
+
+    // Exact progress bar location from the approved 1672x941 SARA 1.0.15 artwork.
+    constexpr int srcX=688;
+    constexpr int srcY=820;
+    constexpr int srcW=302;
+    constexpr int srcH=8;
+
+    const double scaleX=(double)clientW/(double)state->imageWidth;
+    const double scaleY=(double)clientH/(double)state->imageHeight;
+    const int dstX=(int)std::lround(srcX*scaleX);
+    const int dstY=(int)std::lround(srcY*scaleY);
+    const int dstW=std::max(1,(int)std::lround(srcW*scaleX));
+    const int dstH=std::max(2,(int)std::lround(srcH*scaleY));
+
+    // Restore the original empty artwork bar before drawing the current fill.
+    HDC mem=CreateCompatibleDC(dc);
+    HGDIOBJ old=SelectObject(mem,state->bitmap);
+    if(clientW==(int)state->imageWidth && clientH==(int)state->imageHeight) {
+        BitBlt(dc,dstX,dstY,dstW,dstH,mem,srcX,srcY,SRCCOPY);
+    } else {
+        SetStretchBltMode(dc,HALFTONE);
+        StretchBlt(dc,dstX,dstY,dstW,dstH,mem,srcX,srcY,srcW,srcH,SRCCOPY);
+    }
+    SelectObject(mem,old);
+    DeleteDC(mem);
+
+    const int fillW=(dstW*std::clamp(state->progressPercent,0,100))/100;
+    if(fillW>0) {
+        HBRUSH cyan=CreateSolidBrush(RGB(0,220,255));
+        RECT fill{dstX,dstY,dstX+fillW,dstY+dstH};
+        FillRect(dc,&fill,cyan);
+        DeleteObject(cyan);
+    }
+}
+
+LRESULT CALLBACK SplashWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
+    auto* state=reinterpret_cast<SplashState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+    if(msg==WM_NCCREATE) {
+        auto* cs=reinterpret_cast<CREATESTRUCTW*>(lp);
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        return TRUE;
+    }
+    if(msg==WM_ERASEBKGND) return 1;
+    if(msg==WM_TIMER) {
+        if(state) {
+            const ULONGLONG elapsed=GetTickCount64()-state->started;
+            const bool ready=state->readyEvent &&
+                WaitForSingleObject(state->readyEvent,0)==WAIT_OBJECT_0;
+            if(ready && elapsed>=7000ULL)
+                state->progressPercent=100;
+            else
+                state->progressPercent=(int)std::min<ULONGLONG>(90ULL,(elapsed*90ULL)/7000ULL);
+
+            HDC dc=GetDC(hwnd);
+            if(dc) {
+                PaintSplashProgress(hwnd,state,dc);
+                ReleaseDC(hwnd,dc);
+            }
+        }
+        return 0;
+    }
+    if(msg==WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc=BeginPaint(hwnd,&ps);
+        PaintSplashImage(hwnd,state,dc);
+        PaintSplashProgress(hwnd,state,dc);
+        EndPaint(hwnd,&ps);
+        return 0;
+    }
+    return DefWindowProcW(hwnd,msg,wp,lp);
+}
+
+DWORD WINAPI SaraSplashThreadProc(LPVOID param) {
+    auto* ctx=reinterpret_cast<SplashThreadContext*>(param);
+    CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+
+    SplashState state;
+    state.readyEvent=ctx->readyEvent;
+    state.started=GetTickCount64();
+    state.progressPercent=0;
+    const bool imageLoaded=LoadBitmapWithWic(
+        ExeDir()/L"assets"/L"SARA-Splash.png",
+        state.bitmap,state.imageWidth,state.imageHeight);
+
+    constexpr wchar_t splashClass[]=L"SARAStartupSplash";
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.lpfnWndProc=SplashWndProc;
+    wc.hInstance=ctx->instance;
+    wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
+    wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName=splashClass;
+    RegisterClassExW(&wc);
+
+    RECT work{};
+    SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
+    int width=imageLoaded?(int)state.imageWidth:1672;
+    int height=imageLoaded?(int)state.imageHeight:941;
+    const int maxW=(int)((work.right-work.left)*0.96);
+    const int maxH=(int)((work.bottom-work.top)*0.96);
+    if(width>maxW || height>maxH) {
+        const double scale=std::min((double)maxW/width,(double)maxH/height);
+        width=(int)(width*scale);
+        height=(int)(height*scale);
+    }
+    const int x=work.left+(work.right-work.left-width)/2;
+    const int y=work.top+(work.bottom-work.top-height)/2;
+
+    if(!imageLoaded) {
+        state.imageWidth=1672;
+        state.imageHeight=941;
+    }
+
+    HWND splash=CreateWindowExW(
+        WS_EX_TOOLWINDOW|WS_EX_TOPMOST,splashClass,L"SARA",
+        WS_POPUP,x,y,width,height,nullptr,nullptr,ctx->instance,&state);
+
+    if(ctx->createdEvent) SetEvent(ctx->createdEvent);
+
+    if(splash) {
+        ShowWindow(splash,SW_SHOWNORMAL);
+        UpdateWindow(splash);
+        SetTimer(splash,1,50,nullptr);
+
+        while(true) {
+            MSG msg{};
+            while(PeekMessageW(&msg,nullptr,0,0,PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+
+            const ULONGLONG elapsed=GetTickCount64()-state.started;
+            const bool appReady=ctx->readyEvent &&
+                WaitForSingleObject(ctx->readyEvent,0)==WAIT_OBJECT_0;
+
+            if(appReady && elapsed>=7000ULL) {
+                state.progressPercent=100;
+                HDC dc=GetDC(splash);
+                if(dc) {
+                    PaintSplashProgress(splash,&state,dc);
+                    ReleaseDC(splash,dc);
+                }
+                Sleep(120);
+                break;
+            }
+            Sleep(10);
+        }
+
+        KillTimer(splash,1);
+        DestroyWindow(splash);
+    }
+
+    if(state.bitmap) DeleteObject(state.bitmap);
+    UnregisterClassW(splashClass,ctx->instance);
+    CoUninitialize();
+    return 0;
 }
 
 std::wstring AuditActionName(int action) {
@@ -255,6 +532,9 @@ public:
             nullptr,
             reinterpret_cast<void**>(factory_.GetAddressOf()));
         DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,__uuidof(IDWriteFactory),reinterpret_cast<IUnknown**>(writeFactory_.GetAddressOf()));
+        CoCreateInstance(
+            CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,
+            __uuidof(IWICImagingFactory),reinterpret_cast<void**>(wicFactory_.GetAddressOf()));
         CreateResources();
         LoadData();
 
@@ -491,7 +771,7 @@ public:
         }
 
         HRESULT hr=target_->EndDraw();
-        if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
+        if (hr==D2DERR_RECREATE_TARGET) { brandBitmap_.Reset(); target_.Reset(); brushesReady_=false; }
     }
 
     static std::string CurrentUtcText() {
@@ -969,6 +1249,8 @@ private:
     ComPtr<ID2D1Factory> factory_;
     ComPtr<ID2D1HwndRenderTarget> target_;
     ComPtr<IDWriteFactory> writeFactory_;
+    ComPtr<IWICImagingFactory> wicFactory_;
+    ComPtr<ID2D1Bitmap> brandBitmap_;
     ComPtr<IDWriteTextFormat> titleFmt_,h1Fmt_,bodyFmt_,smallFmt_,tinyFmt_,bigFmt_;
     BrushSet brush_;
     bool brushesReady_{false};
@@ -977,6 +1259,29 @@ private:
     std::wstring pressedButtonId_;
     std::wstring hoverHelp_;
 
+    ComPtr<ID2D1Bitmap> LoadD2DBitmap(const std::filesystem::path& path) {
+        ComPtr<ID2D1Bitmap> bitmap;
+        if(!target_ || !wicFactory_ || !std::filesystem::exists(path)) return bitmap;
+
+        ComPtr<IWICBitmapDecoder> decoder;
+        if(FAILED(wicFactory_->CreateDecoderFromFilename(
+                path.c_str(),nullptr,GENERIC_READ,WICDecodeMetadataCacheOnLoad,&decoder)) || !decoder)
+            return bitmap;
+
+        ComPtr<IWICBitmapFrameDecode> frame;
+        if(FAILED(decoder->GetFrame(0,&frame)) || !frame) return bitmap;
+
+        ComPtr<IWICFormatConverter> converter;
+        if(FAILED(wicFactory_->CreateFormatConverter(&converter)) || !converter) return bitmap;
+        if(FAILED(converter->Initialize(
+                frame.Get(),GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapDitherTypeNone,nullptr,0.0,WICBitmapPaletteTypeCustom)))
+            return bitmap;
+
+        target_->CreateBitmapFromWicBitmap(converter.Get(),nullptr,&bitmap);
+        return bitmap;
+    }
+
     void CreateResources() {
         if (!target_) {
             RECT rc{}; GetClientRect(hwnd_,&rc);
@@ -984,6 +1289,9 @@ private:
                 D2D1::RenderTargetProperties(),
                 D2D1::HwndRenderTargetProperties(hwnd_,D2D1::SizeU(std::max(1L,rc.right),std::max(1L,rc.bottom))),
                 &target_);
+        }
+        if(target_ && !brandBitmap_) {
+            brandBitmap_=LoadD2DBitmap(ExeDir()/L"assets"/L"SARA-Logo.png");
         }
         if (!titleFmt_) {
             writeFactory_->CreateTextFormat(L"Segoe UI",nullptr,DWRITE_FONT_WEIGHT_SEMI_BOLD,DWRITE_FONT_STYLE_NORMAL,DWRITE_FONT_STRETCH_NORMAL,30,L"en-us",&titleFmt_);
@@ -1223,10 +1531,17 @@ private:
     }
 
     void DrawBrand() {
-        DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
-        DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
-        Text(L"SARA",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"SYNTHETIC ADAPTIVE RESPONSE AGENT",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
+        if(brandBitmap_) {
+            const auto sz=brandBitmap_->GetSize();
+            const float h=64.0f;
+            const float w=h*(sz.width/std::max(1.0f,sz.height));
+            target_->DrawBitmap(
+                brandBitmap_.Get(),D2D1::RectF(10,7,10+w,7+h),1.0f,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        }
+        Text(L"SARA",76,10,132,36,titleFmt_.Get(),brush_.text.Get());
+        Text(L"SYNTHETIC ADAPTIVE",77,43,136,14,tinyFmt_.Get(),brush_.cyan.Get());
+        Text(L"RESPONSE AGENT",77,56,136,14,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -4317,6 +4632,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+
+    SplashThreadContext splashCtx{};
+    splashCtx.instance=instance;
+    splashCtx.readyEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    splashCtx.createdEvent=CreateEventW(nullptr,TRUE,FALSE,nullptr);
+    HANDLE splashThread=CreateThread(nullptr,0,SaraSplashThreadProc,&splashCtx,0,nullptr);
+    if(splashThread && splashCtx.createdEvent)
+        WaitForSingleObject(splashCtx.createdEvent,5000);
+
     WNDCLASSEXW wc{sizeof(wc)};
     wc.style=CS_HREDRAW|CS_VREDRAW;
     wc.lpfnWndProc=WndProc;
@@ -4324,7 +4648,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
     wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.lpszClassName=kClassName;
-    wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
+    wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(kSaraIconResource));
+    if(!wc.hIcon) wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
+    wc.hIconSm=wc.hIcon;
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
@@ -4332,7 +4658,23 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
-    if (!hwnd) return 1;
+    if (!hwnd) {
+        if(splashCtx.readyEvent) SetEvent(splashCtx.readyEvent);
+        if(splashThread) WaitForSingleObject(splashThread,INFINITE);
+        if(splashThread) CloseHandle(splashThread);
+        if(splashCtx.createdEvent) CloseHandle(splashCtx.createdEvent);
+        if(splashCtx.readyEvent) CloseHandle(splashCtx.readyEvent);
+        CoUninitialize();
+        return 1;
+    }
+
+    // Preserve the approved SARA 1.0.15 startup behavior: keep the exact
+    // splash visible until the app is initialized and for at least 7 seconds.
+    if(splashCtx.readyEvent) SetEvent(splashCtx.readyEvent);
+    if(splashThread) WaitForSingleObject(splashThread,INFINITE);
+    if(splashThread) CloseHandle(splashThread);
+    if(splashCtx.createdEvent) CloseHandle(splashCtx.createdEvent);
+    if(splashCtx.readyEvent) CloseHandle(splashCtx.readyEvent);
 
     ShowWindow(hwnd,show);
     UpdateWindow(hwnd);
