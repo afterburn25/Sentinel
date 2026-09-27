@@ -41,11 +41,13 @@ void TestSaraModelLabRegistries()
     using namespace sentinel::simulation;
 
     FoundationRegistry foundations;
-    auto& base=foundations.EnsureBase("Base Model","base");
-    assert(base.immutableBase);
-    auto& fork1=foundations.CreateFork(0,"SARA Foundation","1.0");
-    assert(!fork1.immutableBase);
-    assert(fork1.parentId==base.id);
+    foundations.EnsureBase("Base Model","base");
+    assert(foundations.Models()[0].immutableBase);
+    const auto baseId=foundations.Models()[0].id;
+    foundations.CreateFork(0,"SARA Foundation","1.0");
+    assert(!foundations.Models()[1].immutableBase);
+    assert(foundations.Models()[1].parentId==baseId);
+    const auto fork1Id=foundations.Models()[1].id;
     foundations.Approve(1);
     foundations.Activate(1);
     assert(foundations.ActiveIndex()==1);
@@ -58,18 +60,18 @@ void TestSaraModelLabRegistries()
     assert(foundations.ActiveIndex()==1);
 
     PersonaAdapterRegistry adapters;
-    auto& a1=adapters.Add("Samantha","Samantha.lora","v1",fork1.id);
+    auto& a1=adapters.Add("Samantha","Samantha.lora","v1",fork1Id);
     assert(a1.stage==AdapterStage::Staging);
     adapters.Activate(0);
     assert(adapters.ResolveActiveIndex("Samantha")==0);
-    auto& a2=adapters.Add("Samantha","Samantha.lora","v2",fork1.id);
+    auto& a2=adapters.Add("Samantha","Samantha.lora","v2",fork1Id);
     adapters.Activate(1);
     assert(adapters.ResolveActiveIndex("Samantha")==1);
     assert(adapters.Rollback("Samantha"));
     assert(adapters.ResolveActiveIndex("Samantha")==0);
 
     TrainingDataRegistry data;
-    data.Capture("Samantha",fork1.id,a1.id,"conv-1","hello","hey","shorter","hey");
+    data.Capture("Samantha",fork1Id,a1.id,"conv-1","hello","hey","shorter","hey");
     assert(data.Count(TrainingExampleState::Review)==1);
     data.SetState(0,TrainingExampleState::Approved);
     assert(data.Count(TrainingExampleState::Approved)==1);
