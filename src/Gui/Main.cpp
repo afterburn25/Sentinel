@@ -941,7 +941,10 @@ public:
         personaOccupationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1029,GetModuleHandleW(nullptr),nullptr);
         personaEducationEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1030,GetModuleHandleW(nullptr),nullptr);
         personaFamilyEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1031,GetModuleHandleW(nullptr),nullptr);
-        personaBackgroundEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
+        personaBackgroundEdit_=CreateWindowExW(
+            WS_EX_CLIENTEDGE,L"EDIT",L"",
+            WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|ES_WANTRETURN,
+            0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
         responseRuleTriggerEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
         responseRuleResponseEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1043,GetModuleHandleW(nullptr),nullptr);
         trainerModeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1050,GetModuleHandleW(nullptr),nullptr);
@@ -983,6 +986,9 @@ public:
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
             SendMessageW(e,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         }
+        SendMessageW(personaBackgroundEdit_,EM_SETLIMITTEXT,16000,0);
+        SendMessageW(personaBackgroundEdit_,EM_SETCUEBANNER,TRUE,
+            (LPARAM)L"Write the persona's background, home life, family dynamics, routines, school life, habits, memories, likes, dislikes, and ordinary history...");
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
             personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
@@ -2424,7 +2430,7 @@ private:
             MoveControl(personaInterestsEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
             MoveControl(personaWritingStyleCombo_,(int)rf,(int)row,(int)rw,180); row+=42;
             MoveControl(personaFamilyEdit_,(int)rf,(int)row,(int)rw,32); row+=42;
-            MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,32);
+            MoveControl(personaBackgroundEdit_,(int)rf,(int)row,(int)rw,74);
 
             const float sy=y+396;
             MoveControl(scenarioNameEdit_,(int)(x+92),(int)(sy+50),210,32);
@@ -4459,7 +4465,7 @@ private:
     }
 
     void DrawPersona(float w,float h) {
-        PageTitle(L"Persona & Policy",L"Structured synthetic identity, behavior, scenario, age state, and pacing");
+        PageTitle(L"Persona Profile",L"Identity, age-banded behavior, bio/home-life context, gallery, scenario, and policy");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float gap=14.0f;
@@ -4475,7 +4481,7 @@ private:
 
         // Identity & background
         Rounded(x,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Identity & Background",x+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Profile Identity",x+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
 
         const float lx=x+20, lf=x+132, lw=colW-152;
         float row=y+54;
@@ -4504,7 +4510,7 @@ private:
 
         // Behavior & context
         Rounded(rightX,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Behavior & Context",rightX+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Behavior, Bio & Home Life",rightX+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
 
         const float rx=rightX+20, rf=rightX+132, rw=colW-152;
         row=y+54;
@@ -4527,7 +4533,7 @@ private:
         TextLine(L"Family",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
         row+=42;
 
-        TextLine(L"Background",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Bio / Home Life",rx,row,106,30,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"persona_generate_behavior",L"Generate Behavior",rightX+colW-158,row,140,28,false);
 
         // Scenario & pacing
@@ -4568,8 +4574,8 @@ private:
         // Approved benign persona media library.
         const float my=ty+156;
         Rounded(x,my,contentW,170,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Persona Media Library",x+18,my+10,250,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Imported images are unapproved until explicitly reviewed. Benign ordinary-use media only.",
+        TextLine(L"Profile Gallery",x+18,my+10,250,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Approved gallery images are available to the persona during ordinary chat and picture requests.",
             x+280,my+10,contentW-300,28,tinyFmt_.Get(),brush_.muted.Get());
 
         AddButton(L"media_import",L"Import Picture",x+18,my+46,126,32,true);
