@@ -3,7 +3,7 @@ param()
 $ai=$PSScriptRoot
 $model=Join-Path $ai 'models\Qwen3.5-9B-Q4_K_M.gguf'
 $expected='03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8'
-Write-Host '=== Sentinel AI diagnostics ==='
+Write-Host '=== SARA AI diagnostics ==='
 Write-Host ('Model: '+$(if(Test-Path $model){'FOUND'}else{'MISSING'}))
 if(Test-Path $model){
   $hash=(Get-FileHash $model -Algorithm SHA256).Hash.ToLowerInvariant()
