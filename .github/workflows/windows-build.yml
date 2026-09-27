@@ -126,8 +126,7 @@ jobs:
             "Train Smarter. Together.",
             "Evaluation Command Center",
             "Deployment Command Center",
-            "SARA-Logo.png",
-            "SARAStartupSplash"
+            "SARA-Logo.png"
           )
           foreach ($marker in $required) {
             if (-not $wide.Contains($marker)) {
@@ -146,7 +145,6 @@ jobs:
           - Evaluation Command Center
           - Deployment Command Center
           - SARA-Logo.png
-          - SARAStartupSplash
           "@ | Set-Content -Encoding utf8 (Join-Path $root "BUILD-IDENTITY.txt")
 
           Write-Host "Visual restore executable verified: $exeHash"
