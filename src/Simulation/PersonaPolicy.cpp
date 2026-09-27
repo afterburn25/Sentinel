@@ -101,7 +101,13 @@ std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::stri
     }
 
     if((emoji=="medium" && variationSeed%5==0) || (emoji=="high" && variationSeed%2==0) || emoji=="very high") {
-        static const char* marks[]={" 🙂"," 😅"," 👀"," 😂"," 🤷"};
+        static const char* marks[]={
+            " \xF0\x9F\x99\x82",
+            " \xF0\x9F\x98\x85",
+            " \xF0\x9F\x91\x80",
+            " \xF0\x9F\x98\x82",
+            " \xF0\x9F\xA4\xB7"
+        };
         text+=marks[variationSeed%5];
     }
     return text;
