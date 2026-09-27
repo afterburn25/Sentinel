@@ -11,6 +11,7 @@
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/DeploymentRegistry.hpp"
 
 #include <array>
 #include <cassert>
@@ -250,6 +251,68 @@ void TestSaraEvaluationSuite()
     std::filesystem::remove_all(root);
 }
 
+
+void TestSaraDeploymentRegistry()
+{
+    using namespace sentinel::simulation;
+
+    DeploymentRegistry deployments;
+    auto& first=deployments.Prepare(
+        "model-1","Candidate A",
+        "foundation-1","SARA Foundation 1.0",
+        "adapter-1","Samantha.lora v1",
+        "Samantha","eval-1",92);
+    assert(first.stage==DeploymentStage::Staged);
+    assert(first.versionLocked);
+    assert(deployments.Activate(0));
+    assert(deployments.ActiveIndex()==0);
+    assert(deployments.HasActiveLockedDeployment());
+    assert(deployments.Packages()[0].stage==DeploymentStage::Active);
+    assert(!deployments.Packages()[0].activatedUtc.empty());
+
+    deployments.SetLocked(0,false);
+    assert(!deployments.HasActiveLockedDeployment());
+    deployments.SetLocked(0,true);
+    assert(deployments.HasActiveLockedDeployment());
+
+    deployments.Prepare(
+        "model-2","Candidate \"B\"",
+        "foundation-2","SARA Foundation 1.1",
+        "adapter-2","Samantha.lora v2",
+        "Samantha","eval-2",96);
+    assert(deployments.Packages()[1].previousDeploymentId==deployments.Packages()[0].id);
+    assert(deployments.Activate(1));
+    assert(deployments.ActiveIndex()==1);
+    assert(deployments.PreviousIndex()==0);
+    assert(deployments.Packages()[0].stage==DeploymentStage::Retired);
+
+    auto manifest=deployments.BuildManifest(1);
+    assert(manifest.find("sara-deployment-v1")!=std::string::npos);
+    assert(manifest.find("foundation-2")!=std::string::npos);
+    assert(manifest.find("Candidate \\\"B\\\"")!=std::string::npos);
+
+    assert(deployments.Rollback());
+    assert(deployments.ActiveIndex()==0);
+    assert(deployments.Packages()[0].stage==DeploymentStage::Active);
+    assert(deployments.Packages()[1].stage==DeploymentStage::RolledBack);
+    assert(!deployments.Packages()[1].rolledBackUtc.empty());
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-deploy-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto path=root/"deployment-registry.tsv";
+    deployments.Save(path);
+
+    DeploymentRegistry loaded;
+    loaded.Load(path);
+    assert(loaded.Packages().size()==2);
+    assert(loaded.ActiveIndex()==0);
+    assert(loaded.Packages()[0].candidateId=="model-1");
+    assert(loaded.Packages()[1].evaluationRunId=="eval-2");
+    assert(loaded.Packages()[0].versionLocked);
+
+    std::filesystem::remove_all(root);
+}
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -374,6 +437,7 @@ int main()
     TestIdsAndHashes();
     TestSaraModelLabRegistries();
     TestSaraEvaluationSuite();
+    TestSaraDeploymentRegistry();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
