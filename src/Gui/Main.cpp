@@ -990,7 +990,7 @@ public:
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
-        SendMessageW(responseRuleTriggerEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Question or phrase to match");
+        SendMessageW(responseRuleTriggerEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Trigger or sample question");
         SendMessageW(responseRuleResponseEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Investigator-approved response override");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
@@ -2631,9 +2631,9 @@ private:
         if(rc==SQLITE_DONE) {
             SetWindowTextW(responseRuleTriggerEdit_,L"");
             SetWindowTextW(responseRuleResponseEdit_,L"");
-            statusText_=matchType=="exact"
-                ? L"Exact response rule added"
-                : L"Contains-match response rule added";
+            if(matchType=="exact") statusText_=L"Exact response rule added";
+            else if(matchType=="contains") statusText_=L"Contains response rule added";
+            else statusText_=L"Smart response rule added";
         } else {
             statusText_=L"Response rule could not be saved";
         }
@@ -4291,10 +4291,12 @@ private:
         TextLine(L"Response",x+318,y+110,60,24,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"rule_wording_toggle",
             responseRuleExactWording_?L"Wording: Exact":L"Wording: Persona",
-            x+contentW-486,y+105,126,32,responseRuleExactWording_);
-        AddButton(L"rule_add_contains",L"Add Contains",x+contentW-350,y+105,104,32,false);
-        AddButton(L"rule_add_exact",L"Add Exact",x+contentW-238,y+105,94,32,true);
-        AddButton(L"rule_clear",L"Clear All",x+contentW-136,y+105,76,32,false);
+            x+contentW-620,y+105,126,32,responseRuleExactWording_);
+        AddButton(L"rule_add_smart",L"Add Smart",x+contentW-484,y+105,94,32,true);
+        AddButton(L"rule_add_contains",L"Add Contains",x+contentW-380,y+105,104,32,false);
+        AddButton(L"rule_add_exact",L"Add Exact",x+contentW-266,y+105,94,32,false);
+        AddButton(L"rule_test",L"Test Match",x+contentW-162,y+105,92,32,false);
+        AddButton(L"rule_clear",L"Clear",x+contentW-60,y+105,54,32,false);
 
         auto rules=PersonaResponseRules(3);
         TextLine(L"Saved Rules ("+std::to_wstring(PersonaResponseRuleCount())+L")",
