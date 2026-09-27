@@ -387,6 +387,12 @@ public:
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
+        foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
+        if(foundationRegistry_.Models().empty()) {
+            foundationRegistry_.EnsureBase(simSettings_.model.empty()?"Original Base Model":simSettings_.model,"base");
+            foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        }
+        selectedFoundation_=foundationRegistry_.ActiveIndex()>=0?foundationRegistry_.ActiveIndex():0;
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
@@ -489,6 +495,14 @@ public:
             else if (b.id==L"ml_persona_editor") {
                 page_=Page::Persona;
                 statusText_=L"Persona editor opened";
+            }
+            else if (b.id==L"foundation_new_fork") CreateFoundationFork();
+            else if (b.id==L"foundation_approve") ApproveSelectedFoundation();
+            else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
+            else if (b.id==L"foundation_rollback") RollbackFoundation();
+            else if (b.id.rfind(L"foundation:",0)==0) {
+                selectedFoundation_=std::clamp((int)std::stol(b.id.substr(11)),0,std::max(0,(int)foundationRegistry_.Models().size()-1));
+                statusText_=L"Foundation selection changed";
             }
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
@@ -688,7 +702,9 @@ private:
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
+    sentinel::simulation::FoundationRegistry foundationRegistry_;
     int selectedRegistryModel_{-1};
+    int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
@@ -2083,6 +2099,41 @@ private:
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void CreateFoundationFork() {
+        if(foundationRegistry_.Models().empty()) return;
+        selectedFoundation_=std::clamp(selectedFoundation_,0,(int)foundationRegistry_.Models().size()-1);
+        const int next=(int)foundationRegistry_.Models().size();
+        const std::string version="1."+std::to_string(std::max(0,next));
+        const std::string name="SARA Foundation";
+        auto& created=foundationRegistry_.CreateFork((size_t)selectedFoundation_,name,version);
+        selectedFoundation_=(int)foundationRegistry_.Models().size()-1;
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        statusText_=L"Created "+Widen(created.name+" "+created.version);
+    }
+
+    void ApproveSelectedFoundation() {
+        if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
+        foundationRegistry_.Approve((size_t)selectedFoundation_);
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        statusText_=L"Foundation fork approved";
+    }
+
+    void ActivateSelectedFoundation() {
+        if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
+        foundationRegistry_.Activate((size_t)selectedFoundation_);
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        if(foundationRegistry_.ActiveIndex()==selectedFoundation_) statusText_=L"Foundation fork activated";
+        else statusText_=L"Approve a non-base foundation fork before activation";
+    }
+
+    void RollbackFoundation() {
+        if(foundationRegistry_.Rollback()) {
+            selectedFoundation_=foundationRegistry_.ActiveIndex();
+            foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+            statusText_=L"Foundation rollback completed";
+        } else statusText_=L"No prior foundation version is available for rollback";
+    }
+
     std::wstring TrainingModeName() const {
         switch(trainingMode_) {
             case TrainingMode::BehaviorTuning: return L"Behavior Tuning";
@@ -2211,9 +2262,10 @@ private:
     void DrawModelLabContext(float x,float y,float contentW) {
         const float gap=12.0f;
         const float contextW=(contentW-gap*3.0f)/4.0f;
-        const std::wstring modelName=selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()
-            ? Widen(modelRegistry_.Models()[(size_t)selectedRegistryModel_].modelName)
-            : (modelStatus_.find(L"Built-in")!=std::wstring::npos?L"Built-in test model":modelStatus_);
+        const std::wstring modelName=foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()
+            ? Widen(foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].name+" "+foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].version)
+            : (!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[0].name+" "+foundationRegistry_.Models()[0].version):
+               (modelStatus_.find(L"Built-in")!=std::wstring::npos?L"Built-in test model":modelStatus_));
         const std::wstring contextValues[]={
             modelName,
             Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
@@ -2443,6 +2495,70 @@ private:
         TextLine(L"5  Current Context",rx+18,y+336,inspectorW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void DrawModelLabFoundationForks(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float detailW=350.0f;
+        const float listW=contentW-detailW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Foundation Forks",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Original base models stay immutable; SARA descendants are versioned independently.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"foundation_new_fork",L"Create Fork",x+listW-114,y+14,96,30,true);
+
+        TextLine(L"NAME / VERSION",x+28,y+78,210,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PARENT",x+250,y+78,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"TYPE",x+412,y+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+514,y+78,listW-540,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+102;
+        for(size_t i=0;i<foundationRegistry_.Models().size() && i<4;i++) {
+            const auto& m=foundationRegistry_.Models()[i];
+            const bool selected=(int)i==selectedFoundation_;
+            Rounded(x+18,yy,listW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(m.name+" "+m.version),x+28,yy+4,210,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(m.parentId.empty()?"—":m.parentId),x+250,yy+4,150,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(m.immutableBase?L"IMMUTABLE BASE":L"SARA FORK",x+412,yy+4,92,22,tinyFmt_.Get(),m.immutableBase?brush_.yellow.Get():brush_.cyan.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+514,yy+4,listW-540,22,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::FoundationStage::Active?brush_.green.Get():brush_.text.Get());
+            TextLine(L"ID "+Widen(m.id),x+28,yy+31,listW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+listW-18,yy+58},L"foundation:"+std::to_wstring(i)});
+            yy+=66;
+        }
+
+        const float rx=x+listW+gap;
+        Rounded(rx,y,detailW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Selected Foundation",rx+18,y+12,detailW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        if(!foundationRegistry_.Models().empty()) {
+            selectedFoundation_=std::clamp(selectedFoundation_,0,(int)foundationRegistry_.Models().size()-1);
+            const auto& m=foundationRegistry_.Models()[(size_t)selectedFoundation_];
+            Badge(m.immutableBase?L"BASE":Widen(sentinel::simulation::ToString(m.stage)),rx+detailW-112,y+16,
+                m.immutableBase?brush_.yellow.Get():(m.stage==sentinel::simulation::FoundationStage::Active?brush_.green.Get():brush_.cyan.Get()),94);
+            TextLine(L"Name",rx+18,y+64,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.name),rx+108,y+60,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Version",rx+18,y+94,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.version),rx+108,y+90,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Parent",rx+18,y+124,80,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(m.parentId.empty()?"Original downloaded model":m.parentId),rx+108,y+120,detailW-126,24,smallFmt_.Get(),brush_.text.Get());
+
+            target_->DrawLine(D2D1::Point2F(rx+18,y+156),D2D1::Point2F(rx+detailW-18,y+156),brush_.border.Get(),1);
+            if(m.immutableBase) {
+                Text(L"This entry is immutable. Create a SARA Foundation fork to train or evolve it without touching the original model.",
+                    rx+18,y+174,detailW-36,54,smallFmt_.Get(),brush_.yellow.Get());
+            } else {
+                AddButton(L"foundation_approve",L"Approve",rx+18,y+176,94,32,false);
+                AddButton(L"foundation_activate",L"Activate",rx+122,y+176,94,32,true);
+                AddButton(L"foundation_rollback",L"Rollback",rx+226,y+176,106,32,false);
+            }
+
+            TextLine(L"Version Safety",rx+18,y+242,detailW-36,24,smallFmt_.Get(),brush_.cyan.Get());
+            Text(L"Base remains intact • child lineage retained • previous active fork kept for rollback",
+                rx+18,y+272,detailW-36,48,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Compare and evaluation hooks will use this lineage.",rx+18,y+330,detailW-36,24,tinyFmt_.Get(),brush_.text.Get());
+        }
+    }
+
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
@@ -2471,7 +2587,7 @@ private:
             case ModelLabSection::Personas:
                 DrawModelLabPersonas(x,bodyY,contentW); break;
             case ModelLabSection::FoundationForks:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Foundation Forks",L"Preserve immutable base models and manage versioned SARA Foundation descendants."); break;
+                DrawModelLabFoundationForks(x,bodyY,contentW); break;
             case ModelLabSection::Jobs:
                 DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Training Jobs",L"Monitor queued and running training work, resources, logs, and outputs."); break;
             case ModelLabSection::Evaluation:
