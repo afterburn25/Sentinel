@@ -2247,7 +2247,7 @@ private:
             std::filesystem::create_directories(exportDir);
             auto path=exportDir/"simulation-transcript.txt";
             std::ofstream out(path,std::ios::trunc);
-            out<<"Sentinel Simulation Transcript\n";
+            out<<"SARA Simulation Transcript\n";
             out<<"Scenario: "<<simSettings_.scenario.name<<"\n";
             out<<"Persona: "<<simSettings_.persona.name<<"\n";
             out<<"Age state: "<<sentinel::simulation::ToString(simSettings_.ageState)<<"\n\n";
@@ -3643,10 +3643,10 @@ private:
             auto info=service.Check(url,"1.0.16");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
-                statusText_=L"Sentinel update available";
+                statusText_=L"SARA update available";
             } else {
                 updateStatus_=L"Current version 1.0.16 is up to date";
-                statusText_=L"No Sentinel update available";
+                statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
             updateStatus_=L"Update check failed: "+Widen(e.what());
