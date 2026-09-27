@@ -672,6 +672,7 @@ public:
             else if (b.id==L"model_eval") EvaluateSelectedRegistryModel();
             else if (b.id.rfind(L"evalrun:",0)==0) selectedEvaluationRun_=(int)std::stol(b.id.substr(8));
             else if (b.id.rfind(L"evalcompare:",0)==0) comparisonEvaluationRun_=(int)std::stol(b.id.substr(12));
+            else if (b.id==L"eval_export_run") ExportSelectedEvaluationRun();
             else if (b.id==L"eval_export_compare") ExportEvaluationComparison();
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
@@ -3055,6 +3056,31 @@ private:
         }
     }
 
+    void ExportSelectedEvaluationRun() {
+        if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size()) {
+            statusText_=L"Select an evaluation run first";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-Evaluation-Run.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        const auto report=sentinel::simulation::BuildEvaluationRunReport(
+            evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_]);
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<report;
+        statusText_=L"Evaluation run report exported";
+    }
+
     void ExportEvaluationComparison() {
         if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size() ||
            comparisonEvaluationRun_<0 || comparisonEvaluationRun_>=(int)evaluationRuns_.Runs().size()) {
@@ -3683,6 +3709,7 @@ private:
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Evaluation Suite",x+18,y+10,260,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Persistent multidimensional regression testing for candidate models.",x+18,y+38,contentW-200,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"eval_export_run",L"Export Run",x+contentW-270,y+14,100,30,false);
         AddButton(L"model_eval",L"Run Evaluation",x+contentW-160,y+14,142,30,true);
 
         const sentinel::simulation::EvaluationRun* selected=nullptr;
@@ -3728,6 +3755,13 @@ private:
                 TextLine(std::to_wstring(d.score),cx+cardW-66,cy+5,54,22,bodyFmt_.Get(),accent,DWRITE_TEXT_ALIGNMENT_TRAILING);
                 TextLine(d.passed?L"PASS":L"REVIEW",cx+12,cy+30,72,18,tinyFmt_.Get(),accent);
                 TextLine(Widen(d.details),cx+90,cy+27,cardW-102,24,tinyFmt_.Get(),brush_.text.Get());
+            }
+
+            if(!selected->cases.empty()) {
+                size_t passed=0;
+                for(const auto& cr:selected->cases) if(cr.passed) ++passed;
+                TextLine(L"Named cases "+std::to_wstring(passed)+L"/"+std::to_wstring(selected->cases.size())+L" passed",
+                    x+18,y+222,contentW-36,18,tinyFmt_.Get(),passed==selected->cases.size()?brush_.green.Get():brush_.yellow.Get());
             }
         }
 
