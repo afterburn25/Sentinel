@@ -5,8 +5,9 @@ Last updated: 2026-09-27
 ## 1.0.16 — Trainer / Model Lab Redesign
 
 ### UI / UX
+- [x] Lock hybrid UI direction: Executive Dashboard + Conversational Trainer + Personas/LoRAs management + Training Pipeline/Command Center.
 - [ ] Replace the current crowded Model Lab layout with structured workspaces.
-- [ ] Add internal navigation for Train, Datasets, Personas & LoRAs, Foundation Forks, Jobs, Evaluation, Deployment.
+- [ ] Add internal navigation for Overview, Train, Datasets, Personas & LoRAs, Foundation Forks, Jobs, Evaluation, Deployment.
 - [ ] Fix all overlapping/misaligned Trainer controls.
 - [ ] Establish consistent spacing, sizing, typography, cards, buttons, and field styling.
 - [ ] Improve overall SARA desktop polish and visual consistency.
