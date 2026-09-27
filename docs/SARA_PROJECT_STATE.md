@@ -163,3 +163,18 @@ Key requirements:
 - Runtime stack: `SARA Foundation -> Persona LoRA -> Persona Behavior Profile -> Conversation Memory -> Current Context`.
 - Deterministic triggers/rules execute before normal generation and remain separate from model weights.
 - Response variation must preserve persona/trigger intent while varying phrasing according to age, intelligence/language level, slang, grammar, typo tendency, emoji use, personality, mood, and conversation history.
+
+
+## Hybrid UI implementation rule
+
+**Hybrid UI is the controlling design system for all remaining 1.0.16 work.**
+
+Backend architecture changes must not regress the interface into generic utility forms. Every new feature must be surfaced through the approved hybrid pattern:
+
+- Executive Dashboard for Overview
+- Conversational Trainer for Train
+- Management workspace for Personas & LoRAs
+- Command-center styling for Jobs, Evaluation, and Deployment
+- Shared dark navy/charcoal visual language with cyan/electric-blue primary accents and restrained purple secondary accents
+- Shared Model Lab navigation and context bar
+- Consistent cards, spacing, typography, iconography, badges, and state treatment
