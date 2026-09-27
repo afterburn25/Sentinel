@@ -2306,6 +2306,13 @@ private:
         ShowAgencyEditors(page_==Page::Agency);
         if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
         if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
+
+        HWND trainerControls[]={
+            trainerModeCombo_,trainerFoundationCombo_,trainerForkNameEdit_,trainerBasePathEdit_,
+            trainerLoraNameEdit_,trainerLoraPathEdit_,trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_
+        };
+        for(HWND h:trainerControls) if(h) ShowWindow(h,page_==Page::Trainer?SW_SHOW:SW_HIDE);
+
         LayoutNativeControls();
     }
 
@@ -2397,6 +2404,24 @@ private:
             const float contentW=w-x-28.0f;
             MoveControl(responseRuleTriggerEdit_,(int)(x+88),(int)(y+108),220,30,TRUE);
             MoveControl(responseRuleResponseEdit_,(int)(x+382),(int)(y+108),(int)std::max(180.0f,contentW-880.0f),30,TRUE);
+        }
+
+        if(page_==Page::Trainer) {
+            const float x=kSidebar+28.0f, y=kHeader+104.0f;
+            const float contentW=w-x-28.0f;
+            MoveControl(trainerModeCombo_,(int)(x+138),(int)(y+18),240,190,TRUE);
+            MoveControl(trainerFoundationCombo_,(int)(x+510),(int)(y+18),(int)std::max(280.0f,contentW-532.0f),190,TRUE);
+
+            MoveControl(trainerForkNameEdit_,(int)(x+138),(int)(y+104),250,32,TRUE);
+            MoveControl(trainerBasePathEdit_,(int)(x+510),(int)(y+104),(int)std::max(280.0f,contentW-532.0f),32,TRUE);
+
+            MoveControl(trainerLoraNameEdit_,(int)(x+138),(int)(y+188),250,32,TRUE);
+            MoveControl(trainerLoraPathEdit_,(int)(x+510),(int)(y+188),(int)std::max(280.0f,contentW-532.0f),32,TRUE);
+
+            MoveControl(trainerDatasetEdit_,(int)(x+138),(int)(y+272),(int)std::max(250.0f,contentW*0.42f),32,TRUE);
+            MoveControl(trainerOutputEdit_,(int)(x+650),(int)(y+272),(int)std::max(220.0f,contentW-672.0f),32,TRUE);
+
+            MoveControl(trainerInstructionEdit_,(int)(x+20),(int)(y+390),(int)(contentW-40),116,TRUE);
         }
 
         if(page_==Page::Agency) {
@@ -2999,7 +3024,8 @@ private:
         LoadPersonaMedia();
         simContext_.personaSummary=BuildPersonaSummary();
         sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
-        statusText_=L"Loaded persona profile: "+Widen(name);
+        ApplyPersonaRuntimeBinding();
+        statusText_=L"Loaded persona profile: "+Widen(name)+L" | "+trainerRuntimeStatus_;
     }
 
     void DeleteSelectedPersonaProfile() {
@@ -3098,7 +3124,7 @@ private:
             simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
             {
                 int ageSel=(int)SendMessageW(personaAgeCombo_,CB_GETCURSEL,0,0);
-                simSettings_.persona.age=(ageSel==CB_ERR)?18:(13+ageSel);
+                simSettings_.persona.age=(ageSel==CB_ERR)?13:(8+ageSel);
             }
             simSettings_.persona.location=Narrow(EditText(personaLocationEdit_));
             simSettings_.persona.gender=ComboText(personaGenderCombo_);
