@@ -38,7 +38,8 @@ PolicyDecision EvaluateSimulationPolicy(AgeKnowledgeState state,const std::strin
     }
     if(state==AgeKnowledgeState::SelfReportedMinor || state==AgeKnowledgeState::DocumentedMinor) {
         const bool sensitive =
-            t.find("sexual")!=std::string::npos || t.find("nude")!=std::string::npos ||
+            t.find("sexual")!=std::string::npos || t.find("sex")!=std::string::npos ||
+            t.find("nude")!=std::string::npos || t.find("naked")!=std::string::npos ||
             t.find("explicit")!=std::string::npos || t.find("meet me")!=std::string::npos;
         if(sensitive) {
             d.allowed=false;
