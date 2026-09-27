@@ -6,7 +6,6 @@ ChannelCapabilities LocalSimulationChannelAdapter::Capabilities() const {
     ChannelCapabilities c;
     c.Set(Capability::ReceiveText);
     c.Set(Capability::SendText);
-    c.Set(Capability::SendImage);
     c.Set(Capability::AutomatedSending);
     return c;
 }
@@ -17,11 +16,8 @@ SendResult LocalSimulationChannelAdapter::SendText(const OutboundText& out) {
     return {true,m.id,{}};
 }
 
-SendResult LocalSimulationChannelAdapter::SendMedia(const OutboundMedia& out) {
-    if(!legacy_) return {false,{},"legacy adapter unavailable"};
-    auto m=legacy_->QueueOperatorApprovedMedia(
-        out.conversationId,out.caption,out.localPath,out.sha256);
-    return {true,m.id,{}};
+SendResult LocalSimulationChannelAdapter::SendMedia(const OutboundMedia&) {
+    return {false,{},"local simulation media sending is not implemented in the current adapter"};
 }
 
 }
