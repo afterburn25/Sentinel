@@ -40,7 +40,12 @@ PolicyDecision EvaluateSimulationPolicy(AgeKnowledgeState state,const std::strin
         const bool sensitive =
             t.find("sexual")!=std::string::npos || t.find("sex")!=std::string::npos ||
             t.find("nude")!=std::string::npos || t.find("naked")!=std::string::npos ||
-            t.find("explicit")!=std::string::npos || t.find("meet me")!=std::string::npos;
+            t.find("explicit")!=std::string::npos || t.find("meet me")!=std::string::npos ||
+            t.find("bra")!=std::string::npos || t.find("breast")!=std::string::npos ||
+            t.find("boob")!=std::string::npos || t.find("vagina")!=std::string::npos ||
+            t.find("pubic")!=std::string::npos || t.find("penis")!=std::string::npos ||
+            t.find("virgin")!=std::string::npos || t.find("horny")!=std::string::npos ||
+            t.find("panties")!=std::string::npos || t.find("underwear")!=std::string::npos;
         if(sensitive) {
             d.allowed=false;
             d.requiresSupervisor=true;
