@@ -2134,7 +2134,7 @@ private:
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train) {
-            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float x=kSidebar+28.0f, top=kHeader+18.0f;
             const float bodyY=top+116.0f;
             const float contentW=w-x-28.0f;
             const float rightW=350.0f;
@@ -2161,7 +2161,7 @@ private:
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Datasets && selectedTrainingExample_>=0) {
-            const float x=kSidebar+28.0f, top=kHeader+102.0f, bodyY=top+116.0f;
+            const float x=kSidebar+28.0f, top=kHeader+18.0f, bodyY=top+116.0f;
             const float contentW=w-x-28.0f, gap=12.0f, rightW=350.0f;
             const float leftW=contentW-rightW-gap;
             const float rx=x+leftW+gap;
@@ -2171,7 +2171,7 @@ private:
         }
 
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas) {
-            const float x=kSidebar+28.0f, top=kHeader+102.0f;
+            const float x=kSidebar+28.0f, top=kHeader+18.0f;
             const float bodyY=top+116.0f;
             const float contentW=w-x-28.0f, gap=12.0f, inspectorW=360.0f;
             const float listW=contentW-inspectorW-gap;
@@ -3554,7 +3554,7 @@ private:
         for(int i=0;i<8;i++) {
             const float tx=x+i*(tabW+tabGap);
             const bool selected=i==active;
-            Rounded(tx,y,tabW,34,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),7);
+            GlowPanel(tx,y,tabW,34,selected,8);
             TextLine(tabs[i],tx+6,y+1,tabW-12,32,tinyFmt_.Get(),selected?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
             buttons_.push_back({{tx,y,tx+tabW,y+34},L"mltab:"+std::to_wstring(i)});
         }
@@ -3576,7 +3576,7 @@ private:
         const wchar_t* contextLabels[]={L"FOUNDATION MODEL",L"PERSONA",L"ASSIGNED LORA",L"TRAINING MODE"};
         for(int i=0;i<4;i++) {
             const float cx=x+i*(contextW+gap);
-            Rounded(cx,y,contextW,60,brush_.panel.Get(),brush_.border.Get(),9);
+            GlowPanel(cx,y,contextW,60,i==3,9);
             TextLine(contextLabels[i],cx+14,y+6,contextW-28,17,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(contextValues[i],cx+14,y+24,contextW-42,27,smallFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get());
             if(i==3) {
@@ -3851,7 +3851,7 @@ private:
         const float inspectorW=360.0f;
         const float listW=contentW-inspectorW-gap;
 
-        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,listW,382,true,11);
         TextLine(L"Personas & LoRAs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Reusable persona behavior profiles and their assigned adapters.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"ml_persona_editor",L"Open Persona Editor",x+listW-158,y+14,140,30,true);
@@ -3915,7 +3915,7 @@ private:
         }
 
         const float rx=x+listW+gap;
-        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(rx,y,inspectorW,382,false,11);
         TextLine(L"Persona Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
         Badge(L"RUNTIME",rx+inspectorW-104,y+16,brush_.cyan.Get(),86);
 
@@ -3945,7 +3945,7 @@ private:
         const float detailW=350.0f;
         const float listW=contentW-detailW-gap;
 
-        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,listW,382,true,11);
         TextLine(L"Foundation Forks",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Original base models stay immutable; SARA descendants are versioned independently.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"foundation_new_fork",L"Create Fork",x+listW-114,y+14,96,30,true);
@@ -3972,7 +3972,7 @@ private:
         }
 
         const float rx=x+listW+gap;
-        Rounded(rx,y,detailW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(rx,y,detailW,382,false,11);
         TextLine(L"Selected Foundation",rx+18,y+12,detailW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         if(!foundationRegistry_.Models().empty()) {
@@ -4020,7 +4020,7 @@ private:
         const float rightW=350.0f;
         const float leftW=contentW-rightW-gap;
 
-        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,leftW,382,true,11);
         TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Reviewed training examples and lineage-aware dataset snapshots.",x+18,y+40,leftW-260,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"dataset_import",L"Import",x+leftW-232,y+14,70,30,false);
@@ -4054,7 +4054,7 @@ private:
         }
 
         const float rx=x+leftW+gap;
-        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(rx,y,rightW,382,false,11);
         TextLine(selectedTrainingExample_>=0?L"Review Inspector":L"Dataset Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
@@ -4116,7 +4116,7 @@ private:
         const float inspectorW=360.0f;
         const float listW=contentW-inspectorW-gap;
 
-        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,listW,382,true,11);
         TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Persistent run history with exact foundation and dataset lineage.",x+18,y+40,listW-180,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"job_new",L"New Training Job",x+listW-152,y+14,134,30,true);
@@ -4151,7 +4151,7 @@ private:
         }
 
         const float rx=x+listW+gap;
-        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(rx,y,inspectorW,382,false,11);
         TextLine(L"Run Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
         if(selectedTrainingJob_>=0 && selectedTrainingJob_<(int)trainingJobRegistry_.Jobs().size()) {
             const auto& job=trainingJobRegistry_.Jobs()[(size_t)selectedTrainingJob_];
@@ -4184,7 +4184,7 @@ private:
     void DrawModelLabEvaluation(float x,float y,float contentW) {
         const float gap=12.0f;
 
-        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,contentW,382,true,11);
         TextLine(L"Evaluation Suite",x+18,y+10,260,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Persistent multidimensional regression testing for candidate models.",x+18,y+38,contentW-200,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"eval_export_run",L"Export Run",x+contentW-270,y+14,100,30,false);
@@ -4322,7 +4322,7 @@ private:
         const float leftW=(contentW-gap)*0.58f;
         const float rightW=contentW-leftW-gap;
 
-        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(x,y,leftW,382,true,11);
         TextLine(L"Deployment",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Explicit promotion only — production stays pinned until activated.",x+18,y+40,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
 
@@ -4342,7 +4342,7 @@ private:
             x+34,y+278,leftW-68,52,tinyFmt_.Get(),brush_.muted.Get());
 
         const float rx=x+leftW+gap;
-        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        GlowPanel(rx,y,rightW,382,false,11);
         TextLine(L"Runtime Stack",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Foundation",rx+18,y+62,94,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[(size_t)std::max(0,foundationRegistry_.ActiveIndex())].name):L"Base",
@@ -4373,9 +4373,8 @@ private:
     }
 
     void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab / Trainer",L"Train, adapt, evaluate, and deploy SARA from one polished workspace");
         const float x=kSidebar+28.0f;
-        const float y=kHeader+102.0f;
+        const float y=kHeader+18.0f;
         const float contentW=w-x-28.0f;
 
         DrawModelLabTabs(x,y,contentW);
