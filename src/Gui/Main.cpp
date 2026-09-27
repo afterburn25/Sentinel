@@ -521,7 +521,7 @@ public:
 
     void ExportModelLabDiagnostics() {
         wchar_t file[MAX_PATH]{};
-        wcscpy_s(file,L"SARA-1.0.16-Diagnostics.txt");
+        wcscpy_s(file,L"SARA-1.0.17-Diagnostics.txt");
         OPENFILENAMEW ofn{};
         ofn.lStructSize=sizeof(ofn);
         ofn.hwndOwner=hwnd_;
@@ -533,7 +533,7 @@ public:
         if(!GetSaveFileNameW(&ofn)) return;
 
         std::ofstream out(std::filesystem::path(file),std::ios::trunc);
-        out<<"SARA 1.0.16 MODEL LAB DIAGNOSTICS\n";
+        out<<"SARA 1.0.17 MODEL LAB DIAGNOSTICS\n";
         out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
         out<<"Persona: "<<simSettings_.persona.name<<"\n";
         out<<"Age: "<<simSettings_.persona.age<<"\n";
@@ -1232,7 +1232,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.16",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.17",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -3597,7 +3597,7 @@ private:
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
         TextLine(sub,x+20,y+52,contentW-40,24,bodyFmt_.Get(),brush_.muted.Get());
         Rounded(x+20,y+94,contentW-40,78,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"Structured workspace reserved for SARA 1.0.16",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Structured workspace reserved for SARA 1.0.17",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
         Text(L"This section is now a first-class Model Lab destination and will use the shared foundation, persona, LoRA, review, evaluation, and deployment state.",
             x+38,y+132,contentW-76,34,tinyFmt_.Get(),brush_.muted.Get());
     }
@@ -3809,12 +3809,12 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.16");
+            auto info=service.Check(url,"1.0.17");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
                 statusText_=L"SARA update available";
             } else {
-                updateStatus_=L"Current version 1.0.16 is up to date";
+                updateStatus_=L"Current version 1.0.17 is up to date";
                 statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
@@ -3853,7 +3853,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SARA 1.0.16",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"SARA 1.0.17",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
