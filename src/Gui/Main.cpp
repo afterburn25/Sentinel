@@ -3208,21 +3208,35 @@ private:
         TextLine(L"Adapter Versions",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
         AddButton(L"adapter_new",L"New Persona LoRA",x+listW-160,y+198,128,28,true);
         AddButton(L"adapter_rollback",L"Rollback",x+listW-258,y+198,88,28,false);
+        AddButton(L"adapter_export",L"Export",x+listW-346,y+198,78,28,false);
         float ay=y+236;
         int shown=0;
-        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<2;i++) {
             const auto& a=personaAdapterRegistry_.Adapters()[i];
             if(a.personaName!=simSettings_.persona.name) continue;
+            const bool selected=(int)i==selectedPersonaAdapter_;
+            if(selected) Rounded(x+26,ay-4,listW-52,30,brush_.panel2.Get(),brush_.cyan.Get(),6);
             TextLine(Widen(a.adapterName+" "+a.version),x+32,ay,220,22,smallFmt_.Get(),brush_.text.Get());
             TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+264,ay,90,22,tinyFmt_.Get(),
                 a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
             TextLine(Widen(a.foundationId),x+366,ay,listW-520,22,tinyFmt_.Get(),brush_.muted.Get());
             if(a.stage!=sentinel::simulation::AdapterStage::Active)
                 AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-126,ay-2,94,26,false);
+            buttons_.push_back({{x+26,ay-4,x+listW-132,ay+26},L"adapter_select:"+std::to_wstring(i)});
             ay+=38; ++shown;
         }
         if(shown==0) {
             TextLine(L"No LoRA versions for this persona yet.",x+32,ay,300,22,smallFmt_.Get(),brush_.muted.Get());
+        }
+        int activeAdapter=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        TextLine(L"Compare",x+32,y+316,64,18,tinyFmt_.Get(),brush_.muted.Get());
+        if(selectedPersonaAdapter_>=0 && selectedPersonaAdapter_<(int)personaAdapterRegistry_.Adapters().size()) {
+            const auto& selected=personaAdapterRegistry_.Adapters()[(size_t)selectedPersonaAdapter_];
+            TextLine(L"Selected "+Widen(selected.version)+L" • "+Widen(selected.foundationId),x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.cyan.Get());
+        } else TextLine(L"Select an adapter version",x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.muted.Get());
+        if(activeAdapter>=0) {
+            const auto& active=personaAdapterRegistry_.Adapters()[(size_t)activeAdapter];
+            TextLine(L"Active "+Widen(active.version)+L" • "+Widen(active.foundationId),x+100,y+336,listW-250,20,tinyFmt_.Get(),brush_.green.Get());
         }
 
         const float rx=x+listW+gap;
@@ -3333,7 +3347,8 @@ private:
 
         Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Reviewed training examples and immutable dataset snapshots.",x+18,y+40,leftW-190,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Reviewed training examples and lineage-aware dataset snapshots.",x+18,y+40,leftW-260,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"dataset_import",L"Import",x+leftW-232,y+14,70,30,false);
         AddButton(L"dataset_snapshot",L"Create Snapshot",x+leftW-152,y+14,134,30,true);
 
         TextLine(L"EXAMPLE",x+28,y+78,100,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -3365,7 +3380,7 @@ private:
 
         const float rx=x+leftW+gap;
         Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Review Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(selectedTrainingExample_>=0?L"Review Inspector":L"Dataset Inspector",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         if(selectedTrainingExample_>=0 && selectedTrainingExample_<(int)trainingData_.Examples().size()) {
             const auto& selected=trainingData_.Examples()[(size_t)selectedTrainingExample_];
@@ -3382,9 +3397,23 @@ private:
             AddButton(L"training_review_save",L"Save Edit",rx+18,y+222,92,28,false);
             AddButton(L"training_review_approve",L"Approve",rx+120,y+222,92,28,true);
             AddButton(L"training_review_reject",L"Reject",rx+222,y+222,92,28,false);
+        } else if(selectedDatasetSnapshot_>=0 && selectedDatasetSnapshot_<(int)trainingData_.Snapshots().size()) {
+            const auto& selected=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+            Badge(L"SNAPSHOT",rx+rightW-108,y+16,brush_.cyan.Get(),90);
+            TextLine(L"Name",rx+18,y+54,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.name),rx+98,y+50,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"ID",rx+18,y+82,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.id),rx+98,y+78,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Created",rx+18,y+110,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.createdUtc.empty()?"Legacy snapshot":selected.createdUtc),rx+98,y+106,rightW-116,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Parent",rx+18,y+138,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(selected.parentId.empty()?"Root / no parent":selected.parentId),rx+98,y+134,rightW-116,24,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Examples",rx+18,y+166,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(selected.exampleIds.size()),rx+98,y+162,rightW-116,24,smallFmt_.Get(),brush_.text.Get());
+            AddButton(L"dataset_export",L"Export Snapshot",rx+18,y+206,130,30,true);
         } else {
-            Text(L"Select a training example on the left to edit its target response, approve it, or reject it.",
-                rx+18,y+54,rightW-36,60,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"Select a training example to review it, or select a dataset snapshot below to inspect lineage and export it.",
+                rx+18,y+54,rightW-36,70,smallFmt_.Get(),brush_.muted.Get());
         }
 
         target_->DrawLine(D2D1::Point2F(rx+18,y+266),D2D1::Point2F(rx+rightW-18,y+266),brush_.border.Get(),1);
@@ -3392,9 +3421,13 @@ private:
         float sy=y+306;
         int sshown=0;
         for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<2; --i,++sshown) {
-            const auto& s=trainingData_.Snapshots()[i-1];
-            TextLine(Widen(s.name),rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(s.exampleIds.size())+L" approved examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            const size_t snapshotIndex=i-1;
+            const auto& s=trainingData_.Snapshots()[snapshotIndex];
+            const bool selected=(int)snapshotIndex==selectedDatasetSnapshot_;
+            if(selected) Rounded(rx+14,sy-2,rightW-28,22,brush_.panel2.Get(),brush_.cyan.Get(),5);
+            TextLine(Widen(s.name),rx+18,sy,rightW-120,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(s.exampleIds.size())+L" examples",rx+210,sy,rightW-228,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            buttons_.push_back({{rx+14,sy-2,rx+rightW-14,sy+20},L"dataset_select:"+std::to_wstring(snapshotIndex)});
             sy+=24;
         }
         if(sshown==0) TextLine(L"No snapshots yet.",rx+18,sy,rightW-36,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -3404,44 +3437,72 @@ private:
     }
 
     void DrawModelLabJobs(float x,float y,float contentW) {
-        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        const float gap=12.0f;
+        const float inspectorW=360.0f;
+        const float listW=contentW-inspectorW-gap;
+
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Persistent job records ready for handoff to the isolated training service.",x+18,y+40,contentW-180,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"job_new",L"New Training Job",x+contentW-152,y+14,134,30,true);
+        TextLine(L"Persistent run history with exact foundation and dataset lineage.",x+18,y+40,listW-180,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"job_new",L"New Training Job",x+listW-152,y+14,134,30,true);
 
         TextLine(L"JOB",x+28,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"FOUNDATION",x+140,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"DATASET",x+372,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+604,y+80,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"PROGRESS",x+726,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"DATASET",x+140,y+80,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+302,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PROGRESS",x+414,y+80,90,18,tinyFmt_.Get(),brush_.muted.Get());
 
         float yy=y+104;
         if(trainingJobRegistry_.Jobs().empty()) {
-            Rounded(x+18,yy,contentW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No training jobs yet. Queue one from the current foundation and approved capture set.",
-                x+34,yy+8,contentW-68,42,bodyFmt_.Get(),brush_.muted.Get());
-            return;
+            Rounded(x+18,yy,listW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No training jobs yet. Queue one from the current foundation and dataset.",
+                x+34,yy+8,listW-68,42,bodyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
+                const auto& job=trainingJobRegistry_.Jobs()[i];
+                const bool selected=(int)i==selectedTrainingJob_;
+                Rounded(x+18,yy,listW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),8);
+                TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.dataset),x+140,yy+5,150,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.state),x+302,yy+5,100,22,tinyFmt_.Get(),
+                    job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
+                TextLine(std::to_wstring(job.progress)+L"%",x+414,yy+5,72,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.createdUtc.empty()?"Legacy run":job.createdUtc),x+28,yy+31,listW-180,18,tinyFmt_.Get(),brush_.muted.Get());
+                if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+listW-94,yy+14,62,28,false);
+                else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+listW-112,yy+14,80,28,true);
+                buttons_.push_back({{x+18,yy,x+listW-122,yy+58},L"job_select:"+std::to_wstring(i)});
+                yy+=66;
+            }
         }
 
-        for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
-            const auto& job=trainingJobRegistry_.Jobs()[i];
-            Rounded(x+18,yy,contentW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(job.baseModel),x+140,yy+5,220,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(job.dataset),x+372,yy+5,220,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(job.state),x+604,yy+5,110,22,tinyFmt_.Get(),
-                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
-            TextLine(std::to_wstring(job.progress)+L"%",x+726,yy+5,80,22,tinyFmt_.Get(),brush_.text.Get());
-
-            const float barX=x+826, barW=std::max(70.0f,contentW-1020.0f);
-            Rounded(barX,yy+10,barW,8,brush_.panel2.Get(),nullptr,4);
-            if(job.progress>0) Rounded(barX,yy+10,barW*(job.progress/100.0f),8,brush_.cyan.Get(),nullptr,4);
-
-            if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+contentW-170,yy+14,68,28,false);
-            else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+contentW-184,yy+14,82,28,true);
-
-            TextLine(L"Training execution remains isolated from live inference.",x+28,yy+32,contentW-240,18,tinyFmt_.Get(),brush_.muted.Get());
-            yy+=66;
+        const float rx=x+listW+gap;
+        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Run Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        if(selectedTrainingJob_>=0 && selectedTrainingJob_<(int)trainingJobRegistry_.Jobs().size()) {
+            const auto& job=trainingJobRegistry_.Jobs()[(size_t)selectedTrainingJob_];
+            Badge(Widen(job.state),rx+inspectorW-110,y+16,
+                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get(),92);
+            TextLine(L"Job",rx+18,y+58,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.id),rx+110,y+54,inspectorW-128,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Foundation",rx+18,y+88,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.baseModel),rx+110,y+84,inspectorW-128,24,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Dataset",rx+18,y+118,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.dataset),rx+110,y+114,inspectorW-128,24,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Created",rx+18,y+154,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.createdUtc.empty()?"Legacy run":job.createdUtc),rx+110,y+150,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Started",rx+18,y+182,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.startedUtc.empty()?"Not started":job.startedUtc),rx+110,y+178,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Completed",rx+18,y+210,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.completedUtc.empty()?"Not completed":job.completedUtc),rx+110,y+206,inspectorW-128,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Progress",rx+18,y+244,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(job.progress)+L"%",rx+110,y+240,80,24,smallFmt_.Get(),brush_.text.Get());
+            Rounded(rx+18,y+276,inspectorW-36,10,brush_.panel2.Get(),nullptr,5);
+            if(job.progress>0) Rounded(rx+18,y+276,(inspectorW-36)*(job.progress/100.0f),10,brush_.cyan.Get(),nullptr,5);
+            Text(L"Training execution remains isolated from live inference. This record preserves the exact dataset and foundation used by the run.",
+                rx+18,y+308,inspectorW-36,52,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            Text(L"Select a training run on the left to inspect its foundation, dataset lineage, timestamps, and progress.",
+                rx+18,y+58,inspectorW-36,70,smallFmt_.Get(),brush_.muted.Get());
         }
     }
 
