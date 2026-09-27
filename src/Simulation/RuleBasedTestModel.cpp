@@ -396,6 +396,25 @@ public:
         return "Okay, now I'm curious. What happened next?";
     }
 
+    std::string GeneratePersonaRuleReply(
+        std::string_view approvedMeaning,
+        const ModelContext& context) override
+    {
+        const auto turn=InvestigatorTurnCount(context);
+        std::string text=Trim(std::string(approvedMeaning));
+        if(text.empty()) return {};
+
+        // The fallback model cannot semantically rewrite like the local LLM,
+        // but it still varies harmless conversational framing deterministically
+        // while preserving the approved meaning verbatim.
+        switch(turn%4) {
+            case 0: return text;
+            case 1: return "Honestly, "+text;
+            case 2: return text+" That's basically how I see it.";
+            default: return "Yeah — "+text;
+        }
+    }
+
     std::string GenerateSyntheticInitiative(
         const ModelContext& context) override
     {
