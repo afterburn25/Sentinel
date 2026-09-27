@@ -70,7 +70,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
@@ -1141,6 +1141,7 @@ public:
             case Page::Simulation: DrawSimulation(w,h); break;
             case Page::Persona: DrawPersona(w,h); break;
             case Page::ModelLab: DrawModelLab(w,h); break;
+            case Page::Trainer: DrawTrainer(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -1153,8 +1154,8 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            int idx=(int)((y-kHeader-18)/48);
-            if (idx>=0&&idx<12) {
+            int idx=(int)((y-kHeader-16)/44);
+            if (idx>=0&&idx<13) {
                 page_=(Page)idx;
                 ApplyPageControls();
                 if(page_==Page::Simulation && chatEdit_) {
@@ -1802,9 +1803,9 @@ private:
     IconKind NavIcon(int i) const {
         static const IconKind icons[]={
             IconKind::Home,IconKind::Folder,IconKind::Database,IconKind::Document,IconKind::Shield,
-            IconKind::Chat,IconKind::Document,IconKind::Database,IconKind::Chat,IconKind::Shield,IconKind::Database,IconKind::Gear
+            IconKind::Chat,IconKind::Document,IconKind::Database,IconKind::Gear,IconKind::Chat,IconKind::Shield,IconKind::Database,IconKind::Gear
         };
-        return icons[std::clamp(i,0,11)];
+        return icons[std::clamp(i,0,12)];
     }
 
     void DrawBrand() {
@@ -1824,19 +1825,20 @@ private:
     void DrawSidebar() {
         static const wchar_t* names[]={
             L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Simulation Lab",
-            L"Persona & Policy",L"Model Lab",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
+            L"Persona & Policy",L"Model Lab",L"Trainer",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
         };
-        for (int i=0;i<12;i++) {
-            float y=(float)kHeader+18+i*48;
+        constexpr float rowH=44.0f;
+        for (int i=0;i<13;i++) {
+            float y=(float)kHeader+16+i*rowH;
             if ((int)page_==i) {
-                target_->FillRectangle(D2D1::RectF(0,y-5,(float)kSidebar,y+39),brush_.panel2.Get());
-                target_->FillRectangle(D2D1::RectF(0,y-5,4,y+39),brush_.cyan.Get());
-                Rounded(20,y,36,32,brush_.sidebar.Get(),brush_.border.Get(),8);
+                target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
+                target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
+                Rounded(20,y,36,30,brush_.sidebar.Get(),brush_.border.Get(),8);
             }
-            DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
-            TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
+            DrawIcon(NavIcon(i),26,y+3,22,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
+            TextLine(names[i],66,y+3,145,26,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.10",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.15",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
