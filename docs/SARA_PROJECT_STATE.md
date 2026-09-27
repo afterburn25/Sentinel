@@ -20,15 +20,15 @@ The repository was originally named Sentinel and still uses Sentinel in many sou
 
 ## Current release baseline
 
-The latest distributed desktop baseline supplied in chat is **SARA 1.0.15**.
+**SARA 1.0.17 — Dataset & Adapter Management** is merged into `main` and is the current source baseline.
 
-The GitHub source still contains older internal version strings such as Sentinel 1.0.7. Version/branding normalization is therefore part of the 1.0.16 work.
+SARA 1.0.16 remains the first validated integrated Model Lab/Trainer release. 1.0.17 extends that baseline with dataset lineage/import-export, adapter management, and timestamped training-run history.
 
 ## Current development target
 
 **SARA 1.0.18 — Evaluation Suite**
 
-SARA 1.0.16 is merged into `main` and is the validated baseline. 1.0.17 extends the Model Lab without changing the approved hybrid UI system.
+SARA 1.0.17 is merged into `main`. 1.0.18 extends the Evaluation workspace without changing the approved hybrid UI system.
 
 ### Primary goals
 
@@ -273,3 +273,23 @@ Requirements:
 - Candidate comparison report in the existing hybrid Evaluation command-center UI.
 - Named test cases so future suites can grow without hard-coding all logic into the GUI.
 - Evaluation must never activate/deploy a candidate automatically.
+
+
+## 1.0.18 implementation status
+
+Active branch: `sara-1.0.18-evaluation-suite`
+
+Implemented / in progress:
+- Persistent `EvaluationRunRegistry` with candidate, foundation, and adapter identity.
+- Six dimensions: Persona, Policy, Style, Memory, Trigger Regression, Response Diversity.
+- Named evaluation test cases stored separately from aggregate dimension scores.
+- Named-case result persistence including response, score, pass/fail, and details.
+- Persona identity/location/occupation factual cases.
+- Long-context recall case with 24+ history turns.
+- Trigger regression checks for rule ID, terminal/continue state, and response availability.
+- Per-dimension regression detection against the previous run for the same candidate.
+- Hybrid Evaluation command center with run history and candidate comparison.
+- Selectable comparison candidate with per-dimension deltas.
+- Exportable candidate comparison report.
+- Evaluation never activates or deploys a candidate automatically.
+- SARA 1.0.18 release/version separation across executable, CI, installer, updater, runtime, diagnostics, and manifest.
