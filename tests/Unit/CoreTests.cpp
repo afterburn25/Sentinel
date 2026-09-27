@@ -584,13 +584,21 @@ void TestWindowsCryptoAndSev()
 
 int main()
 {
-    TestIdsAndHashes();
-    TestSaraModelLabRegistries();
-    TestSaraEvaluationSuite();
-    TestReusablePersonaProfiles();
-    TestUnifiedChannelCore();
+    auto run=[](const char* name,auto&& fn){
+        std::cerr<<"[TEST START] "<<name<<"\n";
+        std::cerr.flush();
+        fn();
+        std::cerr<<"[TEST PASS] "<<name<<"\n";
+        std::cerr.flush();
+    };
+
+    run("IdsAndHashes",[](){TestIdsAndHashes();});
+    run("ModelLabRegistries",[](){TestSaraModelLabRegistries();});
+    run("EvaluationSuite",[](){TestSaraEvaluationSuite();});
+    run("ReusablePersonaProfiles",[](){TestReusablePersonaProfiles();});
+    run("UnifiedChannelCore",[](){TestUnifiedChannelCore();});
 #ifdef _WIN32
-    TestWindowsCryptoAndSev();
+    run("WindowsCryptoAndSev",[](){TestWindowsCryptoAndSev();});
 #endif
     std::cout << "SARA Core Tests passed\n";
 }
