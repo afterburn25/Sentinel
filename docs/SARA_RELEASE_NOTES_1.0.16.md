@@ -244,3 +244,21 @@ Future sessions should recover state from:
 - `docs/architecture/SARA_MODEL_LAB_UI_1.0.16.md`
 - `docs/architecture/SARA_MODEL_LAB_TRAINING_ARCHITECTURE_1.0.16.md`
 - this release-notes document
+
+
+## Final validated artifacts
+
+GitHub Actions run **#511** validated the release build and both downloadable artifacts.
+
+Portable artifact:
+- `SARA-1.0.16-windows-x64`
+- ZIP SHA-256: `84c50af15a6c317ce71a1dd17638cb533f0639dc8c50614bc02317ce22eede80`
+- `SARA.exe` SHA-256: `55ef77594cb9e3bd858bb10fe89cd18ae4e41221e9456c6af100f407d8172780`
+- 22 package manifest entries verified successfully
+
+Installer artifact:
+- `SARA-1.0.16-Installer-Package`
+- ZIP SHA-256: `ca5e7088cb55df7a145c3991a441a10ccdc1c3bcccdae5cb167543488c4238d3`
+- `SARA-Setup-1.0.16.exe` SHA-256: `66a102715cc248b831d75ac7052be4d8beb0a44054b475981a6541b2a47094b2`
+
+The installer checksum file was independently verified against the installer EXE.
