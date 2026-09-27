@@ -2594,6 +2594,7 @@ private:
             const float heroY=y+48.0f;
             const float heroH=76.0f;
             const float bodyY=heroY+heroH+12.0f;
+            const float bodyH=std::max(410.0f,(float)rc.bottom-bodyY-24.0f);
             const float rightW=std::clamp(contentW*0.29f,286.0f,342.0f);
             const float leftW=contentW-rightW-gap;
             const float advancedY=bodyY+232.0f;
