@@ -2314,8 +2314,8 @@ private:
         if(page_==Page::ModelLab) {
             const float x=kSidebar+28.0f, y=kHeader+104.0f;
             const float contentW=w-x-28.0f;
-            MoveControl(responseRuleTriggerEdit_,(int)(x+120),(int)(y+104),260,30,TRUE);
-            MoveControl(responseRuleResponseEdit_,(int)(x+474),(int)(y+104),(int)std::max(260.0f,contentW-760.0f),30,TRUE);
+            MoveControl(responseRuleTriggerEdit_,(int)(x+88),(int)(y+108),220,30,TRUE);
+            MoveControl(responseRuleResponseEdit_,(int)(x+382),(int)(y+108),(int)std::max(260.0f,contentW-760.0f),30,TRUE);
         }
 
         if(page_==Page::Agency) {
@@ -3994,8 +3994,8 @@ private:
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
 
-        Rounded(x,y,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Registry Actions",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(x,y,contentW,150,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Registry & Persona Controls",x+18,y+12,340,30,h1Fmt_.Get(),brush_.text.Get());
 
         const float gap=10.0f;
         const float bw=136.0f;
@@ -4005,24 +4005,34 @@ private:
         AddButton(L"model_approve",L"Approve",bx,y+50,bw,36,false); bx+=bw+gap;
         AddButton(L"model_activate",L"Activate",bx,y+50,bw,36,false); bx+=bw+gap;
         AddButton(L"model_rollback",L"Rollback",bx,y+50,bw,36,false);
+        AddButton(L"learning_toggle",
+            simSettings_.learningMode?L"Learning: ON":L"Learning: OFF",
+            x+contentW-168,y+50,150,36,simSettings_.learningMode);
 
-        Rounded(x,y+116,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Registered Models",x+18,y+128,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Trigger",x+18,y+110,64,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Response",x+318,y+110,60,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"rule_add_contains",L"Add Contains",x+contentW-350,y+105,104,32,false);
+        AddButton(L"rule_add_exact",L"Add Exact",x+contentW-238,y+105,94,32,true);
+        AddButton(L"rule_clear",L"Clear",x+contentW-136,y+105,70,32,false);
+        TextLine(L"Rules "+std::to_wstring(PersonaResponseRuleCount()),x+contentW-62,y+111,56,20,tinyFmt_.Get(),brush_.cyan.Get());
 
-        TextLine(L"MODEL",x+34,y+165,280,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+332,y+165,100,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+452,y+165,72,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"LATENCY",x+544,y+165,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+646,y+165,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+        Rounded(x,y+164,contentW,278,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Registered Models",x+18,y+176,260,30,h1Fmt_.Get(),brush_.text.Get());
 
-        float yy=y+191;
+        TextLine(L"MODEL",x+34,y+213,280,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+332,y+213,100,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+452,y+213,72,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+544,y+213,80,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+646,y+213,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+239;
         if(modelRegistry_.Models().empty()) {
             Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
             TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
                 x+34,yy+7,contentW-68,38,bodyFmt_.Get(),brush_.muted.Get());
         }
 
-        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
+        for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
             const auto& m=modelRegistry_.Models()[i];
             const bool selected=(int)i==selectedRegistryModel_;
             Rounded(x+22,yy,contentW-44,52,selected?brush_.panel2.Get():brush_.sidebar.Get(),
