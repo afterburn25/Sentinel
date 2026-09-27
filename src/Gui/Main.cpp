@@ -3407,12 +3407,35 @@ private:
         statusText_=L"Persona image deleted";
     }
 
+    bool PersonaMediaWasAlreadySent(const PersonaMediaItem& item) const {
+        sqlite3_stmt* stmt{};
+        bool sent=false;
+        const char* sql=
+            "SELECT 1 FROM conversation_media "
+            "WHERE speaker=? AND (stored_path=? OR sha256=?) LIMIT 1";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&stmt,nullptr)==SQLITE_OK) {
+            sqlite3_bind_int(stmt,1,(int)sentinel::simulation::ChatTurn::Speaker::SyntheticSubject);
+            sqlite3_bind_text(stmt,2,item.storedPath.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt,3,item.sha256.c_str(),-1,SQLITE_TRANSIENT);
+            sent=sqlite3_step(stmt)==SQLITE_ROW;
+        }
+        sqlite3_finalize(stmt);
+        return sent;
+    }
+
     int FindApprovedPersonaMedia() const {
-        if(selectedPersonaMedia_>=0 && selectedPersonaMedia_<(int)personaMedia_.size() &&
-           personaMedia_[(size_t)selectedPersonaMedia_].approved)
-            return selectedPersonaMedia_;
-        for(size_t i=0;i<personaMedia_.size();++i)
-            if(personaMedia_[i].approved) return (int)i;
+        // Never reuse a persona image after it has been sent once.
+        if(selectedPersonaMedia_>=0 && selectedPersonaMedia_<(int)personaMedia_.size()) {
+            const auto& selected=personaMedia_[(size_t)selectedPersonaMedia_];
+            if(selected.approved && !PersonaMediaWasAlreadySent(selected))
+                return selectedPersonaMedia_;
+        }
+
+        for(size_t i=0;i<personaMedia_.size();++i) {
+            const auto& item=personaMedia_[i];
+            if(item.approved && !PersonaMediaWasAlreadySent(item))
+                return (int)i;
+        }
         return -1;
     }
 
@@ -3439,7 +3462,7 @@ private:
         if(!LooksLikeBenignPictureRequest(triggerText)) return;
         const int idx=FindApprovedPersonaMedia();
         if(idx<0) {
-            statusText_=L"Picture requested, but no approved benign persona image is available";
+            statusText_=L"Picture requested, but no unused approved persona image is available";
             return;
         }
 
