@@ -3,7 +3,7 @@ name: Windows Build
 
 on:
   push:
-    branches: [ main, develop, 'feature/**', 'fix/**' ]
+    branches: [ main, develop, 'feature/**', 'fix/**', 'sara-recovery-from-1.0.15' ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
@@ -34,6 +34,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Guard exact SARA 1.0.15 recovery baseline
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-1.0.15-Recovery-Baseline.ps1
 
       - name: Cache vcpkg packages
         uses: actions/cache@v4
