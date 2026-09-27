@@ -2660,7 +2660,7 @@ private:
                 (age<=17 ? "Teen age-appropriate" : "Age-appropriate");
             simSettings_.persona.capitalizationStyle =
                 simSettings_.persona.grammarQuality=="Careful" ? "Standard" : "Casual";
-            simSettings_.persona.messageLength = age<=17 ? "Short" : "Short to medium";
+            simSettings_.persona.messageLength = age<=17 ? "Varied short to medium" : "Short to medium";
             simSettings_.scenario.name=Narrow(EditText(scenarioNameEdit_));
             simSettings_.scenario.objective=Narrow(EditText(scenarioObjectiveEdit_));
             simSettings_.scenario.seed=(unsigned int)std::max(1,std::stoi(EditText(scenarioSeedEdit_)));
