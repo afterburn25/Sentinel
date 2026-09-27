@@ -1,4 +1,4 @@
-# SARA release: 1.0.18
+# SARA release: 1.0.18.1
 name: Windows Build
 
 on:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: sara-v1018-${{ github.workflow }}-${{ github.ref }}
+  group: sara-v10181-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -110,7 +110,46 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/SARA-1.0.18-windows-x64
+          --prefix package/SARA-1.0.18.1-windows-x64
+
+      - name: Verify visual restore executable identity
+        shell: pwsh
+        run: |
+          $root = Resolve-Path "package/SARA-1.0.18.1-windows-x64"
+          $exe = Join-Path $root "SARA.exe"
+          if (-not (Test-Path $exe)) { throw "SARA.exe missing before visual-restore identity check" }
+
+          $bytes = [IO.File]::ReadAllBytes($exe)
+          $wide = [Text.Encoding]::Unicode.GetString($bytes)
+          $required = @(
+            "VISUAL RESTORE",
+            "Train Smarter. Together.",
+            "Evaluation Command Center",
+            "Deployment Command Center",
+            "SARA-Logo.png",
+            "SARAStartupSplash"
+          )
+          foreach ($marker in $required) {
+            if (-not $wide.Contains($marker)) {
+              throw "Packaged SARA.exe is not the visual-restoration executable. Missing marker: $marker"
+            }
+          }
+
+          $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          @"
+          SARA 1.0.18.1 VISUAL RESTORE
+          Commit: ${{ github.sha }}
+          SARA.exe SHA-256: $exeHash
+          Required UI markers verified:
+          - VISUAL RESTORE
+          - Train Smarter. Together.
+          - Evaluation Command Center
+          - Deployment Command Center
+          - SARA-Logo.png
+          - SARAStartupSplash
+          "@ | Set-Content -Encoding utf8 (Join-Path $root "BUILD-IDENTITY.txt")
+
+          Write-Host "Visual restore executable verified: $exeHash"
 
       - name: Azure login for Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
@@ -127,7 +166,7 @@ jobs:
           endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\package\SARA-1.0.18-windows-x64
+          files-folder: ${{ github.workspace }}\package\SARA-1.0.18.1-windows-x64
           files-folder-filter: exe
           files-folder-recurse: true
           file-digest: SHA256
@@ -140,7 +179,7 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.18-windows-x64
+          $root = Resolve-Path package/SARA-1.0.18.1-windows-x64
           $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
           if (-not $executables) { throw "No executables found for signature verification" }
 
@@ -165,12 +204,12 @@ jobs:
           Production releases should be signed using Microsoft Artifact Signing.
           Repository: https://github.com/afterburn25/Sentinel
           Commit: ${{ github.sha }}
-          "@ | Set-Content -Encoding utf8 package/SARA-1.0.18-windows-x64/SIGNING-STATUS.txt
+          "@ | Set-Content -Encoding utf8 package/SARA-1.0.18.1-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.18-windows-x64
+          $root = Resolve-Path package/SARA-1.0.18.1-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -182,7 +221,7 @@ jobs:
       - name: Verify SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.18-windows-x64
+          $root = Resolve-Path package/SARA-1.0.18.1-windows-x64
           $manifest = Get-Content "$root/SHA256SUMS.txt"
           foreach ($line in $manifest) {
             if (-not $line.Trim()) { continue }
@@ -199,13 +238,14 @@ jobs:
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/SARA-1.0.18-windows-x64"
+          $root = "package/SARA-1.0.18.1-windows-x64"
           if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
           if (-not (Test-Path "$root/assets/SARA-Splash.png")) { throw "Approved SARA splash missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Logo.png")) { throw "Approved SARA logo missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Icon.png")) { throw "Approved SARA icon missing from package" }
+          if (-not (Test-Path "$root/BUILD-IDENTITY.txt")) { throw "Visual restore build identity missing from package" }
           $splash = Resolve-Path "$root/assets/SARA-Splash.png"
           $splashHash = (Get-FileHash $splash -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($splashHash -ne "dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4") {
@@ -241,11 +281,11 @@ jobs:
           }
           if (-not $isccPath) { throw "Inno Setup compiler ISCC.exe not found" }
 
-          $source = (Resolve-Path "package/SARA-1.0.18-windows-x64").Path
-          & $isccPath "/DMyAppVersion=1.0.18" "/DSourceDir=$source" "release/SARA-Installer.iss"
+          $source = (Resolve-Path "package/SARA-1.0.18.1-windows-x64").Path
+          & $isccPath "/DMyAppVersion=1.0.18.1" "/DSourceDir=$source" "release/SARA-Installer.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
-          $installer = "installer-output/SARA-Setup-1.0.18.exe"
+          $installer = "installer-output/SARA-Setup-1.0.18.1.exe"
           if (-not (Test-Path $installer)) { throw "SARA installer output missing" }
 
       - name: Sign SARA installer with Microsoft Artifact Signing
@@ -268,7 +308,7 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.18.exe"
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.18.1.exe"
           $signature = Get-AuthenticodeSignature $installer
           Write-Host "Installer signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
           if ($signature.Status -ne "Valid") { throw "Invalid or missing installer signature" }
@@ -276,22 +316,22 @@ jobs:
       - name: Create installer SHA-256
         shell: pwsh
         run: |
-          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.18.exe"
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.18.1.exe"
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  SARA-Setup-1.0.18.exe" | Set-Content -Encoding ascii "installer-output/SARA-Setup-1.0.18-SHA256.txt"
+          "$hash  SARA-Setup-1.0.18.1.exe" | Set-Content -Encoding ascii "installer-output/SARA-Setup-1.0.18.1-SHA256.txt"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: SARA-1.0.18-windows-x64
-          path: package/SARA-1.0.18-windows-x64/
+          name: SARA-1.0.18.1-windows-x64
+          path: package/SARA-1.0.18.1-windows-x64/
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload SARA installer package
         uses: actions/upload-artifact@v4
         with:
-          name: SARA-1.0.18-Installer-Package
+          name: SARA-1.0.18.1-Installer-Package
           path: installer-output/
           if-no-files-found: error
           retention-days: 30
