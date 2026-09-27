@@ -820,7 +820,7 @@ public:
 
     void ExportModelLabDiagnostics() {
         wchar_t file[MAX_PATH]{};
-        wcscpy_s(file,L"SARA-1.0.18.1-Visual-Restore-Diagnostics.txt");
+        wcscpy_s(file,L"SARA-1.0.18.2-Visual-Restore-Diagnostics.txt");
         OPENFILENAMEW ofn{};
         ofn.lStructSize=sizeof(ofn);
         ofn.hwndOwner=hwnd_;
@@ -832,7 +832,7 @@ public:
         if(!GetSaveFileNameW(&ofn)) return;
 
         std::ofstream out(std::filesystem::path(file),std::ios::trunc);
-        out<<"SARA 1.0.18.1 VISUAL RESTORE MODEL LAB DIAGNOSTICS\n";
+        out<<"SARA 1.0.18.2 PERSONA PROFILES MODEL LAB DIAGNOSTICS\n";
         out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
         out<<"Persona: "<<simSettings_.persona.name<<"\n";
         out<<"Age: "<<simSettings_.persona.age<<"\n";
@@ -1627,7 +1627,7 @@ private:
             target_->DrawLine(D2D1::Point2F(18,630),D2D1::Point2F(kSidebar-18,630),brush_.border.Get(),1);
             DrawIcon(IconKind::Gear,24,650,20,brush_.muted.Get());
             TextLine(L"Settings",56,648,kSidebar-70,28,smallFmt_.Get(),brush_.text.Get());
-            Text(L"SARA v1.0.18.1",24,694,170,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"SARA v1.0.18.2",24,694,170,20,smallFmt_.Get(),brush_.muted.Get());
             StatusDot(28,722,4,brush_.green.Get());
             Text(L"SARA Online",40,712,150,20,smallFmt_.Get(),brush_.green.Get());
             return;
@@ -1646,8 +1646,8 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"SARA v1.0.18.1",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"VISUAL RESTORE",24,696,170,18,tinyFmt_.Get(),brush_.cyan.Get());
+        Text(L"SARA v1.0.18.2",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"PERSONA PROFILES",24,696,170,18,tinyFmt_.Get(),brush_.cyan.Get());
         Text(L"Secure Local Mode",24,714,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
@@ -4733,7 +4733,7 @@ private:
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
         TextLine(sub,x+20,y+52,contentW-40,24,bodyFmt_.Get(),brush_.muted.Get());
         Rounded(x+20,y+94,contentW-40,78,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"Structured workspace reserved for SARA 1.0.18.1",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Structured workspace reserved for SARA 1.0.18.2",x+38,y+104,contentW-76,24,smallFmt_.Get(),brush_.cyan.Get());
         Text(L"This section is now a first-class Model Lab destination and will use the shared foundation, persona, LoRA, review, evaluation, and deployment state.",
             x+38,y+132,contentW-76,34,tinyFmt_.Get(),brush_.muted.Get());
     }
@@ -4944,12 +4944,12 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.18.1");
+            auto info=service.Check(url,"1.0.18.2");
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
                 statusText_=L"SARA update available";
             } else {
-                updateStatus_=L"Current version 1.0.18.1 is up to date";
+                updateStatus_=L"Current version 1.0.18.2 is up to date";
                 statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
@@ -4988,7 +4988,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SARA 1.0.18.1",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(L"SARA 1.0.18.2",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
@@ -5182,7 +5182,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
-        0,kClassName,L"SARA 1.0.18.1 VISUAL RESTORE - Synthetic Adaptive Response Agent",
+        0,kClassName,L"SARA 1.0.18.2 PERSONA PROFILES - Synthetic Adaptive Response Agent",
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
