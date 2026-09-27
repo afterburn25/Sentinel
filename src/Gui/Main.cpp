@@ -15,6 +15,7 @@
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/TriggerRules.hpp"
+#include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -392,6 +393,10 @@ public:
         personaAdapterRegistry_.Load(runtime_->root/"persona-adapters.tsv");
         trainingJobRegistry_.Load(runtime_->root/"training-jobs.tsv");
         triggerRules_.Load(runtime_->root/"trigger-rules.tsv");
+        trainingData_.Load(runtime_->root/"training-data.tsv");
+        trainingCaptured_=(int)trainingData_.Examples().size();
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
         if(foundationRegistry_.Models().empty()) {
             foundationRegistry_.EnsureBase(simSettings_.model.empty()?"Original Base Model":simSettings_.model,"base");
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
@@ -508,6 +513,7 @@ public:
             else if (b.id==L"foundation_approve") ApproveSelectedFoundation();
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
             else if (b.id==L"foundation_rollback") RollbackFoundation();
+            else if (b.id==L"dataset_snapshot") CreateDatasetSnapshot();
             else if (b.id==L"job_new") CreateTrainingJob();
             else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
             else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
@@ -730,6 +736,7 @@ private:
     sentinel::simulation::PersonaAdapterRegistry personaAdapterRegistry_;
     sentinel::simulation::TrainingJobRegistry trainingJobRegistry_;
     sentinel::simulation::TriggerRuleRegistry triggerRules_;
+    sentinel::simulation::TrainingDataRegistry trainingData_;
     int selectedRegistryModel_{-1};
     int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
@@ -2174,6 +2181,16 @@ private:
         } else statusText_=L"No archived LoRA is available for rollback";
     }
 
+    void CreateDatasetSnapshot() {
+        if(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)==0) {
+            statusText_=L"Approve at least one training example before creating a dataset snapshot";
+            return;
+        }
+        auto& snap=trainingData_.CreateSnapshot("SARA Dataset "+std::to_string(trainingData_.Snapshots().size()+1));
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+        statusText_=L"Created dataset snapshot "+Widen(snap.name);
+    }
+
     void CreateTrainingJob() {
         std::string foundation="SARA Foundation";
         if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()) {
@@ -2183,7 +2200,9 @@ private:
             const auto& f=foundationRegistry_.Models()[0];
             foundation=f.name+" "+f.version;
         }
-        std::string dataset="approved-captures-"+std::to_string(trainingApproved_);
+        std::string dataset;
+        if(!trainingData_.Snapshots().empty()) dataset=trainingData_.Snapshots().back().id;
+        else dataset="approved-captures-"+std::to_string(trainingApproved_);
         trainingJobRegistry_.Create(foundation,dataset);
         trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
         statusText_=L"Training job queued";
@@ -2248,23 +2267,59 @@ private:
     }
 
     void CaptureLatestTrainingExample() {
-        if(simContext_.history.empty()) {
-            statusText_=L"No conversation turn is available to capture";
+        if(simContext_.history.size()<2) {
+            statusText_=L"A user/model turn pair is required before capture";
             return;
         }
-        ++trainingCaptured_;
-        ++trainingReviewPending_;
+
+        std::string input,original;
+        for(auto it=simContext_.history.rbegin(); it!=simContext_.history.rend(); ++it) {
+            if(original.empty() && it->speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject) {
+                original=it->text;
+                continue;
+            }
+            if(!original.empty() && it->speaker==sentinel::simulation::ChatTurn::Speaker::Investigator) {
+                input=it->text;
+                break;
+            }
+        }
+        if(input.empty() || original.empty()) {
+            statusText_=L"No complete conversational pair is available to capture";
+            return;
+        }
+
+        std::string foundationId;
+        int fi=foundationRegistry_.ActiveIndex();
+        if(fi<0 && !foundationRegistry_.Models().empty()) fi=0;
+        if(fi>=0 && fi<(int)foundationRegistry_.Models().size()) foundationId=foundationRegistry_.Models()[(size_t)fi].id;
+
+        std::string adapterId;
+        int ai=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        if(ai>=0 && ai<(int)personaAdapterRegistry_.Adapters().size()) adapterId=personaAdapterRegistry_.Adapters()[(size_t)ai].id;
+
+        trainingData_.Capture(
+            simSettings_.persona.name,foundationId,adapterId,currentConversationId_,
+            input,original,"Operator correction pending",original);
+        trainingData_.Save(runtime_->root/"training-data.tsv");
+
+        trainingCaptured_=(int)trainingData_.Examples().size();
+        trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+        trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
         statusText_=L"Training example captured for review";
     }
 
     void ApproveTrainingCapture() {
-        if(trainingReviewPending_<=0) {
-            statusText_=L"No captured training example is awaiting review";
-            return;
+        for(size_t i=trainingData_.Examples().size(); i>0; --i) {
+            if(trainingData_.Examples()[i-1].state==sentinel::simulation::TrainingExampleState::Review) {
+                trainingData_.SetState(i-1,sentinel::simulation::TrainingExampleState::Approved);
+                trainingData_.Save(runtime_->root/"training-data.tsv");
+                trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
+                trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
+                statusText_=L"Training example approved for dataset promotion";
+                return;
+            }
         }
-        --trainingReviewPending_;
-        ++trainingApproved_;
-        statusText_=L"Training example approved for dataset promotion";
+        statusText_=L"No captured training example is awaiting review";
     }
 
     void RegisterCurrentModel() {
@@ -2672,6 +2727,63 @@ private:
         }
     }
 
+    void DrawModelLabDatasets(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float rightW=350.0f;
+        const float leftW=contentW-rightW-gap;
+
+        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Datasets",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Reviewed training examples and immutable dataset snapshots.",x+18,y+40,leftW-190,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"dataset_snapshot",L"Create Snapshot",x+leftW-152,y+14,134,30,true);
+
+        TextLine(L"EXAMPLE",x+28,y+78,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PERSONA",x+140,y+78,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+302,y+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"INPUT / TARGET",x+406,y+78,leftW-434,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+102;
+        int shown=0;
+        for(size_t i=trainingData_.Examples().size(); i>0 && shown<4; --i,++shown) {
+            const auto& e=trainingData_.Examples()[i-1];
+            Rounded(x+18,yy,leftW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(Widen(e.id),x+28,yy+4,100,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(e.persona),x+140,yy+4,150,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(e.state)),x+302,yy+4,92,22,tinyFmt_.Get(),
+                e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():
+                e.state==sentinel::simulation::TrainingExampleState::Review?brush_.yellow.Get():brush_.muted.Get());
+            TextLine(Widen(e.input),x+406,yy+2,leftW-434,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(e.targetResponse),x+406,yy+28,leftW-434,20,tinyFmt_.Get(),brush_.muted.Get());
+            yy+=66;
+        }
+        if(shown==0) {
+            Rounded(x+18,yy,leftW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No captured examples yet. Use Train → Capture for Review.",x+34,yy+10,leftW-68,40,bodyFmt_.Get(),brush_.muted.Get());
+        }
+
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Dataset Snapshots",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Snapshots freeze approved examples for reproducible jobs.",rx+18,y+42,rightW-36,36,tinyFmt_.Get(),brush_.muted.Get());
+
+        float sy=y+92;
+        int sshown=0;
+        for(size_t i=trainingData_.Snapshots().size(); i>0 && sshown<4; --i,++sshown) {
+            const auto& s=trainingData_.Snapshots()[i-1];
+            Rounded(rx+18,sy,rightW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(Widen(s.name),rx+30,sy+4,rightW-60,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(s.id)+L" • "+std::to_wstring(s.exampleIds.size())+L" approved examples",
+                rx+30,sy+29,rightW-60,18,tinyFmt_.Get(),brush_.cyan.Get());
+            sy+=66;
+        }
+        if(sshown==0) TextLine(L"No snapshots yet.",rx+28,sy,rightW-56,28,smallFmt_.Get(),brush_.muted.Get());
+
+        TextLine(L"Captured",rx+18,y+322,78,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingData_.Examples().size()),rx+102,y+318,54,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Approved",rx+166,y+322,78,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)),rx+250,y+318,54,24,smallFmt_.Get(),brush_.green.Get());
+    }
+
     void DrawModelLabJobs(float x,float y,float contentW) {
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
@@ -2824,7 +2936,7 @@ private:
             case ModelLabSection::Overview: DrawModelLabOverview(x,bodyY,contentW); break;
             case ModelLabSection::Train: DrawModelLabTrain(x,bodyY,contentW); break;
             case ModelLabSection::Datasets:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Datasets",L"Curate versioned datasets, snapshots, quality, lineage, import, and export."); break;
+                DrawModelLabDatasets(x,bodyY,contentW); break;
             case ModelLabSection::Personas:
                 DrawModelLabPersonas(x,bodyY,contentW); break;
             case ModelLabSection::FoundationForks:
