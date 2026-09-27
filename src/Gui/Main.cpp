@@ -1221,6 +1221,40 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
+            if(page_==Page::ModelLab || page_==Page::Trainer) {
+                const float startY=(float)kHeader+18.0f;
+                const float firstRowY=startY+42.0f;
+                const int idx=(int)((y-firstRowY)/44.0f);
+                if(y>=firstRowY && idx>=0 && idx<8) {
+                    if(idx==0) page_=Page::ModelLab;
+                    else if(idx==1) page_=Page::Trainer;
+                    else if(idx==2) statusText_=L"Datasets workspace is next in the controlled hybrid-UI recovery";
+                    else if(idx==3) statusText_=L"Personas & LoRAs workspace will be restored from the 1.0.15 persona backend";
+                    else if(idx==4) statusText_=L"Foundation Forks workspace will reuse the recovered 1.0.15 trainer backend";
+                    else if(idx==5) statusText_=L"Jobs workspace will surface the recovered training job registry";
+                    else if(idx==6) statusText_=L"Evaluation workspace remains quarantined until its backend is selectively restored";
+                    else if(idx==7) statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
+                    ApplyPageControls();
+                    InvalidateRect(hwnd_,nullptr,FALSE);
+                    return;
+                }
+
+                const float utilityY=startY+42.0f+8*44.0f+22.0f;
+                if(y>=utilityY && y<utilityY+40.0f) {
+                    page_=Page::Dashboard;
+                    ApplyPageControls();
+                    InvalidateRect(hwnd_,nullptr,FALSE);
+                    return;
+                }
+                if(y>=utilityY+44.0f && y<utilityY+84.0f) {
+                    page_=Page::Settings;
+                    ApplyPageControls();
+                    InvalidateRect(hwnd_,nullptr,FALSE);
+                    return;
+                }
+                return;
+            }
+
             int idx=(int)((y-kHeader-16)/44);
             if (idx>=0&&idx<13) {
                 page_=(Page)idx;
@@ -1950,6 +1984,52 @@ private:
     }
 
     void DrawSidebar() {
+        if(page_==Page::ModelLab || page_==Page::Trainer) {
+            const wchar_t* names[]={
+                L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+                L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+            };
+            const IconKind icons[]={
+                IconKind::Home,IconKind::Chat,IconKind::Database,IconKind::Folder,
+                IconKind::Chain,IconKind::Document,IconKind::Check,IconKind::Shield
+            };
+            constexpr float rowH=44.0f;
+            const float startY=(float)kHeader+18.0f;
+            const int active=page_==Page::ModelLab?0:1;
+
+            TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"TRAIN  •  ADAPT  •  EVALUATE  •  DEPLOY",
+                22,startY+15,176,18,tinyFmt_.Get(),brush_.muted.Get());
+
+            for(int i=0;i<8;i++) {
+                const float y=startY+42.0f+i*rowH;
+                const bool selected=i==active;
+                const bool restored=i<2;
+                if(selected) {
+                    target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
+                    target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
+                }
+                DrawIcon(icons[i],26,y+3,22,
+                    selected?brush_.cyan.Get():(restored?brush_.text.Get():brush_.muted.Get()));
+                TextLine(names[i],66,y+3,145,26,smallFmt_.Get(),
+                    selected?brush_.cyan.Get():(restored?brush_.text.Get():brush_.muted.Get()));
+            }
+
+            const float utilityY=startY+42.0f+8*rowH+22.0f;
+            target_->DrawLine(
+                D2D1::Point2F(20,utilityY-10),
+                D2D1::Point2F((float)kSidebar-20,utilityY-10),
+                brush_.border.Get(),1.0f);
+            DrawIcon(IconKind::Home,26,utilityY+3,22,brush_.muted.Get());
+            TextLine(L"Back to SARA",66,utilityY+3,145,26,smallFmt_.Get(),brush_.text.Get());
+            DrawIcon(IconKind::Gear,26,utilityY+47,22,brush_.muted.Get());
+            TextLine(L"Settings",66,utilityY+47,145,26,smallFmt_.Get(),brush_.text.Get());
+
+            Text(std::wstring(L"SARA v")+Widen(SARA_VERSION_STR),24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+            Text(L"Model Lab Recovery",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
+            return;
+        }
+
         static const wchar_t* names[]={
             L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Simulation Lab",
             L"Persona & Policy",L"Model Lab",L"Trainer",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
@@ -1970,6 +2050,28 @@ private:
     }
 
     void DrawHeader(float w) {
+        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer;
+        if(modelLabShell) {
+            Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
+            Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
+            Text(page_==Page::Trainer?L"TRAIN":L"OVERVIEW",kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Train  •  Adapt  •  Evaluate  •  Deploy",
+                kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
+
+            Rounded(w-405,16,255,42,brush_.sidebar.Get(),brush_.border.Get(),8);
+            DrawIcon(IconKind::Search,w-390,27,18,brush_.muted.Get());
+            Text(L"Search Model Lab...",w-366,27,190,22,smallFmt_.Get(),brush_.muted.Get());
+
+            Rounded(w-132,18,36,36,brush_.panel2.Get(),brush_.border.Get(),18);
+            Text(L"JD",w-122,26,22,20,smallFmt_.Get(),brush_.text.Get());
+            Text(L"SARA",w-84,20,58,18,smallFmt_.Get(),brush_.text.Get());
+            Text(L"Local Model Lab",w-84,36,88,18,tinyFmt_.Get(),brush_.muted.Get());
+
+            StatusDot(w-174,67,4,brush_.green.Get());
+            Text(L"Recovery baseline protected",w-163,58,153,18,tinyFmt_.Get(),brush_.green.Get());
+            return;
+        }
+
         Text(L"EVIDENCE",kSidebar+28,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
         Text(L"|",kSidebar+104,24,12,20,tinyFmt_.Get(),brush_.border.Get());
         Text(L"INTEGRITY",kSidebar+118,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
