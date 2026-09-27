@@ -1,8 +1,12 @@
-# SARA 1.0.16 — Synthetic Adaptive Response Agent
+# SARA 1.0.17 Development — Synthetic Adaptive Response Agent
 
 SARA is a native Windows C++20 application for local AI simulation, persona management, conversational training, model evaluation, deployment, evidence preservation, and controlled operations workflows.
 
 The repository name and some internal namespaces still use **Sentinel** for compatibility with the original codebase and existing data. The canonical product name is **SARA — Synthetic Adaptive Response Agent**.
+
+## SARA 1.0.17 development
+
+Current 1.0.17 work extends the validated 1.0.16 baseline with dataset lineage/import-export, persona adapter comparison/export, and richer training-run history.
 
 ## SARA 1.0.16 highlights
 
@@ -84,9 +88,9 @@ Each Windows build:
 2. builds with MSVC x64,
 3. runs CTest,
 4. verifies the CLI does not depend on `sqlite3.dll`,
-5. creates `SARA-1.0.16-windows-x64`,
+5. creates `SARA-1.0.17-windows-x64`,
 6. generates `SHA256SUMS.txt`,
-7. builds `SARA-Setup-1.0.16.exe` with Inno Setup,
+7. builds `SARA-Setup-1.0.17.exe` with Inno Setup,
 8. generates an installer SHA-256 file,
 9. uploads both portable and installer artifacts.
 
@@ -145,7 +149,7 @@ Start future development sessions with:
 
 ## Version
 
-- Product: **SARA 1.0.16**
+- Product: **SARA 1.0.17 development**
 - Native GUI: `SARA.exe`
 - Evidence container: SEV1
 - Audit canonicalization: audit-v1
