@@ -3187,10 +3187,8 @@ private:
     }
 
     static std::vector<std::byte> DeploymentAuditMetadata(const std::string& text) {
-        return {
-            reinterpret_cast<const std::byte*>(text.data()),
-            reinterpret_cast<const std::byte*>(text.data()+text.size())
-        };
+        const auto* begin=reinterpret_cast<const std::byte*>(text.data());
+        return std::vector<std::byte>(begin,begin+text.size());
     }
 
     int FindModelById(std::string_view id) const {
@@ -4069,47 +4067,93 @@ private:
 
     void DrawModelLabDeployment(float x,float y,float contentW) {
         const float gap=12.0f;
-        const float leftW=(contentW-gap)*0.58f;
-        const float rightW=contentW-leftW-gap;
+        const float inspectorW=390.0f;
+        const float listW=contentW-inspectorW-gap;
 
-        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Deployment",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Explicit promotion only — production stays pinned until activated.",x+18,y+40,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        Rounded(x,y,listW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Deployment & Rollback",x+18,y+12,290,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Pin, activate, audit, and roll back the complete SARA runtime stack.",x+18,y+40,listW-194,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"deployment_prepare",L"Prepare Package",x+listW-160,y+14,142,30,true);
 
-        int active=modelRegistry_.ActiveIndex();
-        Rounded(x+18,y+76,leftW-36,94,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"PRODUCTION MODEL",x+34,y+86,leftW-68,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(active>=0?Widen(modelRegistry_.Models()[(size_t)active].modelName):L"No active deployment",
-            x+34,y+108,leftW-68,30,h1Fmt_.Get(),active>=0?brush_.green.Get():brush_.muted.Get());
-        TextLine(active>=0?L"Pinned and rollback-protected":L"Approve and activate a candidate to deploy",
-            x+34,y+140,leftW-68,20,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"PACKAGE",x+28,y+78,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"CANDIDATE",x+150,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"EVAL",x+332,y+78,58,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+402,y+78,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LOCK",x+508,y+78,listW-536,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x+18,y+184,leftW-36,178,brush_.sidebar.Get(),brush_.border.Get(),9);
-        TextLine(L"Release Controls",x+34,y+194,180,24,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"model_activate",L"Activate Selected",x+34,y+232,140,32,true);
-        AddButton(L"model_rollback",L"Rollback",x+186,y+232,100,32,false);
-        Text(L"Candidates must be approved before activation. Rollback returns to the previous active model without rewriting model history.",
-            x+34,y+278,leftW-68,52,tinyFmt_.Get(),brush_.muted.Get());
+        float yy=y+102;
+        int shown=0;
+        for(size_t i=deploymentRegistry_.Packages().size();i>0 && shown<4;--i,++shown) {
+            const size_t idx=i-1;
+            const auto& p=deploymentRegistry_.Packages()[idx];
+            const bool selected=(int)idx==selectedDeployment_;
+            Rounded(x+18,yy,listW-36,58,selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                selected?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(Widen(p.id),x+28,yy+4,110,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(p.candidateName),x+150,yy+4,170,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(p.evaluationScore),x+332,yy+4,58,22,tinyFmt_.Get(),
+                p.evaluationScore>=80?brush_.green.Get():p.evaluationScore>=60?brush_.yellow.Get():brush_.red.Get());
+            TextLine(Widen(sentinel::simulation::ToString(p.stage)),x+402,yy+4,94,22,tinyFmt_.Get(),
+                p.stage==sentinel::simulation::DeploymentStage::Active?brush_.green.Get():
+                p.stage==sentinel::simulation::DeploymentStage::RolledBack?brush_.yellow.Get():brush_.cyan.Get());
+            TextLine(p.versionLocked?L"LOCKED":L"OPEN",x+508,yy+4,listW-536,22,tinyFmt_.Get(),
+                p.versionLocked?brush_.yellow.Get():brush_.muted.Get());
+            TextLine(Widen(p.foundationName)+L"  •  "+Widen(p.adapterName.empty()?"No LoRA":p.adapterName),
+                x+28,yy+31,listW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+            buttons_.push_back({{x+18,yy,x+listW-18,yy+58},L"deployment_select:"+std::to_wstring(idx)});
+            yy+=66;
+        }
+        if(shown==0) {
+            Rounded(x+18,yy,listW-36,62,brush_.sidebar.Get(),brush_.border.Get(),8);
+            Text(L"No deployment packages yet. Select an approved, evaluated candidate and choose Prepare Package.",
+                x+34,yy+10,listW-68,42,smallFmt_.Get(),brush_.muted.Get());
+        }
 
-        const float rx=x+leftW+gap;
-        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Runtime Stack",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Foundation",rx+18,y+62,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[(size_t)std::max(0,foundationRegistry_.ActiveIndex())].name):L"Base",
-            rx+118,y+58,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Persona",rx+18,y+96,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.name),rx+118,y+92,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"LoRA",rx+18,y+130,94,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(assignedPersonaLoRA_,rx+118,y+126,rightW-136,24,smallFmt_.Get(),brush_.cyan.Get());
+        const float rx=x+listW+gap;
+        Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Deployment Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        target_->DrawLine(D2D1::Point2F(rx+18,y+166),D2D1::Point2F(rx+rightW-18,y+166),brush_.border.Get(),1);
-        TextLine(L"Trigger Engine",rx+18,y+180,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(triggerRules_.Rules().size())+L" rules",rx+148,y+176,90,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Last match",rx+18,y+214,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastTriggerMatch_,rx+148,y+210,rightW-166,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Training jobs",rx+18,y+248,120,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(trainingJobRegistry_.Jobs().size()),rx+148,y+244,90,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Production weights change only through explicit deployment.",rx+18,y+302,rightW-36,42,tinyFmt_.Get(),brush_.green.Get());
+        if(selectedDeployment_>=0 && selectedDeployment_<(int)deploymentRegistry_.Packages().size()) {
+            const auto& p=deploymentRegistry_.Packages()[(size_t)selectedDeployment_];
+            ID2D1Brush* stageBrush=p.stage==sentinel::simulation::DeploymentStage::Active?brush_.green.Get():
+                p.stage==sentinel::simulation::DeploymentStage::RolledBack?brush_.yellow.Get():brush_.cyan.Get();
+            Badge(Widen(sentinel::simulation::ToString(p.stage)),rx+inspectorW-118,y+16,stageBrush,100);
+
+            TextLine(L"Candidate",rx+18,y+62,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.candidateName),rx+120,y+58,inspectorW-138,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Evaluation",rx+18,y+92,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.evaluationRunId)+L"  •  "+std::to_wstring(p.evaluationScore)+L"/100",
+                rx+120,y+88,inspectorW-138,24,smallFmt_.Get(),p.evaluationScore>=80?brush_.green.Get():brush_.yellow.Get());
+            TextLine(L"Foundation",rx+18,y+122,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.foundationName),rx+120,y+118,inspectorW-138,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Persona",rx+18,y+152,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.personaName),rx+120,y+148,inspectorW-138,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"LoRA",rx+18,y+182,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.adapterName.empty()?L"No adapter":Widen(p.adapterName),rx+120,y+178,inspectorW-138,24,smallFmt_.Get(),brush_.cyan.Get());
+
+            target_->DrawLine(D2D1::Point2F(rx+18,y+214),D2D1::Point2F(rx+inspectorW-18,y+214),brush_.border.Get(),1);
+            TextLine(L"Version lock",rx+18,y+226,98,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.versionLocked?L"LOCKED — runtime changes route through Deployment":L"Unlocked",
+                rx+120,y+222,inspectorW-138,30,tinyFmt_.Get(),p.versionLocked?brush_.yellow.Get():brush_.muted.Get());
+
+            AddButton(L"deployment_activate",L"Activate",rx+18,y+266,90,32,true);
+            AddButton(L"deployment_rollback",L"Rollback",rx+118,y+266,90,32,false);
+            AddButton(L"deployment_lock",p.versionLocked?L"Unlock":L"Lock",rx+218,y+266,72,32,false);
+            AddButton(L"deployment_export",L"Export",rx+300,y+266,72,32,false);
+
+            TextLine(L"Created",rx+18,y+314,72,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.createdUtc),rx+96,y+310,inspectorW-114,20,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Activated",rx+18,y+340,72,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.activatedUtc.empty()?L"Not yet":Widen(p.activatedUtc),rx+96,y+336,inspectorW-114,20,tinyFmt_.Get(),brush_.text.Get());
+            if(!p.previousDeploymentId.empty())
+                TextLine(L"Previous: "+Widen(p.previousDeploymentId),rx+18,y+360,inspectorW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            Text(L"Select a deployment package on the left. Packages pin the candidate model, foundation, persona adapter, and evaluation run as one auditable unit.",
+                rx+18,y+62,inspectorW-36,86,smallFmt_.Get(),brush_.muted.Get());
+            TextLine(deploymentRegistry_.HasActiveLockedDeployment()?L"Production runtime: LOCKED":L"Production runtime: no active lock",
+                rx+18,y+174,inspectorW-36,28,bodyFmt_.Get(),
+                deploymentRegistry_.HasActiveLockedDeployment()?brush_.yellow.Get():brush_.cyan.Get());
+        }
     }
 
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
