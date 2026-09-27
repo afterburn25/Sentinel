@@ -45,6 +45,13 @@ std::string JsonEscape(std::string_view input) {
     return out;
 }
 
+std::string HeaderSafe(std::string_view input) {
+    std::string out;
+    out.reserve(input.size());
+    for(char c:input) if(c!='\r' && c!='\n') out+=c;
+    return out;
+}
+
 std::string JsonUnescape(std::string_view input) {
     std::string out;
     out.reserve(input.size());
@@ -136,7 +143,7 @@ std::string HttpGetJson(const std::string& endpoint,const std::string& apiKey) {
     auto u=ParseUrl(endpoint);
     auto modelsPath=ModelsPathFromChatPath(u.path);
 
-    HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=WinHttpOpen(L"SARA/1.0.16",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
     if(!session) throw std::runtime_error("WinHttpOpen failed");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
 
@@ -231,7 +238,7 @@ public:
         const ModelContext& context) override
     {
         std::string system =
-            "You are the synthetic counterpart inside Sentinel Simulation Lab. This is a closed simulation only. "
+            "You are the synthetic counterpart inside SARA Simulation Lab. This is a closed simulation only. "
             "Stay strictly consistent with this configured fictional persona: " + context.personaSummary + " "
             "Conversation rules: answer the investigator's most recent message directly before adding anything else; "
             "use the recent conversation history to resolve pronouns, follow-ups, yes/no replies, and references such as 'that' or 'why'; "
@@ -244,6 +251,13 @@ public:
             "Human-style recall can be slightly approximate in wording while remaining faithful to the remembered facts. "
             "do not claim real-world actions occurred outside this simulation.";
 
+        if(!context.foundationName.empty() || !context.adapterName.empty()) {
+            system += " Resolved SARA runtime stack:";
+            if(!context.foundationName.empty()) system += " foundation=" + context.foundationName + ";";
+            if(!context.adapterName.empty()) system += " persona adapter=" + context.adapterName + ";";
+            if(!context.trainingMode.empty()) system += " mode=" + context.trainingMode + ";";
+        }
+
         if(!context.recalledMemory.empty()) {
             system += " Relevant earlier-conversation memory follows. Treat it as private background context, not as text to copy: " +
                 context.recalledMemory;
@@ -255,7 +269,7 @@ public:
         const ModelContext& context) override
     {
         std::string system =
-            "You are Sentinel's response-review assistant inside a closed Simulation Lab. "
+            "You are SARA's response-review assistant inside a closed Simulation Lab. "
             "Suggest one concise investigator reply that directly responds to the synthetic subject's latest message. "
             "Use the conversation history, preserve all configured persona facts, do not invent facts, "
             "avoid abrupt topic changes, and do not send anything automatically.";
@@ -288,7 +302,7 @@ private:
         json+="]}";
 
         auto u=ParseUrl(endpoint_);
-        HINTERNET session=WinHttpOpen(L"Sentinel/1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+        HINTERNET session=WinHttpOpen(L"SARA/1.0.16",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
         if(!session) throw std::runtime_error("WinHttpOpen failed");
         WinHttpSetTimeouts(session,10000,10000,30000,60000);
 
@@ -304,6 +318,10 @@ private:
 
         std::wstring headers=L"Content-Type: application/json\r\n";
         if(!apiKey_.empty()) headers+=L"Authorization: Bearer "+Widen(apiKey_)+L"\r\n";
+        if(!context.foundationId.empty()) headers+=L"X-SARA-Foundation-Id: "+Widen(HeaderSafe(context.foundationId))+L"\r\n";
+        if(!context.foundationName.empty()) headers+=L"X-SARA-Foundation: "+Widen(HeaderSafe(context.foundationName))+L"\r\n";
+        if(!context.adapterId.empty()) headers+=L"X-SARA-Adapter-Id: "+Widen(HeaderSafe(context.adapterId))+L"\r\n";
+        if(!context.adapterName.empty()) headers+=L"X-SARA-Adapter: "+Widen(HeaderSafe(context.adapterName))+L"\r\n";
 
         BOOL ok=WinHttpSendRequest(
             request,headers.c_str(),(DWORD)-1L,
