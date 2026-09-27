@@ -2136,25 +2136,26 @@ private:
         if(page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train) {
             const float x=kSidebar+28.0f, top=kHeader+18.0f;
             const float bodyY=top+116.0f;
+            const float mainY=bodyY+88.0f;
             const float contentW=w-x-28.0f;
-            const float rightW=350.0f;
+            const float rightW=390.0f;
             const float gap=12.0f;
             const float leftW=contentW-rightW-gap;
             if(ruleEditorOpen_) {
                 if(chatEdit_) ShowWindow(chatEdit_,SW_HIDE);
-                MoveControl(ruleNameEdit_,(int)(x+142),(int)(bodyY+74),(int)(leftW-164),30,TRUE);
-                MoveControl(rulePatternEdit_,(int)(x+142),(int)(bodyY+116),(int)(leftW-164),30,TRUE);
-                MoveControl(ruleResponsesEdit_,(int)(x+142),(int)(bodyY+158),(int)(leftW-164),94,TRUE);
-                MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
+                MoveControl(ruleNameEdit_,(int)(x+142),(int)(mainY+70),(int)(leftW-164),30,TRUE);
+                MoveControl(rulePatternEdit_,(int)(x+142),(int)(mainY+110),(int)(leftW-164),30,TRUE);
+                MoveControl(ruleResponsesEdit_,(int)(x+142),(int)(mainY+150),(int)(leftW-164),86,TRUE);
+                MoveControl(rulePriorityEdit_,(int)(x+142),(int)(mainY+246),110,30,TRUE);
             } else {
                 if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
-                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+252),(int)(leftW-296),32,TRUE);
-                MoveControl(trainingCategoryCombo_,(int)(x+leftW-152),(int)(bodyY+252),136,140,TRUE);
-                RECT correctionRect{10,5,std::max(24,(int)(leftW-316)),28};
+                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(mainY+230),(int)(leftW-300),34,TRUE);
+                MoveControl(trainingCategoryCombo_,(int)(x+leftW-154),(int)(mainY+230),138,140,TRUE);
+                RECT correctionRect{10,5,std::max(24,(int)(leftW-320)),30};
                 SendMessageW(trainingCorrectionEdit_,EM_SETRECTNP,0,(LPARAM)&correctionRect);
-                const int composerW=std::max(220,(int)(leftW-212));
+                const int composerW=std::max(220,(int)(leftW-218));
                 const int composerH=44;
-                MoveControl(chatEdit_,(int)(x+16),(int)(bodyY+292),composerW,composerH,TRUE);
+                MoveControl(chatEdit_,(int)(x+16),(int)(mainY+276),composerW,composerH,TRUE);
                 RECT composerTextRect{12,8,std::max(24,composerW-12),composerH-7};
                 SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
             }
@@ -3718,73 +3719,89 @@ private:
 
     void DrawModelLabTrain(float x,float y,float contentW) {
         const float gap=12.0f;
-        const float rightW=350.0f;
+        const float heroH=76.0f;
+        const float mainY=y+heroH+12.0f;
+        const float rightW=390.0f;
         const float leftW=contentW-rightW-gap;
-        const float panelH=382.0f;
+        const float panelH=350.0f;
 
-        GlowPanel(x,y,leftW,panelH,true,11);
+        // Approved hybrid hero strip.
+        GlowPanel(x,y,contentW,heroH,true,12);
+        Rounded(x+1,y+1,contentW*0.66f,heroH-2,brush_.deepPanel.Get(),nullptr,12);
+        TextLine(L"Train Smarter. Together.",x+22,y+8,420,32,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Human feedback. Model growth. Real-world impact.",x+22,y+38,440,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Every conversation makes SARA stronger.",x+contentW*0.48f,y+15,contentW*0.18f,42,smallFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+
+        const float personaX=x+contentW-286;
+        Rounded(personaX,y+9,268,58,brush_.sidebar.Get(),brush_.border.Get(),10);
+        target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(personaX+30,y+38),20,20),brush_.panel2.Get());
+        DrawIcon(IconKind::Chat,personaX+19,y+27,22,brush_.cyan.Get());
+        TextLine(L"ACTIVE PERSONA",personaX+60,y+13,150,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
+            personaX+60,y+28,154,23,smallFmt_.Get(),brush_.text.Get());
+        StatusDot(personaX+62,y+56,3,brush_.green.Get());
+        TextLine(L"Online",personaX+72,y+46,80,18,tinyFmt_.Get(),brush_.green.Get());
+
+        // Conversational trainer.
+        GlowPanel(x,mainY,leftW,panelH,true,11);
         if(ruleEditorOpen_) {
-            TextLine(L"Trigger Rule Manager",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
-            TextLine(L"Deterministic rules execute before generation. Terminal rules stop fall-through.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
-            AddButton(L"ml_rule_new",L"New Rule",x+leftW-274,y+14,78,28,false);
-            AddButton(L"ml_rule_cancel",L"Back to Trainer",x+leftW-186,y+14,168,28,false);
+            TextLine(L"Trigger Rule Manager",x+18,mainY+8,300,30,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Deterministic rules execute before generation. Terminal rules stop fall-through.",
+                x+18,mainY+34,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_new",L"New Rule",x+leftW-274,mainY+10,78,28,false);
+            AddButton(L"ml_rule_cancel",L"Back to Trainer",x+leftW-186,mainY+10,168,28,false);
 
-            TextLine(L"Name",x+20,y+74,108,30,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Match pattern",x+20,y+116,108,30,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Responses",x+20,y+158,108,30,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Use || between alternate responses",x+20,y+184,108,58,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Priority",x+20,y+264,108,30,tinyFmt_.Get(),brush_.muted.Get());
-            AddButton(L"ml_rule_terminal",ruleEditorTerminal_?L"Terminal: YES":L"Terminal: NO",x+270,y+264,116,30,false);
-            AddButton(L"ml_rule_save",L"Save Rule",x+20,y+318,110,34,true);
-            AddButton(L"ml_rule_delete",L"Delete",x+142,y+318,90,34,false);
+            TextLine(L"Name",x+20,mainY+70,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Match pattern",x+20,mainY+110,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Responses",x+20,mainY+150,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Use || between alternate responses",x+20,mainY+176,108,54,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Priority",x+20,mainY+246,108,30,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_rule_terminal",ruleEditorTerminal_?L"Terminal: YES":L"Terminal: NO",x+270,mainY+246,116,30,false);
+            AddButton(L"ml_rule_save",L"Save Rule",x+20,mainY+294,110,34,true);
+            AddButton(L"ml_rule_delete",L"Delete",x+142,mainY+294,90,34,false);
         } else {
-            TextLine(L"Conversational Trainer",x+18,y+10,300,30,h1Fmt_.Get(),brush_.text.Get());
-            TextLine(L"Train through natural conversation, corrections, and reviewed examples.",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
-            Badge(L"LIVE",x+leftW-72,y+14,brush_.green.Get(),54);
+            TextLine(L"Conversational Trainer",x+18,mainY+8,300,30,h1Fmt_.Get(),brush_.text.Get());
+            Badge(L"LIVE",x+226,mainY+11,brush_.green.Get(),54);
+            TextLine(L"Mode",x+leftW-250,mainY+12,42,20,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(x+leftW-204,mainY+8,186,28,brush_.deepPanel.Get(),brush_.border.Get(),8);
+            TextLine(TrainingModeName(),x+leftW-194,mainY+8,166,28,tinyFmt_.Get(),brush_.cyan.Get());
 
-            // Persona + mode context chips.
-            Rounded(x+18,y+62,200,30,brush_.deepPanel.Get(),brush_.blue.Get(),15);
-            TextLine(L"Persona: "+Widen(simSettings_.persona.name.empty()?std::string("Default"):simSettings_.persona.name),
-                x+28,y+64,180,26,tinyFmt_.Get(),brush_.cyan.Get());
-            Rounded(x+226,y+62,200,30,brush_.deepPanel.Get(),brush_.cyan.Get(),15);
-            TextLine(L"Mode: "+TrainingModeName(),x+236,y+64,180,26,tinyFmt_.Get(),brush_.text.Get());
-
-            const float transcriptTop=y+100;
-            const float transcriptBottom=y+224;
+            const float transcriptTop=mainY+48;
+            const float transcriptBottom=mainY+216;
             const int total=(int)simContext_.history.size();
             const int visible=std::min(3,total);
-            float yy=transcriptBottom-visible*62.0f;
-            for(int i=std::max(0,total-visible); i<total; ++i) {
+            float yy=transcriptBottom-visible*56.0f;
+            for(int i=std::max(0,total-visible);i<total;++i) {
                 const auto& turn=simContext_.history[(size_t)i];
-                const bool operatorTurn=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
-                const float bubbleW=std::min(leftW-120.0f,570.0f);
-                const float bx=operatorTurn?x+leftW-bubbleW-20:x+52;
-                if(!operatorTurn) {
-                    target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+32,yy+21),15,15),brush_.panel2.Get());
-                    DrawIcon(IconKind::Chat,x+23,yy+12,18,brush_.cyan.Get());
+                const bool user=turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator;
+                const float bubbleW=std::min(leftW-128.0f,560.0f);
+                const float bx=user?x+leftW-bubbleW-18:x+52;
+                if(!user) {
+                    target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+30,yy+20),15,15),brush_.panel2.Get());
+                    DrawIcon(IconKind::Chat,x+21,yy+11,18,brush_.cyan.Get());
                 }
-                Rounded(bx,yy,bubbleW,52,operatorTurn?brush_.panel2.Get():brush_.deepPanel.Get(),
-                    operatorTurn?brush_.blue.Get():brush_.border.Get(),10);
-                TextLine(operatorTurn?L"You":L"SARA",bx+12,yy+2,bubbleW-24,16,tinyFmt_.Get(),operatorTurn?brush_.cyan.Get():brush_.green.Get());
-                Text(Widen(turn.text),bx+12,yy+18,bubbleW-24,29,tinyFmt_.Get(),brush_.text.Get());
-                yy+=62;
+                Rounded(bx,yy,bubbleW,48,user?brush_.blue.Get():brush_.deepPanel.Get(),
+                    user?brush_.cyan.Get():brush_.border.Get(),10);
+                TextLine(user?L"You":L"SARA",bx+12,yy+1,bubbleW-24,15,tinyFmt_.Get(),
+                    user?brush_.text.Get():brush_.cyan.Get());
+                Text(Widen(turn.text),bx+12,yy+16,bubbleW-24,27,tinyFmt_.Get(),brush_.text.Get());
+                yy+=56;
             }
             if(total==0) {
-                TextLine(L"Start a training conversation. Correct SARA naturally, then capture useful examples for review.",
-                    x+42,transcriptTop+36,leftW-84,42,smallFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+                TextLine(L"Start a training conversation with SARA. Corrections remain reviewable before they become dataset examples.",
+                    x+44,transcriptTop+48,leftW-88,42,smallFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
             }
 
-            // Fast correction chips from the approved concept.
-            const float chipsY=y+226;
+            const float chipsY=mainY+210;
             AddButton(L"ml_quick_clarity",L"Improve Clarity",x+18,chipsY,112,24,false);
             AddButton(L"ml_quick_example",L"Add Example",x+138,chipsY,96,24,false);
             AddButton(L"ml_quick_simplify",L"Simplify",x+242,chipsY,78,24,false);
             AddButton(L"ml_quick_technical",L"More Technical",x+328,chipsY,110,24,false);
 
-            TextLine(L"Correction / instruction",x+18,y+254,104,32,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Category",x+leftW-152,y+238,136,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(L"Correction / instruction",x+18,mainY+232,104,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Category",x+leftW-154,mainY+210,138,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
 
-            const float composerY=y+292;
+            const float composerY=mainY+276;
             const float sendW=88.0f, icon=44.0f;
             const float sendX=x+leftW-16-sendW;
             const float attachX=sendX-8-icon;
@@ -3793,57 +3810,99 @@ private:
             AddIconButton(L"sim_attach",IconKind::Paperclip,attachX,composerY,icon,false);
             AddButton(L"sim_send",L"Send",sendX,composerY,sendW,44,true);
 
-            AddButton(L"ml_capture",L"Capture for Review",x+18,y+344,150,28,false);
-            AddButton(L"ml_approve",L"Approve Latest",x+178,y+344,118,28,false);
-            TextLine(L"Human review required before dataset promotion.",x+310,y+344,leftW-328,28,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"ml_capture",L"Capture",x+18,mainY+322,82,24,false);
+            AddButton(L"ml_approve",L"Approve Latest",x+108,mainY+322,106,24,false);
+            TextLine(L"Human review required before dataset promotion.",x+226,mainY+322,leftW-244,24,tinyFmt_.Get(),brush_.muted.Get());
         }
 
-        // Right-side Training Context panel from the approved hybrid concept.
+        // Training pipeline / active job column.
         const float rx=x+leftW+gap;
-        GlowPanel(rx,y,rightW,panelH,false,11);
-        TextLine(L"Training Context",rx+16,y+10,rightW-110,28,h1Fmt_.Get(),brush_.text.Get());
-        StatusDot(rx+rightW-72,y+24,4,brush_.green.Get());
-        TextLine(L"Live",rx+rightW-60,y+12,42,24,tinyFmt_.Get(),brush_.green.Get());
-
-        auto contextCard=[&](float cy,const std::wstring& label,const std::wstring& value,IconKind icon,ID2D1Brush* accent) {
-            Rounded(rx+14,cy,rightW-28,52,brush_.deepPanel.Get(),brush_.border.Get(),8);
-            Rounded(rx+24,cy+10,30,30,brush_.panel2.Get(),accent,8);
-            DrawIcon(icon,rx+31,cy+17,16,accent);
-            TextLine(label,rx+66,cy+6,rightW-96,17,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(value,rx+66,cy+22,rightW-96,23,smallFmt_.Get(),brush_.text.Get());
-        };
-
-        contextCard(y+48,L"CURRENT PERSONA",
-            Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
-            IconKind::Chat,brush_.cyan.Get());
-        contextCard(y+108,L"TRAINING MODE",TrainingModeName(),IconKind::Gear,brush_.blue.Get());
-
-        std::wstring dataset=L"No dataset selected";
-        if(!trainingData_.Snapshots().empty()) dataset=Widen(trainingData_.Snapshots().back().name);
-        contextCard(y+168,L"DATASET",dataset,IconKind::Database,brush_.green.Get());
-
-        TextLine(L"Review Queue",rx+16,y+232,100,22,smallFmt_.Get(),brush_.text.Get());
-        Badge(std::to_wstring(trainingReviewPending_)+L" pending",rx+rightW-112,y+232,
-            trainingReviewPending_?brush_.yellow.Get():brush_.green.Get(),94);
-
-        TextLine(L"Recent Examples",rx+16,y+264,120,20,tinyFmt_.Get(),brush_.muted.Get());
-        float ey=y+286;
-        int eshown=0;
-        for(size_t i=trainingData_.Examples().size();i>0 && eshown<3;--i,++eshown) {
-            const auto& e=trainingData_.Examples()[i-1];
-            StatusDot(rx+22,ey+9,3,e.state==sentinel::simulation::TrainingExampleState::Approved?brush_.green.Get():brush_.cyan.Get());
-            std::wstring label=Widen(e.category)+L" • "+Widen(e.input);
-            if(label.size()>44) label=label.substr(0,41)+L"...";
-            TextLine(label,rx+34,ey,rightW-50,18,tinyFmt_.Get(),brush_.text.Get());
-            ey+=20;
+        GlowPanel(rx,mainY,rightW,126,false,11);
+        TextLine(L"Training Pipeline",rx+16,mainY+8,rightW-32,24,h1Fmt_.Get(),brush_.text.Get());
+        const wchar_t* stages[]={L"Capture",L"Review",L"Dataset",L"Train",L"Evaluate",L"Deploy"};
+        const float stageGap=(rightW-54)/5.0f;
+        for(int i=0;i<6;i++) {
+            const float sx=rx+27+i*stageGap;
+            const bool done=i==0?trainingCaptured_>0:
+                i==1?trainingApproved_>0:
+                i==2?!trainingData_.Snapshots().empty():
+                i==3?!trainingJobRegistry_.Jobs().empty():
+                i==4?!evaluationRuns_.Runs().empty():
+                modelRegistry_.ActiveIndex()>=0;
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(sx,mainY+62),11,11),done?brush_.cyan.Get():brush_.border.Get(),2);
+            if(done) target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(sx,mainY+62),5,5),brush_.cyan.Get());
+            if(i<5) target_->DrawLine(D2D1::Point2F(sx+12,mainY+62),D2D1::Point2F(sx+stageGap-12,mainY+62),brush_.border.Get(),1);
+            TextLine(stages[i],sx-27,mainY+82,54,18,tinyFmt_.Get(),done?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
-        if(eshown==0)
-            TextLine(L"No reviewed examples yet.",rx+22,ey,rightW-44,20,tinyFmt_.Get(),brush_.muted.Get());
 
-        target_->DrawLine(D2D1::Point2F(rx+16,y+350),D2D1::Point2F(rx+rightW-16,y+350),brush_.border.Get(),1);
-        TextLine(L"Rules: "+std::to_wstring(triggerRules_.Rules().size())+L"  •  Last match: "+lastTriggerMatch_,
-            rx+16,y+354,rightW-114,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"ml_rules_manage",L"Rules",rx+rightW-92,y+352,74,24,false);
+        GlowPanel(rx,mainY+138,rightW,212,false,11);
+        TextLine(L"Active Training Job",rx+16,mainY+148,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+        const sentinel::simulation::TrainingJob* activeJob=nullptr;
+        for(const auto& job:trainingJobRegistry_.Jobs()) {
+            if(job.state=="RUNNING") { activeJob=&job; break; }
+        }
+        if(!activeJob && !trainingJobRegistry_.Jobs().empty()) activeJob=&trainingJobRegistry_.Jobs().back();
+        if(activeJob) {
+            Badge(Widen(activeJob->state),rx+rightW-104,mainY+150,
+                activeJob->state=="COMPLETED"?brush_.green.Get():activeJob->state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get(),86);
+            TextLine(Widen(activeJob->baseModel),rx+16,mainY+181,rightW-32,22,smallFmt_.Get(),brush_.text.Get());
+            Rounded(rx+16,mainY+210,rightW-32,10,brush_.deepPanel.Get(),nullptr,5);
+            if(activeJob->progress>0)
+                Rounded(rx+16,mainY+210,(rightW-32)*(activeJob->progress/100.0f),10,brush_.cyan.Get(),nullptr,5);
+            TextLine(std::to_wstring(activeJob->progress)+L"%",rx+rightW-58,mainY+225,40,20,tinyFmt_.Get(),brush_.cyan.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            TextLine(L"Dataset",rx+16,mainY+250,72,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(activeJob->dataset),rx+92,mainY+246,rightW-110,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Created",rx+16,mainY+278,72,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(activeJob->createdUtc.empty()?"This session":activeJob->createdUtc),rx+92,mainY+274,rightW-110,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Runtime stays isolated from live inference.",rx+16,mainY+316,rightW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            TextLine(L"No active training job.",rx+18,mainY+196,rightW-36,24,smallFmt_.Get(),brush_.muted.Get());
+            AddButton(L"job_new",L"New Training Job",rx+18,mainY+234,138,30,true);
+        }
+
+        // Bottom strip: resource/state/activity/actions.
+        const float bottomY=mainY+362;
+        const float stripGap=10.0f;
+        const float stripW=(contentW-stripGap*2.0f)/3.0f;
+
+        GlowPanel(x,bottomY,stripW,110,false,10);
+        TextLine(L"System Resources",x+14,bottomY+8,stripW-28,22,smallFmt_.Get(),brush_.text.Get());
+        const wchar_t* resLabels[]={L"GPU",L"CPU",L"RAM"};
+        const int resValues[]={42,28,56};
+        for(int i=0;i<3;i++) {
+            const float cx=x+46+i*((stripW-70)/3.0f);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+58),26,26),brush_.border.Get(),5);
+            const float angle=(float)(resValues[i]*3.6*3.14159265/180.0);
+            const float ex=cx+26*std::sin(angle);
+            const float ey=bottomY+58-26*std::cos(angle);
+            target_->DrawLine(D2D1::Point2F(cx,bottomY+58),D2D1::Point2F(ex,ey),i==2?brush_.green.Get():brush_.cyan.Get(),3);
+            TextLine(std::to_wstring(resValues[i])+L"%",cx-24,bottomY+45,48,22,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(resLabels[i],cx-24,bottomY+78,48,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+
+        const float ax=x+stripW+stripGap;
+        GlowPanel(ax,bottomY,stripW,110,false,10);
+        TextLine(L"Recent Activity",ax+14,bottomY+8,stripW-28,22,smallFmt_.Get(),brush_.text.Get());
+        float ay=bottomY+36;
+        int activity=0;
+        for(size_t i=trainingJobRegistry_.Jobs().size();i>0 && activity<3;--i,++activity) {
+            const auto& job=trainingJobRegistry_.Jobs()[i-1];
+            StatusDot(ax+20,ay+8,3,job.state=="COMPLETED"?brush_.green.Get():brush_.cyan.Get());
+            TextLine(Widen(job.state)+L" • "+Widen(job.baseModel),ax+30,ay,stripW-44,18,tinyFmt_.Get(),brush_.text.Get());
+            ay+=22;
+        }
+        if(activity==0) {
+            StatusDot(ax+20,ay+8,3,brush_.green.Get());
+            TextLine(L"Model Lab ready",ax+30,ay,stripW-44,18,tinyFmt_.Get(),brush_.text.Get());
+        }
+
+        const float qx=ax+stripW+stripGap;
+        GlowPanel(qx,bottomY,stripW,110,false,10);
+        TextLine(L"Quick Actions",qx+14,bottomY+8,stripW-28,22,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"job_new",L"New Training Job",qx+14,bottomY+36,116,24,false);
+        AddButton(L"ml_go_personas",L"Manage Personas",qx+140,bottomY+36,116,24,false);
+        AddButton(L"ml_go_datasets",L"Datasets",qx+14,bottomY+68,116,24,false);
+        AddButton(L"model_eval",L"Evaluate",qx+140,bottomY+68,116,24,true);
     }
 
     void DrawModelLabPersonas(float x,float y,float contentW) {
