@@ -1,10 +1,26 @@
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include <algorithm>
+#include <chrono>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 
 namespace sentinel::simulation {
 namespace {
+std::string NowUtc() {
+    auto now=std::chrono::system_clock::now();
+    auto t=std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm,&t);
+#else
+    gmtime_r(&t,&tm);
+#endif
+    std::ostringstream out;
+    out<<std::put_time(&tm,"%Y-%m-%dT%H:%M:%SZ");
+    return out.str();
+}
 std::string Escape(const std::string& s) {
     std::string o;
     for(char c:s) {
@@ -56,7 +72,8 @@ std::string ToString(TrainingExampleState state) {
 
 TrainingExample& TrainingDataRegistry::Capture(
     std::string persona,std::string foundationId,std::string adapterId,std::string sourceConversationId,
-    std::string input,std::string originalResponse,std::string correction,std::string targetResponse)
+    std::string input,std::string originalResponse,std::string correction,std::string targetResponse,
+    std::string category)
 {
     TrainingExample e;
     e.id="example-"+std::to_string(examples_.size()+1);
@@ -68,6 +85,8 @@ TrainingExample& TrainingDataRegistry::Capture(
     e.originalResponse=std::move(originalResponse);
     e.correction=std::move(correction);
     e.targetResponse=std::move(targetResponse);
+    e.category=category.empty()?"Behavior":std::move(category);
+    e.createdUtc=NowUtc();
     e.state=TrainingExampleState::Review;
     examples_.push_back(std::move(e));
     return examples_.back();
@@ -101,7 +120,8 @@ void TrainingDataRegistry::Save(const std::filesystem::path& path) const {
     for(const auto& e:examples_) {
         out<<"E\t"<<Escape(e.id)<<"\t"<<Escape(e.persona)<<"\t"<<Escape(e.foundationId)<<"\t"<<Escape(e.adapterId)
            <<"\t"<<Escape(e.sourceConversationId)<<"\t"<<Escape(e.input)<<"\t"<<Escape(e.originalResponse)
-           <<"\t"<<Escape(e.correction)<<"\t"<<Escape(e.targetResponse)<<"\t"<<(int)e.state<<"\n";
+           <<"\t"<<Escape(e.correction)<<"\t"<<Escape(e.targetResponse)<<"\t"<<Escape(e.category)
+           <<"\t"<<Escape(e.createdUtc)<<"\t"<<Escape(e.reviewer)<<"\t"<<(int)e.state<<"\n";
     }
     for(const auto& s:snapshots_) {
         std::string ids;
@@ -118,9 +138,20 @@ void TrainingDataRegistry::Load(const std::filesystem::path& path) {
     while(std::getline(in,line)) {
         auto p=Split(line,'\t');
         if(p.empty()) continue;
-        if(p[0]=="E" && p.size()==11) {
+        if(p[0]=="E" && (p.size()==11 || p.size()==14)) {
             try {
-                examples_.push_back({p[1],p[2],p[3],p[4],p[5],p[6],p[7],p[8],p[9],(TrainingExampleState)std::stoi(p[10])});
+                TrainingExample e;
+                e.id=p[1]; e.persona=p[2]; e.foundationId=p[3]; e.adapterId=p[4];
+                e.sourceConversationId=p[5]; e.input=p[6]; e.originalResponse=p[7];
+                e.correction=p[8]; e.targetResponse=p[9];
+                if(p.size()==14) {
+                    e.category=p[10]; e.createdUtc=p[11]; e.reviewer=p[12];
+                    e.state=(TrainingExampleState)std::stoi(p[13]);
+                } else {
+                    e.category="Behavior";
+                    e.state=(TrainingExampleState)std::stoi(p[10]);
+                }
+                examples_.push_back(std::move(e));
             } catch(...) {}
         } else if(p[0]=="D" && p.size()==4) {
             DatasetSnapshot s{p[1],p[2],{}};
