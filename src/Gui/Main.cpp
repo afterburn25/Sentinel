@@ -55,7 +55,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Messaging, Supervisor, Agency, Settings };
-enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
+enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat, Smile, Paperclip };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
 
@@ -460,6 +460,8 @@ public:
             else if (b.id==L"integrity") VerifyAudit();
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
+            else if (b.id==L"sim_emoji") InsertComposerEmoji();
+            else if (b.id==L"sim_attach") SelectComposerAttachment();
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset" || b.id==L"sim_new_chat") ResetSimulation();
             else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
@@ -752,6 +754,13 @@ private:
         buttons_.push_back({{x,y,x+w,y+h},id});
     }
 
+    void AddIconButton(const std::wstring& id,IconKind icon,float x,float y,float size,bool primary=false) {
+        Rounded(x,y,size,size,primary?brush_.blue.Get():brush_.panel2.Get(),primary?brush_.cyan.Get():brush_.border.Get(),8);
+        const float iconSize=size*0.54f;
+        DrawIcon(icon,x+(size-iconSize)/2.0f,y+(size-iconSize)/2.0f,iconSize,brush_.text.Get());
+        buttons_.push_back({{x,y,x+size,y+size},id});
+    }
+
     void StatusDot(float x,float y,float r,ID2D1Brush* color) {
         target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x,y),r,r),color);
     }
@@ -854,6 +863,45 @@ private:
                 target_->DrawLine(D2D1::Point2F(x+s*0.30f,y+s*0.72f),D2D1::Point2F(x+s*0.23f,y+s*0.90f),color,t);
                 target_->DrawLine(D2D1::Point2F(x+s*0.23f,y+s*0.90f),D2D1::Point2F(x+s*0.46f,y+s*0.73f),color,t);
                 break;
+            case IconKind::Smile:
+                target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.36f,s*0.36f),color,t);
+                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.37f,y+s*0.42f),s*0.035f,s*0.035f),color);
+                target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x+s*0.63f,y+s*0.42f),s*0.035f,s*0.035f),color);
+                {
+                    ComPtr<ID2D1PathGeometry> geo; factory_->CreatePathGeometry(&geo);
+                    ComPtr<ID2D1GeometrySink> sink; geo->Open(&sink);
+                    sink->BeginFigure(D2D1::Point2F(x+s*0.34f,y+s*0.58f),D2D1_FIGURE_BEGIN_HOLLOW);
+                    sink->AddBezier(D2D1::BezierSegment(
+                        D2D1::Point2F(x+s*0.40f,y+s*0.70f),
+                        D2D1::Point2F(x+s*0.60f,y+s*0.70f),
+                        D2D1::Point2F(x+s*0.66f,y+s*0.58f)));
+                    sink->EndFigure(D2D1_FIGURE_END_OPEN); sink->Close();
+                    target_->DrawGeometry(geo.Get(),color,t);
+                }
+                break;
+            case IconKind::Paperclip: {
+                ComPtr<ID2D1PathGeometry> geo; factory_->CreatePathGeometry(&geo);
+                ComPtr<ID2D1GeometrySink> sink; geo->Open(&sink);
+                sink->BeginFigure(D2D1::Point2F(x+s*0.66f,y+s*0.22f),D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.83f,y+s*0.38f),
+                    D2D1::Point2F(x+s*0.83f,y+s*0.62f),
+                    D2D1::Point2F(x+s*0.66f,y+s*0.78f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.43f,y+s*0.91f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.27f,y+s*0.98f),
+                    D2D1::Point2F(x+s*0.12f,y+s*0.83f),
+                    D2D1::Point2F(x+s*0.20f,y+s*0.66f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.55f,y+s*0.31f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.63f,y+s*0.23f),
+                    D2D1::Point2F(x+s*0.75f,y+s*0.31f),
+                    D2D1::Point2F(x+s*0.67f,y+s*0.40f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.37f,y+s*0.70f));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN); sink->Close();
+                target_->DrawGeometry(geo.Get(),color,t);
+                break;
+            }
         }
     }
 
@@ -1248,9 +1296,17 @@ private:
 
         UpdateSimulationScrollbar();
 
-        // The EDIT control itself is the full composer.  Its formatting rectangle
-        // vertically centers the caret/text without shrinking the textbox.
-        AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
+        // Composer: message field + icon-only emoji/attachment controls + primary Send.
+        // Icons are vector-drawn so rendering is consistent across Windows installations.
+        const float composerY=y+452;
+        const float sendW=116.0f;
+        const float iconSize=46.0f;
+        const float sendX=x+chatW-18-sendW;
+        const float attachX=sendX-8-iconSize;
+        const float emojiX=attachX-8-iconSize;
+        AddIconButton(L"sim_emoji",IconKind::Smile,emojiX,composerY,iconSize,false);
+        AddIconButton(L"sim_attach",IconKind::Paperclip,attachX,composerY,iconSize,false);
+        AddButton(L"sim_send",L"Send",sendX,composerY,sendW,46,true);
 
         // Model / scenario card
         const float rx=x+chatW+gap;
@@ -1342,7 +1398,7 @@ private:
 
             MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
 
-            const int composerW=(int)(chatW-236);
+            const int composerW=(int)(chatW-266);
             const int composerH=46;
             MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
             RECT composerTextRect{12,9,std::max(24,composerW-12),composerH-8};
@@ -1635,6 +1691,34 @@ private:
         } catch(const std::exception& e) {
             statusText_=L"Conversation load failed: "+Widen(e.what());
         }
+    }
+
+    void InsertComposerEmoji() {
+        if(!chatEdit_) return;
+        DWORD start=0,end=0;
+        SendMessageW(chatEdit_,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
+        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)L"🙂");
+        SetFocus(chatEdit_);
+        statusText_=L"Emoji inserted";
+    }
+
+    void SelectComposerAttachment() {
+        wchar_t file[MAX_PATH]{};
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"All Files\0*.*\0Images\0*.png;*.jpg;*.jpeg;*.gif;*.webp\0\0";
+        ofn.nFilterIndex=1;
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+        std::filesystem::path selected(file);
+        const std::wstring marker=L" [Attachment: "+selected.filename().wstring()+L"]";
+        SendMessageW(chatEdit_,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);
+        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)marker.c_str());
+        SetFocus(chatEdit_);
+        statusText_=L"Attachment added to draft";
     }
 
     void SendSimulationMessage() {
@@ -2042,76 +2126,122 @@ private:
     }
 
     void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab",L"Evaluate, approve, activate, and roll back model candidates");
+        PageTitle(L"Model Lab / Trainer",L"Train, adapt, evaluate, and deploy SARA from one polished workspace");
         const float x=kSidebar+28.0f;
-        const float y=kHeader+104.0f;
+        const float y=kHeader+102.0f;
         const float contentW=w-x-28.0f;
+        const float gap=12.0f;
 
-        Rounded(x,y,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Registry Actions",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        // Workspace navigation: shared information architecture for 1.0.16.
+        const wchar_t* tabs[]={L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"};
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            Rounded(x+i*(tabW+tabGap),y,tabW,34,i==0?brush_.panel2.Get():brush_.sidebar.Get(),i==0?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabs[i],x+i*(tabW+tabGap)+6,y+1,tabW-12,32,tinyFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
 
-        const float gap=10.0f;
-        const float bw=136.0f;
-        float bx=x+18;
-        AddButton(L"model_register",L"Register Current",bx,y+50,bw,36,true); bx+=bw+gap;
-        AddButton(L"model_eval",L"Evaluate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_approve",L"Approve",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_activate",L"Activate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_rollback",L"Rollback",bx,y+50,bw,36,false);
+        // Context bar: foundation / persona / adapter / training mode.
+        const float cy=y+46;
+        const float contextW=(contentW-gap*3.0f)/4.0f;
+        const std::wstring modelName=selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()
+            ? Widen(modelRegistry_.Models()[(size_t)selectedRegistryModel_].modelName)
+            : (modelStatus_.find(L"Built-in")!=std::wstring::npos?L"Built-in test model":modelStatus_);
+        const std::wstring contextValues[]={
+            modelName,
+            Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
+            L"Persona adapter / LoRA",
+            L"Conversational + LoRA"
+        };
+        const wchar_t* contextLabels[]={L"FOUNDATION MODEL",L"PERSONA",L"ASSIGNED LORA",L"TRAINING MODE"};
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(contextW+gap);
+            Rounded(cx,cy,contextW,64,brush_.panel.Get(),brush_.border.Get(),9);
+            TextLine(contextLabels[i],cx+14,cy+7,contextW-28,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(contextValues[i],cx+14,cy+26,contextW-28,28,smallFmt_.Get(),i==0?brush_.cyan.Get():brush_.text.Get());
+        }
 
-        Rounded(x,y+116,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Registered Models",x+18,y+128,260,30,h1Fmt_.Get(),brush_.text.Get());
+        // Main executive control-center split.
+        const float mainY=cy+76;
+        const float rightW=std::max(330.0f,contentW*0.34f);
+        const float leftW=contentW-rightW-gap;
 
-        TextLine(L"MODEL",x+34,y+165,280,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+332,y+165,100,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+452,y+165,72,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"LATENCY",x+544,y+165,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+646,y+165,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+        Rounded(x,mainY,leftW,292,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Model Registry",x+18,mainY+10,240,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Candidate models, evaluation state, and activation",x+18,mainY+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"model_register",L"Register Current",x+leftW-438,mainY+14,126,32,false);
+        AddButton(L"model_eval",L"Evaluate",x+leftW-302,mainY+14,88,32,false);
+        AddButton(L"model_activate",L"Activate",x+leftW-204,mainY+14,88,32,true);
+        AddButton(L"model_rollback",L"Rollback",x+leftW-106,mainY+14,88,32,false);
 
-        float yy=y+191;
+        TextLine(L"MODEL",x+28,mainY+72,210,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+250,mainY+72,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+344,mainY+72,62,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+418,mainY+72,76,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=mainY+96;
         if(modelRegistry_.Models().empty()) {
-            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
-                x+34,yy+7,contentW-68,38,bodyFmt_.Get(),brush_.muted.Get());
+            Rounded(x+18,yy,leftW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No registered candidates yet",x+32,yy+6,leftW-64,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Connect a model in Simulation Lab, then register it here.",x+32,yy+28,leftW-64,20,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
+                const auto& m=modelRegistry_.Models()[i];
+                const bool selected=(int)i==selectedRegistryModel_;
+                Rounded(x+18,yy,leftW-36,50,selected?brush_.panel2.Get():brush_.sidebar.Get(),selected?brush_.cyan.Get():brush_.border.Get(),8);
+                TextLine(Widen(m.modelName),x+28,yy+3,210,22,smallFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+250,yy+3,82,22,tinyFmt_.Get(),
+                    m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+                TextLine(std::to_wstring(m.evaluationScore),x+344,yy+3,62,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(m.latencyMs)+L" ms",x+418,yy+3,76,22,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(m.endpoint),x+28,yy+26,leftW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+18,yy,x+leftW-18,yy+50},L"regmodel:"+std::to_wstring(i)});
+                yy+=58;
+            }
         }
 
-        for(size_t i=0;i<modelRegistry_.Models().size() && i<5;i++) {
-            const auto& m=modelRegistry_.Models()[i];
-            const bool selected=(int)i==selectedRegistryModel_;
-            Rounded(x+22,yy,contentW-44,52,selected?brush_.panel2.Get():brush_.sidebar.Get(),
-                selected?brush_.cyan.Get():brush_.border.Get(),8);
-            TextLine(Widen(m.modelName),x+34,yy+4,280,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+332,yy+4,100,22,tinyFmt_.Get(),
-                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
-            TextLine(std::to_wstring(m.evaluationScore),x+452,yy+4,72,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+544,yy+4,80,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(m.endpoint),x+646,yy+4,contentW-680,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"ID "+Widen(m.id),x+34,yy+28,contentW-68,18,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{x+22,yy,x+contentW-22,yy+52},L"regmodel:"+std::to_wstring(i)});
-            yy+=62;
+        const float rx=x+leftW+gap;
+        Rounded(rx,mainY,rightW,138,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Pipeline",rx+16,mainY+10,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        const wchar_t* stages[]={L"Capture",L"Review",L"Dataset",L"Train",L"Evaluate",L"Deploy"};
+        const float stageGap=(rightW-52)/5.0f;
+        for(int i=0;i<6;i++) {
+            const float sx=rx+26+i*stageGap;
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(sx,mainY+69),12,12),i==0?brush_.cyan.Get():brush_.border.Get(),2);
+            if(i==0) target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(sx,mainY+69),6,6),brush_.cyan.Get());
+            if(i<5) target_->DrawLine(D2D1::Point2F(sx+13,mainY+69),D2D1::Point2F(sx+stageGap-13,mainY+69),brush_.border.Get(),1);
+            TextLine(stages[i],sx-28,mainY+88,56,20,tinyFmt_.Get(),i==0?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
-        Rounded(x,y+456,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Last Evaluation",x+18,y+468,220,30,h1Fmt_.Get(),brush_.text.Get());
-
-        const float metricY=y+516;
-        Rounded(x+22,metricY,110,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Score",x+34,metricY+4,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(lastEvaluation_.score),x+34,metricY+20,86,22,bodyFmt_.Get(),
+        Rounded(rx,mainY+150,rightW,142,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation & Deployment",rx+16,mainY+160,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Latest score",rx+18,mainY+200,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),rx+18,mainY+218,92,34,bigFmt_.Get(),
             lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
-
-        Rounded(x+144,metricY,180,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Policy",x+156,metricY+4,156,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked",x+156,metricY+20,156,22,smallFmt_.Get(),
+        TextLine(L"Policy",rx+126,mainY+200,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked",rx+126,mainY+220,92,24,smallFmt_.Get(),
             lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
-
-        Rounded(x+336,metricY,220,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Persona consistency",x+348,metricY+4,196,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Contradiction",x+348,metricY+20,196,22,smallFmt_.Get(),
+        TextLine(L"Persona",rx+228,mainY+200,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Review",rx+228,mainY+220,rightW-244,24,smallFmt_.Get(),
             lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
 
-        if(!lastEvaluation_.warnings.empty()) {
-            TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
+        // Bottom metrics and quick actions.
+        const float by=mainY+306;
+        const float metricW=(contentW-gap*3.0f)/4.0f;
+        struct SmallMetric { const wchar_t* label; std::wstring value; const wchar_t* sub; ID2D1Brush* accent; };
+        SmallMetric metrics[]={
+            {L"REGISTERED MODELS",std::to_wstring(modelRegistry_.Models().size()),L"candidates & active",brush_.cyan.Get()},
+            {L"PERSONA",Widen(simSettings_.persona.name.empty()?std::string("Default"):simSettings_.persona.name),L"current training context",brush_.blue.Get()},
+            {L"BEST EVAL",std::to_wstring(lastEvaluation_.score),L"latest candidate score",lastEvaluation_.score>=80?brush_.green.Get():brush_.yellow.Get()},
+            {L"DEPLOYMENT",modelRegistry_.ActiveIndex()>=0?L"Active":L"Not deployed",L"rollback protected",modelRegistry_.ActiveIndex()>=0?brush_.green.Get():brush_.muted.Get()}
+        };
+        for(int i=0;i<4;i++) {
+            const float mx=x+i*(metricW+gap);
+            Rounded(mx,by,metricW,86,brush_.panel.Get(),brush_.border.Get(),9);
+            target_->DrawLine(D2D1::Point2F(mx+12,by+1),D2D1::Point2F(mx+metricW-12,by+1),metrics[i].accent,1.5f);
+            TextLine(metrics[i].label,mx+14,by+9,metricW-28,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,mx+14,by+28,metricW-28,28,bodyFmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,mx+14,by+58,metricW-28,18,tinyFmt_.Get(),metrics[i].accent);
         }
     }
 
