@@ -353,7 +353,7 @@ public:
         if (HasAny(m,{"i am ","i'm ","im ","i was ","my ","i have ","i've ","ive "}) && m.find('?')==std::string::npos) {
             const auto topic=TopicPhrase(investigatorMessage,3);
             if(!topic.empty()) {
-                switch(turn%4) {
+                switch((turn+context.variationSeed)%4) {
                     case 0: return "Oh wow. How did the "+topic+" situation happen?";
                     case 1: return "Okay, that makes more sense. How long has "+topic+" been going on?";
                     case 2: return "I get you. So what happened next with "+topic+"?";
