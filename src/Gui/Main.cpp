@@ -2230,7 +2230,31 @@ private:
                 suggestion?brush_.yellow.Get():(investigator?brush_.cyan.Get():brush_.green.Get()));
             TextLine(L"Copy",bx+bubbleW-54,yy+5,42,17,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
             buttons_.push_back({{bx+bubbleW-58,yy+3,bx+bubbleW-8,yy+21},L"copy:"+std::to_wstring(i)});
-            Text(Widen(turn.text),bx+12,yy+25,bubbleW-24,40,smallFmt_.Get(),brush_.text.Get());
+            if(auto imageId=ParseImageMarker(turn.text)) {
+                auto imageInfo=GetConversationImage(*imageId);
+                if(imageInfo) {
+                    auto bitmap=LoadD2DBitmap(imageInfo->path);
+                    if(bitmap) {
+                        const auto size=bitmap->GetSize();
+                        const float boxW=64.0f, boxH=40.0f;
+                        const float scale=std::min(boxW/std::max(1.0f,size.width),boxH/std::max(1.0f,size.height));
+                        const float drawW=size.width*scale;
+                        const float drawH=size.height*scale;
+                        target_->DrawBitmap(
+                            bitmap.Get(),
+                            D2D1::RectF(bx+12,yy+26,bx+12+drawW,yy+26+drawH),
+                            1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+                    }
+                    const std::wstring label=imageInfo->caption.empty()
+                        ? Widen(imageInfo->originalName)
+                        : Widen(imageInfo->caption);
+                    Text(label,bx+84,yy+27,bubbleW-96,36,smallFmt_.Get(),brush_.text.Get());
+                } else {
+                    TextLine(L"[Image unavailable]",bx+12,yy+28,bubbleW-24,32,smallFmt_.Get(),brush_.muted.Get());
+                }
+            } else {
+                Text(Widen(turn.text),bx+12,yy+25,bubbleW-24,40,smallFmt_.Get(),brush_.text.Get());
+            }
             simMessageRects_.push_back({{bx,yy,bx+bubbleW,yy+72},(size_t)i});
             yy+=82;
         }
