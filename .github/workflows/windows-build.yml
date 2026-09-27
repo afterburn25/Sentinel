@@ -135,7 +135,7 @@ jobs:
         shell: pwsh
         run: |
           @"
-          SENTINEL DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
+          SARA DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
 
           This build was produced without a configured trusted code-signing identity.
           Windows SmartScreen may show "Windows protected your PC" for unsigned or low-reputation builds.
@@ -165,10 +165,76 @@ jobs:
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
 
+      - name: Build SARA installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+          }
+
+          $candidates = @(
+            "$env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $isccPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $isccPath) {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $isccPath = $cmd.Source }
+          }
+          if (-not $isccPath) { throw "Inno Setup compiler ISCC.exe not found" }
+
+          $source = (Resolve-Path "package/SARA-1.0.16-windows-x64").Path
+          & $isccPath "/DMyAppVersion=1.0.16" "/DSourceDir=$source" "release/SARA-Installer.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+          $installer = "installer-output/SARA-Setup-1.0.16.exe"
+          if (-not (Test-Path $installer)) { throw "SARA installer output missing" }
+
+      - name: Sign SARA installer with Microsoft Artifact Signing
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\installer-output
+          files-folder-filter: exe
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: SARA Synthetic Adaptive Response Agent Installer
+          description-url: https://github.com/afterburn25/Sentinel
+
+      - name: Verify SARA installer signature
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.16.exe"
+          $signature = Get-AuthenticodeSignature $installer
+          Write-Host "Installer signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") { throw "Invalid or missing installer signature" }
+
+      - name: Create installer SHA-256
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path "installer-output/SARA-Setup-1.0.16.exe"
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  SARA-Setup-1.0.16.exe" | Set-Content -Encoding ascii "installer-output/SARA-Setup-1.0.16-SHA256.txt"
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
           name: SARA-1.0.16-windows-x64
           path: package/SARA-1.0.16-windows-x64/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload SARA installer package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-1.0.16-Installer-Package
+          path: installer-output/
           if-no-files-found: error
           retention-days: 30
