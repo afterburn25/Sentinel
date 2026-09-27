@@ -35,6 +35,12 @@ public static class SaraRecoveryUiNative {
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
     [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
 
     [DllImport("user32.dll")]
@@ -52,7 +58,8 @@ function Find-SaraWindow {
     param(
         [int]$ProcessId,
         [string]$ClassName,
-        [int]$TimeoutSeconds
+        [int]$TimeoutSeconds,
+        [switch]$RequireVisible
     )
 
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -68,6 +75,9 @@ function Find-SaraWindow {
             $sb = New-Object Text.StringBuilder 256
             [void][SaraRecoveryUiNative]::GetClassName($hwnd, $sb, $sb.Capacity)
             if ($sb.ToString() -eq $ClassName) {
+                if ($RequireVisible -and -not [SaraRecoveryUiNative]::IsWindowVisible($hwnd)) {
+                    return $true
+                }
                 $script:matchedWindow = $hwnd
                 return $false
             }
@@ -102,7 +112,9 @@ function Capture-SaraWindow {
         throw ("Unexpected SARA capture dimensions " + $width + "x" + $height + " for " + $Path)
     }
 
-    [void][SaraRecoveryUiNative]::ShowWindow($Window, 9)
+    if (-not [SaraRecoveryUiNative]::IsWindowVisible($Window)) {
+        throw "Refusing to capture hidden SARA window: $Path"
+    }
     [void][SaraRecoveryUiNative]::SetForegroundWindow($Window)
     Start-Sleep -Milliseconds 250
 
@@ -165,12 +177,24 @@ $OutputDir = (Resolve-Path $OutputDir).Path
 
 $proc = Start-Process -FilePath $AppPath -WorkingDirectory (Split-Path $AppPath) -PassThru
 try {
-    $splash = Find-SaraWindow -ProcessId $proc.Id -ClassName "SARAStartupSplash" -TimeoutSeconds 5
+    $splash = Find-SaraWindow -ProcessId $proc.Id -ClassName "SARAStartupSplash" -TimeoutSeconds 5 -RequireVisible
     Capture-SaraWindow -Window $splash -Path (Join-Path $OutputDir "01-splash.png")
 
     # 1.0.15 deliberately keeps the splash up for at least seven seconds.
-    # Requiring the real main class proves startup completed rather than hanging forever.
-    $main = Find-SaraWindow -ProcessId $proc.Id -ClassName "SARANativeWindow" -TimeoutSeconds 25
+    # The recovery gate only passes if SARA naturally reveals its main window.
+    $main = Find-SaraWindow -ProcessId $proc.Id -ClassName "SARANativeWindow" -TimeoutSeconds 30 -RequireVisible
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([DateTime]::UtcNow -lt $deadline -and [SaraRecoveryUiNative]::IsWindowVisible($splash)) {
+        Start-Sleep -Milliseconds 100
+    }
+    if ([SaraRecoveryUiNative]::IsWindowVisible($splash)) {
+        throw "SARA main window became visible but startup splash did not close."
+    }
+    if ([SaraRecoveryUiNative]::IsHungAppWindow($main)) {
+        throw "SARA main window is visible but Windows reports the application is hung."
+    }
+
     Start-Sleep -Milliseconds 800
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "02-dashboard.png")
 
