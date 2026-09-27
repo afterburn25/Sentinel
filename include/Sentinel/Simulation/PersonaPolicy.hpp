@@ -15,7 +15,7 @@ enum class AgeKnowledgeState {
 
 struct PersonaProfile {
     std::string name{"Alex"};
-    int age{21};
+    int age{13};
     std::string location{"Synthetic test environment"};
     std::string gender{"Unspecified"};
     std::string pronouns{"Unspecified"};
