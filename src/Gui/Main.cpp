@@ -12,6 +12,7 @@
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
@@ -431,7 +432,10 @@ public:
         triggerRules_.Load(runtime_->root/"trigger-rules.tsv");
         trainingData_.Load(runtime_->root/"training-data.tsv");
         evaluationRuns_.Load(runtime_->root/"evaluation-runs.tsv");
+        deploymentRegistry_.Load(runtime_->root/"deployment-registry.tsv");
         if(!evaluationRuns_.Runs().empty()) selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
+        if(!deploymentRegistry_.Packages().empty())
+            selectedDeployment_=deploymentRegistry_.ActiveIndex()>=0?deploymentRegistry_.ActiveIndex():(int)deploymentRegistry_.Packages().size()-1;
         trainingCaptured_=(int)trainingData_.Examples().size();
         trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
         trainingApproved_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved);
@@ -677,6 +681,15 @@ public:
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
+            else if (b.id==L"deployment_prepare") PrepareDeploymentPackage();
+            else if (b.id==L"deployment_activate") ActivateSelectedDeployment();
+            else if (b.id==L"deployment_rollback") RollbackDeployment();
+            else if (b.id==L"deployment_lock") ToggleDeploymentLock();
+            else if (b.id==L"deployment_export") ExportDeploymentManifest();
+            else if (b.id.rfind(L"deployment_select:",0)==0) {
+                selectedDeployment_=(int)std::stol(b.id.substr(18));
+                statusText_=L"Deployment package selected";
+            }
             else if (b.id.rfind(L"mltab:",0)==0) {
                 modelLabSection_=(ModelLabSection)std::clamp((int)std::stol(b.id.substr(6)),0,7);
                 statusText_=L"Model Lab workspace changed";
@@ -954,8 +967,10 @@ private:
     int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
+    sentinel::simulation::DeploymentRegistry deploymentRegistry_;
     int selectedEvaluationRun_{-1};
     int comparisonEvaluationRun_{-1};
+    int selectedDeployment_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
@@ -2511,6 +2526,10 @@ private:
     }
 
     void ActivatePersonaAdapter(size_t index) {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment to change the active stack.";
+            return;
+        }
         if(index>=personaAdapterRegistry_.Adapters().size()) return;
         const auto persona=personaAdapterRegistry_.Adapters()[index].personaName;
         if(persona!=simSettings_.persona.name) {
@@ -2524,6 +2543,10 @@ private:
     }
 
     void RollbackPersonaAdapter() {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment rollback.";
+            return;
+        }
         if(personaAdapterRegistry_.Rollback(simSettings_.persona.name)) {
             personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
             ResolvePersonaAdapter();
@@ -2693,6 +2716,10 @@ private:
     }
 
     void ActivateSelectedFoundation() {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment to change the foundation.";
+            return;
+        }
         if(selectedFoundation_<0 || selectedFoundation_>=(int)foundationRegistry_.Models().size()) return;
         foundationRegistry_.Activate((size_t)selectedFoundation_);
         foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
@@ -2704,6 +2731,10 @@ private:
     }
 
     void RollbackFoundation() {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment rollback.";
+            return;
+        }
         if(foundationRegistry_.Rollback()) {
             selectedFoundation_=foundationRegistry_.ActiveIndex();
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
@@ -3116,6 +3147,10 @@ private:
     }
 
     void ActivateSelectedRegistryModel() {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment to activate another package.";
+            return;
+        }
         if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) return;
         auto& item=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
         modelRegistry_.Activate((size_t)selectedRegistryModel_);
@@ -3133,6 +3168,10 @@ private:
     }
 
     void RollbackRegistryModel() {
+        if(deploymentRegistry_.HasActiveLockedDeployment()) {
+            statusText_=L"Runtime is version-locked. Use Deployment rollback.";
+            return;
+        }
         if(!modelRegistry_.Rollback()) {
             statusText_=L"No prior active model is available for rollback";
             return;
@@ -3145,6 +3184,195 @@ private:
         }
         modelRegistry_.Save(runtime_->root/"model-registry.tsv");
         statusText_=L"Model rollback completed";
+    }
+
+    static std::vector<std::byte> DeploymentAuditMetadata(const std::string& text) {
+        return {
+            reinterpret_cast<const std::byte*>(text.data()),
+            reinterpret_cast<const std::byte*>(text.data()+text.size())
+        };
+    }
+
+    int FindModelById(std::string_view id) const {
+        for(size_t i=0;i<modelRegistry_.Models().size();++i)
+            if(modelRegistry_.Models()[i].id==id) return (int)i;
+        return -1;
+    }
+
+    int FindFoundationById(std::string_view id) const {
+        for(size_t i=0;i<foundationRegistry_.Models().size();++i)
+            if(foundationRegistry_.Models()[i].id==id) return (int)i;
+        return -1;
+    }
+
+    int FindAdapterById(std::string_view id) const {
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size();++i)
+            if(personaAdapterRegistry_.Adapters()[i].id==id) return (int)i;
+        return -1;
+    }
+
+    bool ApplyDeploymentPackage(size_t index) {
+        if(index>=deploymentRegistry_.Packages().size()) return false;
+        const auto& package=deploymentRegistry_.Packages()[index];
+
+        const int mi=FindModelById(package.candidateId);
+        if(mi<0) {
+            statusText_=L"Deployment model is no longer registered";
+            return false;
+        }
+        auto& modelItem=modelRegistry_.Models()[(size_t)mi];
+        if(modelItem.stage!=sentinel::simulation::ModelStage::Approved &&
+           modelItem.stage!=sentinel::simulation::ModelStage::Active) {
+            statusText_=L"Deployment model is not approved";
+            return false;
+        }
+
+        modelRegistry_.Activate((size_t)mi);
+        if(modelRegistry_.ActiveIndex()!=mi) return false;
+        model_=sentinel::simulation::CreateOpenAICompatibleModel(modelItem.endpoint,modelItem.modelName);
+        selectedRegistryModel_=mi;
+        SetWindowTextW(modelEndpointEdit_,Widen(modelItem.endpoint).c_str());
+        SetWindowTextW(modelNameEdit_,Widen(modelItem.modelName).c_str());
+        simSettings_.endpoint=modelItem.endpoint;
+        simSettings_.model=modelItem.modelName;
+        modelStatus_=L"Deployment: "+Widen(package.id)+L" • "+Widen(modelItem.modelName);
+
+        const int fi=FindFoundationById(package.foundationId);
+        if(fi>=0) {
+            selectedFoundation_=fi;
+            const auto& foundation=foundationRegistry_.Models()[(size_t)fi];
+            if(!foundation.immutableBase)
+                foundationRegistry_.Activate((size_t)fi);
+            simContext_.foundationId=foundation.id;
+            simContext_.foundationName=foundation.name+" "+foundation.version;
+        } else {
+            simContext_.foundationId=package.foundationId;
+            simContext_.foundationName=package.foundationName;
+        }
+
+        const int ai=FindAdapterById(package.adapterId);
+        if(ai>=0) {
+            personaAdapterRegistry_.Activate((size_t)ai);
+            selectedPersonaAdapter_=ai;
+            const auto& adapter=personaAdapterRegistry_.Adapters()[(size_t)ai];
+            simContext_.adapterId=adapter.id;
+            simContext_.adapterName=adapter.adapterName+" "+adapter.version;
+            assignedPersonaLoRA_=Widen(simContext_.adapterName);
+        } else {
+            simContext_.adapterId=package.adapterId;
+            simContext_.adapterName=package.adapterName;
+            assignedPersonaLoRA_=package.adapterName.empty()?L"No active LoRA":Widen(package.adapterName);
+        }
+        simContext_.trainingMode=Narrow(TrainingModeName());
+
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
+        personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+        sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
+        return true;
+    }
+
+    void PrepareDeploymentPackage() {
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) {
+            statusText_=L"Select an evaluated model before preparing deployment";
+            return;
+        }
+        const auto& modelItem=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
+        if(modelItem.stage!=sentinel::simulation::ModelStage::Approved &&
+           modelItem.stage!=sentinel::simulation::ModelStage::Active) {
+            statusText_=L"Candidate must be approved before deployment preparation";
+            return;
+        }
+
+        const int evalIndex=evaluationRuns_.LatestIndexForCandidate(modelItem.id);
+        if(evalIndex<0) {
+            statusText_=L"Run Evaluation before preparing deployment";
+            return;
+        }
+        const auto& eval=evaluationRuns_.Runs()[(size_t)evalIndex];
+
+        auto& package=deploymentRegistry_.Prepare(
+            modelItem.id,modelItem.modelName,
+            eval.foundationId,eval.foundationName,
+            eval.adapterId,eval.adapterName,
+            simSettings_.persona.name,
+            eval.id,eval.overallScore);
+        selectedDeployment_=(int)deploymentRegistry_.Packages().size()-1;
+        deploymentRegistry_.Save(runtime_->root/"deployment-registry.tsv");
+
+        const std::string meta="prepared "+package.id+" model="+package.candidateId+
+            " foundation="+package.foundationId+" adapter="+package.adapterId+
+            " eval="+package.evaluationRunId;
+        runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::DeploymentPrepared,
+            "deployment",package.id,DeploymentAuditMetadata(meta)});
+        statusText_=L"Deployment package prepared: "+Widen(package.id);
+    }
+
+    void ActivateSelectedDeployment() {
+        if(selectedDeployment_<0 || selectedDeployment_>=(int)deploymentRegistry_.Packages().size()) {
+            statusText_=L"Select a deployment package first";
+            return;
+        }
+        if(!ApplyDeploymentPackage((size_t)selectedDeployment_)) return;
+        deploymentRegistry_.Activate((size_t)selectedDeployment_);
+        deploymentRegistry_.Save(runtime_->root/"deployment-registry.tsv");
+        const auto& package=deploymentRegistry_.Packages()[(size_t)selectedDeployment_];
+
+        const std::string meta="activated "+package.id+" score="+std::to_string(package.evaluationScore);
+        runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::DeploymentActivated,
+            "deployment",package.id,DeploymentAuditMetadata(meta)});
+        statusText_=L"Deployment activated and runtime stack pinned";
+    }
+
+    void RollbackDeployment() {
+        const int previous=deploymentRegistry_.PreviousIndex();
+        if(previous<0 || previous>=(int)deploymentRegistry_.Packages().size()) {
+            statusText_=L"No previous deployment package is available";
+            return;
+        }
+        if(!ApplyDeploymentPackage((size_t)previous)) return;
+        const std::string targetId=deploymentRegistry_.Packages()[(size_t)previous].id;
+        if(!deploymentRegistry_.Rollback()) {
+            statusText_=L"Deployment rollback failed";
+            return;
+        }
+        selectedDeployment_=deploymentRegistry_.ActiveIndex();
+        deploymentRegistry_.Save(runtime_->root/"deployment-registry.tsv");
+        runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::DeploymentRolledBack,
+            "deployment",targetId,DeploymentAuditMetadata("rollback to "+targetId)});
+        statusText_=L"Deployment rollback completed";
+    }
+
+    void ToggleDeploymentLock() {
+        if(selectedDeployment_<0 || selectedDeployment_>=(int)deploymentRegistry_.Packages().size()) return;
+        const bool next=!deploymentRegistry_.Packages()[(size_t)selectedDeployment_].versionLocked;
+        deploymentRegistry_.SetLocked((size_t)selectedDeployment_,next);
+        deploymentRegistry_.Save(runtime_->root/"deployment-registry.tsv");
+        const auto& package=deploymentRegistry_.Packages()[(size_t)selectedDeployment_];
+        runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::DeploymentLockChanged,
+            "deployment",package.id,DeploymentAuditMetadata(std::string("version_locked=")+(next?"true":"false"))});
+        statusText_=next?L"Deployment version lock enabled":L"Deployment version lock disabled";
+    }
+
+    void ExportDeploymentManifest() {
+        if(selectedDeployment_<0 || selectedDeployment_>=(int)deploymentRegistry_.Packages().size()) {
+            statusText_=L"Select a deployment package first";
+            return;
+        }
+        const auto& package=deploymentRegistry_.Packages()[(size_t)selectedDeployment_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen("SARA-"+package.id+".deployment.json");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn); ofn.hwndOwner=hwnd_; ofn.lpstrFile=file; ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Deployment Manifest\0*.json\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"json"; ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<deploymentRegistry_.BuildManifest((size_t)selectedDeployment_);
+        runtime_->audit.Append({sentinel::UserId::Random(),sentinel::AuditAction::DeploymentManifestExported,
+            "deployment",package.id,DeploymentAuditMetadata("manifest exported")});
+        statusText_=L"Deployment manifest exported";
     }
 
     void DrawModelLabTabs(float x,float y,float contentW) {
