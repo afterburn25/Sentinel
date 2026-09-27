@@ -206,7 +206,7 @@ jobs:
           if (-not (Test-Path "$root/assets/SARA-Splash.png")) { throw "Approved SARA splash missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Logo.png")) { throw "Approved SARA logo missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Icon.png")) { throw "Approved SARA icon missing from package" }
-          python -c "from PIL import Image; import hashlib; p=r'$root/assets/SARA-Splash.png'; raw=open(p,'rb').read(); im=Image.open(p); assert im.size==(1672,941); assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Packaged approved SARA splash verified')"
+          python -c "import hashlib,struct; p=r'$root/assets/SARA-Splash.png'; raw=open(p,'rb').read(); assert raw[:8]==b'\\x89PNG\\r\\n\\x1a\\n'; w,h=struct.unpack('>II',raw[16:24]); assert (w,h)==(1672,941),(w,h); assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Packaged approved SARA splash verified:',(w,h))"
 
       - name: Build SARA installer
         shell: pwsh
