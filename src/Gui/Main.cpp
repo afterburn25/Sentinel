@@ -1198,6 +1198,8 @@ public:
             else if (b.id==L"integrity") VerifyAudit();
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
+            else if (b.id==L"sim_emoji") OpenEmojiPicker();
+            else if (b.id==L"sim_attach") AttachImageToConversation();
             else if (b.id==L"sim_suggest") GenerateSimulationSuggestion();
             else if (b.id==L"sim_reset" || b.id==L"sim_new_chat") ResetSimulation();
             else if (b.id==L"sim_previous_chat") LoadPreviousConversation();
@@ -1536,6 +1538,7 @@ private:
     std::string operatingStateCode_;
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
+    int simPendingPersonaMediaIndex_{-1};
     std::vector<sentinel::simulation::ModelFoundation> trainerFoundations_;
     std::wstring trainerRuntimeStatus_=L"No persona LoRA active";
     bool responseRuleExactWording_{false};
@@ -2231,8 +2234,10 @@ private:
 
         UpdateSimulationScrollbar();
 
-        // The EDIT control itself is the full composer.  Its formatting rectangle
-        // vertically centers the caret/text without shrinking the textbox.
+        // Full-color emoji opens the native Windows emoji panel; the paperclip
+        // attaches a persistent image to the conversation.
+        AddButton(L"sim_emoji",L"😊",x+18,y+452,38,46,false);
+        AddButton(L"sim_attach",L"📎",x+62,y+452,38,46,false);
         AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
         // Model / scenario card
@@ -2340,9 +2345,9 @@ private:
 
             MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
 
-            const int composerW=(int)(chatW-236);
+            const int composerW=(int)(chatW-322);
             const int composerH=46;
-            MoveControl(chatEdit_,(int)(x+18),(int)(y+452),composerW,composerH,TRUE);
+            MoveControl(chatEdit_,(int)(x+104),(int)(y+452),composerW,composerH,TRUE);
             RECT composerTextRect{12,9,std::max(24,composerW-12),composerH-8};
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
 
