@@ -53,6 +53,12 @@ SimulationSettings LoadSimulationSettings(const std::filesystem::path& path) {
             else if(k=="persona.background") s.persona.background=v;
             else if(k=="persona.interests") s.persona.interests=v;
             else if(k=="persona.writingStyle") s.persona.writingStyle=v;
+            else if(k=="persona.mood") s.persona.mood=v;
+            else if(k=="persona.emojiTendency") s.persona.emojiTendency=v;
+            else if(k=="persona.typoTendency") s.persona.typoTendency=v;
+            else if(k=="persona.grammarQuality") s.persona.grammarQuality=v;
+            else if(k=="persona.slangLevel") s.persona.slangLevel=v;
+            else if(k=="persona.intelligenceLevel") s.persona.intelligenceLevel=v;
             else if(k=="scenario.name") s.scenario.name=v;
             else if(k=="scenario.objective") s.scenario.objective=v;
             else if(k=="scenario.openingContext") s.scenario.openingContext=v;
@@ -88,6 +94,12 @@ void SaveSimulationSettings(const std::filesystem::path& path,const SimulationSe
     out<<"persona.background="<<Escape(s.persona.background)<<"\n";
     out<<"persona.interests="<<Escape(s.persona.interests)<<"\n";
     out<<"persona.writingStyle="<<Escape(s.persona.writingStyle)<<"\n";
+    out<<"persona.mood="<<Escape(s.persona.mood)<<"\n";
+    out<<"persona.emojiTendency="<<Escape(s.persona.emojiTendency)<<"\n";
+    out<<"persona.typoTendency="<<Escape(s.persona.typoTendency)<<"\n";
+    out<<"persona.grammarQuality="<<Escape(s.persona.grammarQuality)<<"\n";
+    out<<"persona.slangLevel="<<Escape(s.persona.slangLevel)<<"\n";
+    out<<"persona.intelligenceLevel="<<Escape(s.persona.intelligenceLevel)<<"\n";
     out<<"scenario.name="<<Escape(s.scenario.name)<<"\n";
     out<<"scenario.objective="<<Escape(s.scenario.objective)<<"\n";
     out<<"scenario.openingContext="<<Escape(s.scenario.openingContext)<<"\n";
