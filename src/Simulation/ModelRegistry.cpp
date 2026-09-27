@@ -25,6 +25,86 @@ std::string ToString(FoundationStage stage) {
     return "CANDIDATE";
 }
 
+std::string ToString(AdapterStage stage) {
+    switch(stage) {
+        case AdapterStage::Training: return "TRAINING";
+        case AdapterStage::Staging: return "STAGING";
+        case AdapterStage::Active: return "ACTIVE";
+        case AdapterStage::Archived: return "ARCHIVED";
+    }
+    return "STAGING";
+}
+
+PersonaAdapter& PersonaAdapterRegistry::Add(std::string personaName,std::string adapterName,std::string version,std::string foundationId) {
+    PersonaAdapter a;
+    a.id="adapter-"+std::to_string(adapters_.size()+1);
+    a.personaName=std::move(personaName);
+    a.adapterName=std::move(adapterName);
+    a.version=std::move(version);
+    a.foundationId=std::move(foundationId);
+    a.stage=AdapterStage::Staging;
+    adapters_.push_back(std::move(a));
+    return adapters_.back();
+}
+
+void PersonaAdapterRegistry::Activate(size_t index) {
+    if(index>=adapters_.size()) return;
+    const auto persona=adapters_[index].personaName;
+    for(auto& a:adapters_) {
+        if(a.personaName==persona && a.stage==AdapterStage::Active) a.stage=AdapterStage::Archived;
+    }
+    adapters_[index].stage=AdapterStage::Active;
+}
+
+bool PersonaAdapterRegistry::Rollback(std::string_view personaName) {
+    int active=-1;
+    int candidate=-1;
+    for(size_t i=0;i<adapters_.size();++i) {
+        if(adapters_[i].personaName!=personaName) continue;
+        if(adapters_[i].stage==AdapterStage::Active) active=(int)i;
+        if(adapters_[i].stage==AdapterStage::Archived) candidate=(int)i;
+    }
+    if(candidate<0) return false;
+    if(active>=0) adapters_[(size_t)active].stage=AdapterStage::Archived;
+    adapters_[(size_t)candidate].stage=AdapterStage::Active;
+    return true;
+}
+
+std::vector<PersonaAdapter>& PersonaAdapterRegistry::Adapters(){ return adapters_; }
+const std::vector<PersonaAdapter>& PersonaAdapterRegistry::Adapters() const{ return adapters_; }
+
+int PersonaAdapterRegistry::ResolveActiveIndex(std::string_view personaName) const {
+    for(size_t i=0;i<adapters_.size();++i)
+        if(adapters_[i].personaName==personaName && adapters_[i].stage==AdapterStage::Active) return (int)i;
+    return -1;
+}
+
+void PersonaAdapterRegistry::Save(const std::filesystem::path& path) const {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path,std::ios::trunc);
+    for(const auto& a:adapters_)
+        out<<a.id<<"\t"<<a.personaName<<"\t"<<a.adapterName<<"\t"<<a.version<<"\t"<<a.foundationId<<"\t"<<(int)a.stage<<"\n";
+}
+
+void PersonaAdapterRegistry::Load(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    if(!in) return;
+    adapters_.clear();
+    std::string line;
+    while(std::getline(in,line)) {
+        std::vector<std::string> p; size_t start=0;
+        for(;;) {
+            auto pos=line.find('\t',start);
+            if(pos==std::string::npos) { p.push_back(line.substr(start)); break; }
+            p.push_back(line.substr(start,pos-start)); start=pos+1;
+        }
+        if(p.size()!=6) continue;
+        try {
+            adapters_.push_back({p[0],p[1],p[2],p[3],p[4],(AdapterStage)std::stoi(p[5])});
+        } catch(...) {}
+    }
+}
+
 TrainingJob& TrainingJobRegistry::Create(std::string baseModel,std::string dataset) {
     TrainingJob job;
     job.id="job-"+std::to_string(jobs_.size()+1);
