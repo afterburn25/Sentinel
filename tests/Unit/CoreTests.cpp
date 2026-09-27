@@ -326,6 +326,10 @@ void TestUnifiedChannelCore()
 {
     using namespace sentinel::channels;
 
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
     const auto root=std::filesystem::temp_directory_path()/("sara-channels-"+sentinel::Uuid::Random().ToString());
     std::filesystem::create_directories(root);
 
@@ -334,15 +338,32 @@ void TestUnifiedChannelCore()
     sentinel::MigrationService migrations(db);
     migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
 
+    JurisdictionRuleStore jurisdictions(db);
+    jurisdictions.EnsureBuiltInBaselines();
+    auto federal=jurisdictions.LatestProfile(RuleLayerType::Federal,"US");
+    auto louisiana=jurisdictions.LatestProfile(RuleLayerType::State,"US","LA");
+    Require(federal.has_value(),"federal jurisdiction baseline missing");
+    Require(louisiana.has_value(),"Louisiana jurisdiction baseline missing");
+    Require(!federal->AutomationLegallyActive(),"federal reference baseline should not self-authorize automation");
+    Require(!louisiana->AutomationLegallyActive(),"Louisiana reference baseline should not self-authorize automation");
+
+    jurisdictions.SelectForOperation(
+        "unit-operation","US","LA",federal->id,louisiana->id,{},"unit-test");
+    auto stack=jurisdictions.SelectedForOperation("unit-operation");
+    Require(stack.has_value(),"operation jurisdiction stack was not persisted");
+    Require(stack->federal.has_value(),"operation jurisdiction stack missing federal layer");
+    Require(stack->state.has_value(),"operation jurisdiction stack missing state layer");
+    Require(!stack->fullyActive,"draft jurisdiction stack unexpectedly marked active");
+
     ChannelCoreStore store(db);
     const auto subjectId=store.CreateSubject("case-1","Synthetic subject");
-    assert(!subjectId.empty());
+    Require(!subjectId.empty(),"subject creation failed");
 
     const auto identityId=store.AddSubjectIdentity(
         subjectId,"username","local","test-user","test-user",
         IdentityLinkState::Candidate,0.60);
-    assert(!identityId.empty());
-    assert(store.ConfirmSubjectIdentity(identityId,"unit-test"));
+    Require(!identityId.empty(),"identity creation failed");
+    Require(store.ConfirmSubjectIdentity(identityId,"unit-test"),"identity confirmation failed");
 
     ChannelAccount account;
     account.id="account-1";
@@ -357,7 +378,7 @@ void TestUnifiedChannelCore()
     account.capabilities.Set(Capability::SendText);
     account.capabilities.Set(Capability::SendImage);
     account.capabilities.Set(Capability::AutomatedSending);
-    assert(store.UpsertChannelAccount(account)=="account-1");
+    Require(store.UpsertChannelAccount(account)=="account-1","channel account upsert failed");
 
     ChannelConversation conversation;
     conversation.subjectId=subjectId;
@@ -368,17 +389,19 @@ void TestUnifiedChannelCore()
     conversation.providerConversationId="conversation-1";
     conversation.externalPeerId="test-peer";
     const auto conversationId=store.OpenConversation(conversation);
-    assert(!conversationId.empty());
+    Require(!conversationId.empty(),"channel conversation creation failed");
 
     auto found=store.FindConversation("local",account.id,"conversation-1");
-    assert(found.has_value());
-    assert(found->personaName=="Samantha");
+    Require(found.has_value(),"channel conversation lookup failed");
+    Require(found->personaName=="Samantha","channel conversation persona mismatch");
+    Require(found->subjectId==subjectId,"channel conversation subject mismatch");
 
     RawChannelEvent event;
     event.id="event-1";
     event.channelConversationId=conversationId;
     event.provider="local";
     event.type=ChannelType::LocalSimulation;
+    event.providerAccountId="local-account";
     event.providerConversationId="conversation-1";
     event.providerMessageId="provider-message-1";
     event.eventType="message";
@@ -405,22 +428,24 @@ void TestUnifiedChannelCore()
     store.RecordMessage(normalized);
 
     auto recent=store.RecentMessages(conversationId,10);
-    assert(recent.size()==1);
-    assert(recent[0].body=="hello");
+    Require(recent.size()==1,"normalized message count mismatch");
+    Require(recent[0].body=="hello","normalized message body mismatch");
+    Require(recent[0].subjectId==subjectId,"normalized message subject mismatch");
 
     ChannelAdapterRegistry registry;
     auto legacyAdapter=sentinel::operations::CreateInMemoryMessageAdapter();
+    Require(legacyAdapter!=nullptr,"legacy local messaging adapter missing");
     registry.Register(std::make_unique<LocalSimulationChannelAdapter>(*legacyAdapter));
     auto* adapter=registry.FindByName("SARA Local Simulation");
-    assert(adapter!=nullptr);
-    assert(adapter->Connected());
-    assert(adapter->Capabilities().Has(Capability::SendText));
-    assert(adapter->Capabilities().Has(Capability::SendImage));
+    Require(adapter!=nullptr,"SARA local channel adapter missing");
+    Require(adapter->Connected(),"SARA local channel adapter offline");
+    Require(adapter->Capabilities().Has(Capability::SendText),"local adapter missing text capability");
+    Require(adapter->Capabilities().Has(Capability::SendImage),"local adapter missing image capability");
 
     auto send=adapter->SendText({conversationId,"approved reply","reply-1"});
-    assert(send.accepted);
+    Require(send.accepted,"approved local text was not accepted");
     auto media=adapter->SendMedia({conversationId,"approved image","C:/synthetic/test.png","image/png","abc123","media-1"});
-    assert(media.accepted);
+    Require(media.accepted,"approved local media was not accepted");
 
     AutomationEngine engine;
     AutomationRequest request;
@@ -432,32 +457,31 @@ void TestUnifiedChannelCore()
     request.jurisdictionProfileActive=true;
     request.jurisdictionAllowsAutomation=true;
     request.jurisdictionRequiresReview=false;
+
     auto decision=engine.Decide(request);
-    assert(decision.decision==AutomationDecisionKind::AutoSend);
-    assert(!decision.requiresHuman);
+    Require(decision.decision==AutomationDecisionKind::AutoSend,
+        "ordinary authorized automatic reply should auto-send when every gate is satisfied");
+    Require(!decision.requiresHuman,"authorized ordinary auto-reply unexpectedly requires human review");
 
     request.action=ActionKind::MeetingArrangement;
     decision=engine.Decide(request);
-    assert(decision.decision==AutomationDecisionKind::RequireApproval);
-    assert(decision.requiresHuman);
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "meeting arrangement should remain approval-gated");
+    Require(decision.requiresHuman,"meeting arrangement should require human review");
 
     request.action=ActionKind::OrdinaryReply;
     request.jurisdictionProfileActive=false;
     decision=engine.Decide(request);
-    assert(decision.decision==AutomationDecisionKind::RequireApproval);
-    assert(decision.requiresHuman);
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "inactive jurisdiction should force approval");
+    Require(decision.requiresHuman,"inactive jurisdiction should require human review");
 
     request.jurisdictionProfileActive=true;
     request.policyRequiresSupervisor=true;
     decision=engine.Decide(request);
-    assert(decision.decision==AutomationDecisionKind::RequireApproval);
-    assert(decision.requiresHuman);
-
-    JurisdictionRuleStore jurisdictions(db);
-    jurisdictions.EnsureBuiltInBaselines();
-    auto federal=jurisdictions.LatestProfile(RuleLayerType::Federal,"US");
-    assert(federal.has_value());
-    assert(!federal->AutomationLegallyActive());
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "supervisor policy requirement should force approval");
+    Require(decision.requiresHuman,"supervisor policy requirement should require human review");
 
     db.Close();
     std::filesystem::remove_all(root);
