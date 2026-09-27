@@ -47,6 +47,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <set>
 #include <fstream>
 #include <string>
 #include <vector>
