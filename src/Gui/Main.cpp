@@ -42,6 +42,7 @@
 #include <wincodec.h>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <chrono>
 #include <memory>
