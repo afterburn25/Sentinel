@@ -27,6 +27,12 @@ public:
     std::string StartConversation(
         std::string_view title,
         std::string_view personaName,
+        std::string_view personaSummary,
+        std::string_view scenario);
+
+    std::string StartConversation(
+        std::string_view title,
+        std::string_view personaName,
         std::string_view scenario);
 
     void Append(
@@ -36,9 +42,19 @@ public:
 
     std::vector<ArchivedConversation> List(size_t limit=50) const;
 
+    std::vector<ArchivedConversation> ListForPersona(
+        std::string_view personaName,
+        size_t limit=50) const;
+
     bool Load(
         std::string_view conversationId,
         ModelContext& context) const;
+
+    std::string RecallRelevant(
+        std::string_view query,
+        std::string_view currentConversationId,
+        std::string_view personaName,
+        size_t maxMessages=12) const;
 
     std::string RecallRelevant(
         std::string_view query,
