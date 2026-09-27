@@ -4,8 +4,8 @@ IDI_SARA_ICON ICON "SARA.ico"
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,18,2
- PRODUCTVERSION 1,0,18,2
+ FILEVERSION 1,0,18,3
+ PRODUCTVERSION 1,0,18,3
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -21,12 +21,12 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName", "SARA Project\0"
-            VALUE "FileDescription", "SARA 1.0.18.2 Persona Profiles - Synthetic Adaptive Response Agent\0"
-            VALUE "FileVersion", "1.0.18.2\0"
+            VALUE "FileDescription", "SARA 1.0.18.3 Persona Profiles - Synthetic Adaptive Response Agent\0"
+            VALUE "FileVersion", "1.0.18.3\0"
             VALUE "InternalName", "SARA\0"
             VALUE "OriginalFilename", "SARA.exe\0"
             VALUE "ProductName", "SARA\0"
-            VALUE "ProductVersion", "1.0.18.2\0"
+            VALUE "ProductVersion", "1.0.18.3\0"
             VALUE "LegalCopyright", "Copyright 2026 SARA Project\0"
             VALUE "Comments", "Synthetic Adaptive Response Agent - local AI, persona, training, evidence, and operations platform\0"
         END
