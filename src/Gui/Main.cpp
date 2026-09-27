@@ -1247,6 +1247,7 @@ private:
     int selectedTrainingExample_{-1};
     int selectedDatasetSnapshot_{-1};
     int selectedPersonaAdapter_{-1};
+    std::vector<std::string> personaProfileNames_;
     int selectedTrainingJob_{-1};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
