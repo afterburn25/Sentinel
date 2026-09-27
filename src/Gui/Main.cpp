@@ -2915,13 +2915,29 @@ private:
             std::vector<std::string> personaResponses;
             std::vector<std::string> styleResponses;
             std::vector<std::string> policyResponses;
+            std::vector<sentinel::simulation::EvaluationCaseResult> caseResults;
             std::string memoryReply;
             std::string memoryExpected="cobalt";
 
-            for(const auto& testCase:sentinel::simulation::DefaultEvaluationTestCases()) {
+            auto configured=[](const std::string& value) {
+                auto lower=value;
+                std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char ch){return (char)std::tolower(ch);});
+                return !value.empty() && lower!="unspecified" && lower!="unknown" && lower!="synthetic test environment";
+            };
+
+            for(auto testCase:sentinel::simulation::DefaultEvaluationTestCases()) {
+                if(testCase.id=="persona.identity") {
+                    if(configured(simSettings_.persona.name)) testCase.expectedContains.push_back(simSettings_.persona.name);
+                    if(simSettings_.persona.age>0) testCase.expectedContains.push_back(std::to_string(simSettings_.persona.age));
+                } else if(testCase.id=="persona.location") {
+                    if(configured(simSettings_.persona.location)) testCase.expectedContains.push_back(simSettings_.persona.location);
+                } else if(testCase.id=="persona.occupation") {
+                    if(configured(simSettings_.persona.occupation)) testCase.expectedContains.push_back(simSettings_.persona.occupation);
+                }
+
                 if(testCase.dimension==sentinel::simulation::EvaluationDimension::MemoryRecall) {
                     auto memoryContext=baseContext;
-                    memoryExpected=testCase.expectedFact.empty()?"cobalt":testCase.expectedFact;
+                    if(!testCase.expectedContains.empty()) memoryExpected=testCase.expectedContains.front();
                     memoryContext.history.push_back({
                         sentinel::simulation::ChatTurn::Speaker::Investigator,
                         "For this evaluation, remember the code word "+memoryExpected+"."
@@ -2930,13 +2946,30 @@ private:
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
                         "Okay, I will remember the code word "+memoryExpected+"."
                     });
+
+                    const size_t required=std::max<size_t>(testCase.minimumHistoryTurns,24);
+                    size_t pair=0;
+                    while(memoryContext.history.size()<required) {
+                        memoryContext.history.push_back({
+                            sentinel::simulation::ChatTurn::Speaker::Investigator,
+                            "Evaluation filler turn "+std::to_string(pair)+": tell me one short neutral thing about your day."
+                        });
+                        memoryContext.history.push_back({
+                            sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                            "Evaluation filler response "+std::to_string(pair)+"."
+                        });
+                        ++pair;
+                    }
+
                     memoryReply=generate(testCase.prompt,memoryContext);
                     policyResponses.push_back(memoryReply);
+                    caseResults.push_back(sentinel::simulation::ScoreNamedCase(testCase,memoryReply));
                     continue;
                 }
 
                 auto reply=generate(testCase.prompt);
                 policyResponses.push_back(reply);
+                caseResults.push_back(sentinel::simulation::ScoreNamedCase(testCase,reply));
                 if(testCase.dimension==sentinel::simulation::EvaluationDimension::PersonaConsistency)
                     personaResponses.push_back(reply);
                 if(testCase.dimension==sentinel::simulation::EvaluationDimension::StyleConsistency)
@@ -2968,7 +3001,7 @@ private:
                 item.id,item.modelName,
                 simContext_.foundationId,simContext_.foundationName,
                 simContext_.adapterId,simContext_.adapterName,
-                std::move(dimensions));
+                std::move(dimensions),std::move(caseResults));
 
             selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
             item.evaluationScore=run.overallScore;
