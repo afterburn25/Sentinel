@@ -100,6 +100,20 @@ jobs:
           --config Release
           --prefix package/SARA-1.0.15-windows-x64
 
+      - name: Launch packaged SARA and capture 1.0.15 recovery UI
+        shell: pwsh
+        run: >-
+          pwsh -NoProfile -ExecutionPolicy Bypass
+          -File tools/Capture-SARA-1.0.15-Recovery-UI.ps1
+          -AppPath "package/SARA-1.0.15-windows-x64/SARA.exe"
+          -OutputDir "recovery-ui-screenshots"
+
+      - name: Upload 1.0.15 recovery UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-1.0.15-Recovery-UI-Screenshots
+          path: recovery-ui-screenshots/
+
       - name: Azure login for Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         uses: azure/login@v3
