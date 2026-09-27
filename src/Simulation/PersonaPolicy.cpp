@@ -52,6 +52,7 @@ PolicyDecision EvaluateSimulationPolicy(AgeKnowledgeState state,const std::strin
 }
 }
 
+namespace sentinel::simulation {
 std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::string text,size_t variationSeed) {
     auto level=Lower(persona.slangLevel);
     auto grammar=Lower(persona.grammarQuality);
@@ -104,4 +105,5 @@ std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::stri
         text+=marks[variationSeed%5];
     }
     return text;
+}
 }
