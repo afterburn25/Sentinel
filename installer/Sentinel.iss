@@ -1,8 +1,8 @@
 #define MyAppName "SARA"
-#define MyAppVersion "1.0.9"
+#define MyAppVersion "1.0.10"
 #define MyAppPublisher "SARA Project"
 #define MyAppExeName "SARA.exe"
-#define PackageDir "..\package\SARA-1.0.9-windows-x64"
+#define PackageDir "..\package\SARA-1.0.10-windows-x64"
 
 [Setup]
 AppId={{A6717D99-89F5-4C14-B4BE-2B42EACBC108}
@@ -17,7 +17,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-OutputBaseFilename=SARA-Setup-1.0.9
+OutputBaseFilename=SARA-Setup-1.0.10
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -27,11 +27,11 @@ RestartApplications=no
 UsePreviousAppDir=yes
 SetupLogging=yes
 UninstallDisplayIcon={app}\SARA.exe
-VersionInfoVersion=1.0.9.0
+VersionInfoVersion=1.0.10.0
 VersionInfoCompany=SARA Project
 VersionInfoDescription=SARA Installer
 VersionInfoProductName=SARA
-VersionInfoProductVersion=1.0.9.0
+VersionInfoProductVersion=1.0.10.0
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -80,10 +80,41 @@ const
 var
   DownloadPage: TDownloadWizardPage;
   ProgressPage: TOutputProgressWizardPage;
+  UpgradeInfoPage: TOutputMsgWizardPage;
   ModelAlreadyValid: Boolean;
   RuntimeAlreadyValid: Boolean;
+  IsUpgrade: Boolean;
+  PreviousInstallPath: String;
   GPUName: String;
   LastDownloadItem: String;
+
+function DetectPreviousInstallation: Boolean;
+var
+  SaraDir, LegacyDir: String;
+begin
+  PreviousInstallPath := '';
+  SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
+  LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
+
+  if FileExists(AddBackslash(SaraDir) + 'SARA.exe') then
+    PreviousInstallPath := SaraDir
+  else if FileExists(AddBackslash(LegacyDir) + 'SARA.exe') or
+          FileExists(AddBackslash(LegacyDir) + 'Sentinel.exe') then
+    PreviousInstallPath := LegacyDir;
+
+  Result := PreviousInstallPath <> '';
+end;
+
+function InitializeSetup: Boolean;
+begin
+  IsUpgrade := DetectPreviousInstallation;
+  if IsUpgrade then
+    Log('Previous SARA/Sentinel installation detected at: ' + PreviousInstallPath)
+  else
+    Log('No previous SARA/Sentinel installation detected. Fresh install mode.');
+  Result := True;
+end;
+
 
 procedure SetStatus(const S: String);
 begin
@@ -375,15 +406,57 @@ begin
 end;
 
 procedure InitializeWizard;
+var
+  ProgressTitle, ProgressText: String;
 begin
+  if IsUpgrade then
+  begin
+    WizardForm.Caption := 'SARA Upgrade';
+    WizardForm.WelcomeLabel1.Caption := 'Welcome to the SARA Upgrade Wizard';
+    WizardForm.WelcomeLabel2.Caption :=
+      'Setup found a previous installation of SARA/Sentinel.' + #13#10 + #13#10 +
+      'This wizard will upgrade the existing installation in place. Your existing ' +
+      'application data will be preserved, and the local AI model will not be downloaded ' +
+      'again when the installed copy verifies correctly.';
+
+    UpgradeInfoPage := CreateOutputMsgPage(
+      wpWelcome,
+      'Previous Installation Detected',
+      'SARA will upgrade the existing installation.',
+      'Existing installation:' + #13#10 +
+      PreviousInstallPath + #13#10 + #13#10 +
+      'Setup will close SARA automatically, replace the application files, preserve ' +
+      'existing SARA/Sentinel data, and reuse the installed local AI model when valid.');
+
+    ProgressTitle := 'Upgrading SARA';
+    ProgressText := 'Replacing application files and checking the local AI components.';
+  end
+  else
+  begin
+    ProgressTitle := 'Installing SARA';
+    ProgressText := 'Installing application files and preparing the local AI model.';
+  end;
+
   DownloadPage := CreateDownloadPage(
-    'Installing SARA local AI',
+    'Preparing SARA local AI',
     'SARA Setup downloads only the components this computer still needs.',
     @OnDownloadProgress);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;
+
   ProgressPage := CreateOutputProgressPage(
-    'Installing SARA',
-    'Installing application files and preparing the local AI model.');
+    ProgressTitle,
+    ProgressText);
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if CurPageID = wpReady then
+  begin
+    if IsUpgrade then
+      WizardForm.NextButton.Caption := '&Upgrade'
+    else
+      WizardForm.NextButton.Caption := '&Install';
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -420,7 +493,10 @@ begin
       InstallModel;
       ConfigureAI;
 
-      SetStatus('Finalizing SARA installation...');
+      if IsUpgrade then
+        SetStatus('Finalizing SARA upgrade...')
+      else
+        SetStatus('Finalizing SARA installation...');
       ProgressPage.SetProgress(100, 100);
       Sleep(300);
     finally
