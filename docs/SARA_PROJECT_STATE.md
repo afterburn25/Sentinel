@@ -312,3 +312,33 @@ Installer:
 - `SARA-Setup-1.0.18.exe` SHA-256 `67caa997fda660db4a9ed587da1b71b7819145a7aa8363a7bb4df93fb9b23a79`
 
 Artifact Signing remains configured but secrets are absent, so this is an unsigned development build.
+
+
+## Actual-build visual verification rule
+
+UI implementation is not considered complete from source inspection alone.
+
+For every meaningful SARA UI change:
+- build the real packaged Windows `SARA.exe`,
+- verify the executable contains the expected visual-build identity,
+- launch the packaged executable on a Windows CI runner,
+- capture the actual splash and every Model Lab workspace,
+- reject blank/unrendered screenshots,
+- upload the screenshots as a build artifact,
+- inspect the screenshots before marking the UI work complete.
+
+Required application captures:
+1. splash
+2. main dashboard
+3. Model Lab Overview
+4. Train
+5. Datasets
+6. Personas & LoRAs
+7. Foundation Forks
+8. Jobs
+9. Evaluation
+10. Deployment
+
+Installer changes must also build the actual Inno Setup executable, launch its real wizard, capture the SARA Setup window, and upload that screenshot for review.
+
+This rule was added after source-only verification failed to catch visual regressions in the post-1.0.15 UI line.
