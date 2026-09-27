@@ -193,3 +193,19 @@ The Model Lab / Trainer UI should expose:
 - deployment/rollback status
 - trigger/rule diagnostics
 - response-variation settings where appropriate
+
+
+## 11. Inference adapter loading contract
+
+Persona selection resolves the exact foundation and active persona adapter before generation.
+
+For OpenAI-compatible inference, SARA sends optional request headers:
+
+- `X-SARA-Foundation-Id`
+- `X-SARA-Foundation`
+- `X-SARA-Adapter-Id`
+- `X-SARA-Adapter`
+
+A SARA-aware local inference service should use these values to activate/load the requested foundation and LoRA before fulfilling the chat completion. Generic OpenAI-compatible servers may safely ignore these headers.
+
+The resolved foundation/adapter identity is also included in model context for consistency. This keeps SARA independent of a single runtime vendor while providing a concrete automatic-LoRA-loading contract.
