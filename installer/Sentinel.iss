@@ -294,6 +294,79 @@ begin
   Result := ExpandConstant('{app}\ai\models\') + ModelFileName;
 end;
 
+function ModelMarkerPath: String;
+begin
+  Result := ExpandConstant('{app}\ai\models\') + ModelFileName + '.sha256';
+end;
+
+function ModelMarkerValid: Boolean;
+var
+  Lines: TArrayOfString;
+begin
+  Result := False;
+  if not FileExists(ModelPath) then
+    exit;
+  if not FileExists(ModelMarkerPath) then
+    exit;
+  if not LoadStringsFromFile(ModelMarkerPath, Lines) then
+    exit;
+  if GetArrayLength(Lines) = 0 then
+    exit;
+  Result := CompareText(Trim(Lines[0]), ModelSHA256) = 0;
+end;
+
+procedure SaveModelMarker;
+begin
+  SaveStringToFile(ModelMarkerPath, ModelSHA256 + #13#10, False);
+end;
+
+function VerifyInstalledModel: Boolean;
+begin
+  if ModelMarkerValid then
+  begin
+    SetStatus('Existing SARA model verification marker is current; skipping full 5.68 GB checksum scan.');
+    Result := True;
+    exit;
+  end;
+
+  if not FileExists(ModelPath) then
+  begin
+    Result := False;
+    exit;
+  end;
+
+  ProgressPage.SetProgress(8, 100);
+  ProgressPage.SetProgress(7, 100);
+  SetStatus(
+    'Verifying the existing 5.68 GB SARA model. This can take a minute on slower drives; Setup is still working...');
+  Result := FileSHA256Matches(ModelPath, ModelSHA256);
+  if Result then
+    SaveModelMarker;
+end;
+
+procedure CheckPersonaLoraState;
+var
+  SaraData, LegacyData, RuntimeConfig: String;
+begin
+  ProgressPage.SetProgress(11, 100);
+  SetStatus('Checking saved persona LoRA configuration...');
+  SaraData := ExpandConstant('{localappdata}\SARA');
+  LegacyData := ExpandConstant('{localappdata}\Sentinel');
+
+  if DirExists(SaraData) then
+    RuntimeConfig := AddBackslash(SaraData) + 'active-runtime.ini'
+  else
+    RuntimeConfig := AddBackslash(LegacyData) + 'active-runtime.ini';
+
+  if FileExists(RuntimeConfig) then
+    Log('Existing persona foundation/LoRA runtime configuration will be preserved: ' + RuntimeConfig)
+  else
+    Log('No existing persona LoRA runtime configuration found; this is normal until a persona adapter is bound.');
+
+  ProgressPage.SetProgress(12, 100);
+  SetStatus('Persona LoRA configuration check complete.');
+end;
+
 function RuntimeValid: Boolean;
 var
   Lines: TArrayOfString;
@@ -439,6 +512,7 @@ begin
   if FileExists(ModelPath) then
     DeleteFile(ModelPath);
 
+  SaveModelMarker;
   SetStatus('Installing verified SARA model...');
   if not RenameFile(TempModel, ModelPath) then
   begin
@@ -590,8 +664,11 @@ begin
       ProgressPage.SetProgress(5, 100);
       SetStatus('Checking the existing SARA installation...');
 
-      ModelAlreadyValid := FileSHA256Matches(ModelPath, ModelSHA256);
+      SetStatus('Checking the existing SARA AI runtime...');
       RuntimeAlreadyValid := RuntimeValid;
+
+      ModelAlreadyValid := VerifyInstalledModel;
+      CheckPersonaLoraState;
 
       if ModelAlreadyValid then
         Log('Existing model checksum is valid; model download will be skipped.')
