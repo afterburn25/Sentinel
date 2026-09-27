@@ -1196,6 +1196,8 @@ public:
             else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
             else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
+            else if (b.id.rfind(L"rule_delete:",0)==0)
+                DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
@@ -2508,6 +2510,19 @@ private:
         }
         sqlite3_finalize(s);
         statusText_=L"Persona response rules cleared";
+    }
+
+    void DeletePersonaResponseRule(long long id) {
+        sqlite3_stmt* s{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),
+            "DELETE FROM persona_response_rules WHERE id=? AND persona_name=?",
+            -1,&s,nullptr)==SQLITE_OK) {
+            sqlite3_bind_int64(s,1,id);
+            sqlite3_bind_text(s,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_step(s);
+        }
+        sqlite3_finalize(s);
+        statusText_=L"Response rule deleted";
     }
 
     void ToggleLearningMode() {
