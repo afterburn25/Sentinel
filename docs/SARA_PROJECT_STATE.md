@@ -146,3 +146,20 @@ A future development session should be able to reconstruct current state from th
 Shared top context should expose **Foundation / Persona / Assigned LoRA / Training Mode** where relevant.
 
 The selected visual language is dark navy/charcoal with cyan/electric-blue primary accents and restrained purple secondary accents. It should be polished and futuristic without becoming visually noisy.
+
+
+## Approved training architecture
+
+The integrated Model Lab / Trainer must implement the architecture defined in:
+`docs/architecture/SARA_MODEL_LAB_TRAINING_ARCHITECTURE_1.0.16.md`
+
+Key requirements:
+
+- Training modes: Behavior Tuning, Dataset Training, Persona LoRA Training, Foundation Fork Training, Evaluation/Test.
+- Immutable original/base foundation models with versioned SARA Foundation descendants and rollback/comparison.
+- Multiple versioned LoRA/QLoRA adapters per persona; selecting a persona automatically resolves its assigned adapter.
+- Conversational corrections can affect the current training session immediately but never silently change production weights.
+- Canonical review path: `Captured -> Review -> Approved -> Dataset -> Training Job -> Candidate -> Evaluation -> Deploy`.
+- Runtime stack: `SARA Foundation -> Persona LoRA -> Persona Behavior Profile -> Conversation Memory -> Current Context`.
+- Deterministic triggers/rules execute before normal generation and remain separate from model weights.
+- Response variation must preserve persona/trigger intent while varying phrasing according to age, intelligence/language level, slang, grammar, typo tendency, emoji use, personality, mood, and conversation history.
