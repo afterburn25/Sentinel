@@ -196,3 +196,24 @@ The active development branch now implements the approved hybrid design and core
 - Persona response variation dimensions: intelligence/language level, slang, grammar quality, typo tendency, emoji tendency, and mood.
 - Hybrid UI interaction polish: vector smiley/paperclip composer controls, hover/pressed treatment, contextual help, aligned dropdowns, and minimum-window protection.
 - Visible product/package branding normalized to SARA 1.0.16 while retaining internal Sentinel namespace/storage compatibility where changing it could break existing data.
+
+
+## Validated 1.0.16 build
+
+Validated on 2026-09-27 from branch `sara-1.0.16-trainer-redesign`.
+
+- GitHub Actions run: **#494**
+- Workflow run ID: `36318949691`
+- Validated commit: `20a1f152dd2accdf4029c5a4ae21db1a21293595`
+- Windows MSVC x64 Release build: PASS
+- Unit/integration tests: PASS
+- SQLite DLL dependency check: PASS
+- Install/package step: PASS
+- SHA-256 manifest generation: PASS
+- Packaged launcher layout: PASS
+- Artifact upload: PASS
+- Artifact: `SARA-1.0.16-windows-x64`
+- Artifact ID: `10931726051`
+- Artifact archive SHA-256: `8dbacfb102da41fe226a9401bea425a5f0f0a449e3843e270e6011ab351dab94`
+- Artifact contains `SARA.exe`, CLI/verifier tools, migrations, manifest, README, and signing-status notice.
+- Artifact Signing secrets were not configured; this is an **unsigned development build**.
