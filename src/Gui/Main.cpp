@@ -744,6 +744,7 @@ public:
         if(messagingAdapter_) {
             runtime_->channelAdapters.Register(
                 std::make_unique<sentinel::channels::LocalSimulationChannelAdapter>(*messagingAdapter_));
+            EnsureLocalChannelConversation();
         }
         agencyConfig_.workstationId="local-workstation";
         LoadOperatingJurisdiction();
@@ -1301,6 +1302,7 @@ private:
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
     sentinel::simulation::SimulationSettings simSettings_;
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
+    std::string localChannelConversationId_;
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
     sentinel::simulation::FoundationRegistry foundationRegistry_;
@@ -2832,6 +2834,85 @@ private:
         }
     }
 
+    void EnsureLocalChannelConversation() {
+        sentinel::channels::ChannelAccount account;
+        account.id="local-sim-account";
+        account.type=sentinel::channels::ChannelType::LocalSimulation;
+        account.provider="local";
+        account.externalAccountId="local-sim";
+        account.displayName="SARA Local Simulation";
+        account.address="local";
+        account.jurisdiction=operatingStateCode_;
+        account.complianceStatus="local-development";
+        account.capabilities.Set(sentinel::channels::Capability::ReceiveText);
+        account.capabilities.Set(sentinel::channels::Capability::SendText);
+        account.capabilities.Set(sentinel::channels::Capability::SendImage);
+        account.capabilities.Set(sentinel::channels::Capability::AutomatedSending);
+        runtime_->channelCore.UpsertChannelAccount(account);
+
+        auto existing=runtime_->channelCore.FindConversation(
+            "local",account.id,"local-sim");
+        if(existing) {
+            localChannelConversationId_=existing->id;
+            return;
+        }
+
+        const auto subjectId=runtime_->channelCore.CreateSubject(
+            "","Local simulation subject");
+        sentinel::channels::ChannelConversation conversation;
+        conversation.subjectId=subjectId;
+        conversation.personaName=simSettings_.persona.name;
+        conversation.channelAccountId=account.id;
+        conversation.type=sentinel::channels::ChannelType::LocalSimulation;
+        conversation.provider="local";
+        conversation.providerConversationId="local-sim";
+        conversation.externalPeerId="local-test-peer";
+        conversation.automationProfileId="";
+        conversation.state=sentinel::channels::ConversationState::Active;
+        localChannelConversationId_=runtime_->channelCore.OpenConversation(conversation);
+    }
+
+    void RecordApprovedLocalMessage(const sentinel::operations::NormalizedMessage& message) {
+        if(localChannelConversationId_.empty()) EnsureLocalChannelConversation();
+        if(localChannelConversationId_.empty()) return;
+
+        sentinel::channels::NormalizedMessage normalized;
+        normalized.id="channel-"+message.id;
+        normalized.channelConversationId=localChannelConversationId_;
+        normalized.personaName=simSettings_.persona.name;
+        normalized.direction=sentinel::channels::Direction::Outbound;
+        normalized.senderExternalId="local-operator";
+        normalized.recipientExternalId="local-test-peer";
+        normalized.body=message.text;
+        normalized.deliveryState=(int)message.state;
+        normalized.automationMode=sentinel::channels::AutomationMode::ApprovalRequired;
+        normalized.providerMessageId=message.id;
+        runtime_->channelCore.RecordMessage(normalized);
+    }
+
+    sentinel::channels::AutomationOutcome CurrentOrdinaryReplyAutomationGate() const {
+        sentinel::channels::AutomationRequest request;
+        request.mode=sentinel::channels::AutomationMode::AuthorizedAutomatic;
+        request.action=sentinel::channels::ActionKind::OrdinaryReply;
+
+        auto adapters=runtime_->channelAdapters.FindByType(
+            sentinel::channels::ChannelType::LocalSimulation);
+        if(!adapters.empty() && adapters.front()) {
+            request.providerSupportsAutomation=
+                adapters.front()->Capabilities().Has(sentinel::channels::Capability::AutomatedSending);
+        }
+
+        const auto stack=runtime_->jurisdictionRules.SelectedForOperation("local-default");
+        request.policyAllowed=true;
+        request.policyRequiresSupervisor=false;
+        request.jurisdictionProfileActive=stack && stack->fullyActive;
+        request.jurisdictionAllowsAutomation=
+            stack && stack->rules.allowAutomatedOrdinaryReplies;
+        request.jurisdictionRequiresReview=
+            !stack || !stack->fullyActive || !stack->rules.allowAutomatedOrdinaryReplies;
+        return runtime_->automationEngine.Decide(request);
+    }
+
     void QueueOperatorTestMessage() {
         RequestLatestSuggestionApproval();
         page_=Page::Supervisor;
@@ -2861,9 +2942,11 @@ private:
                 sentinel::operations::Approve(a,"local-supervisor","Approved in Sentinel supervisor console");
                 const std::string prefix="message:local-sim:";
                 if(a.action.rfind(prefix,0)==0 && messagingAdapter_) {
-                    messagingAdapter_->QueueOperatorApproved("local-sim",a.action.substr(prefix.size()));
+                    auto queued=messagingAdapter_->QueueOperatorApproved(
+                        "local-sim",a.action.substr(prefix.size()));
+                    RecordApprovedLocalMessage(queued);
                 }
-                statusText_=L"Supervisor approval recorded and message queued";
+                statusText_=L"Supervisor approval recorded, normalized, and queued";
                 return;
             }
         }
@@ -4892,7 +4975,7 @@ private:
     }
 
     void DrawMessaging(float w,float h) {
-        PageTitle(L"Messaging",L"Operator-approved messaging core and local conversation queue");
+        PageTitle(L"Messaging",L"Unified normalized channel core, capability gates, and approved local queue");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
@@ -4901,23 +4984,36 @@ private:
         const float queueW=contentW-gap-infoW;
 
         Rounded(x,y,infoW,238,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Adapter Status",x+18,y+12,infoW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Unified Channel Status",x+18,y+12,infoW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Provider",x+20,y+56,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(messagingAdapter_?messagingAdapter_->ProviderName():"Not configured"),
-            x+122,y+54,infoW-142,28,smallFmt_.Get(),brush_.text.Get());
+        auto localAdapters=runtime_->channelAdapters.FindByType(
+            sentinel::channels::ChannelType::LocalSimulation);
+        auto* channelAdapter=localAdapters.empty()?nullptr:localAdapters.front();
+        const bool connected=channelAdapter && channelAdapter->Connected();
+        const auto capabilities=channelAdapter?channelAdapter->Capabilities():sentinel::channels::ChannelCapabilities{};
 
-        TextLine(L"Connection",x+20,y+94,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        StatusDot(x+130,y+107,4,messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
-        TextLine(messagingAdapter_&&messagingAdapter_->Connected()?L"Local test adapter online":L"Offline",
-            x+142,y+92,infoW-162,28,smallFmt_.Get(),messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
+        TextLine(L"Adapter",x+20,y+54,86,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(channelAdapter?Widen(channelAdapter->AdapterName()):L"Not configured",
+            x+112,y+50,infoW-132,28,smallFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Outbound control",x+20,y+132,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Messages must pass the operator / supervisor approval path before they are queued.",
-            x+122,y+132,infoW-142,48,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Connection",x+20,y+86,86,24,tinyFmt_.Get(),brush_.muted.Get());
+        StatusDot(x+120,y+99,4,connected?brush_.green.Get():brush_.red.Get());
+        TextLine(connected?L"Local channel online":L"Offline",
+            x+132,y+84,infoW-152,28,smallFmt_.Get(),connected?brush_.green.Get():brush_.red.Get());
 
-        Text(L"This development build has no live third-party messaging transport connected.",
-            x+20,y+190,infoW-40,34,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Capabilities",x+20,y+120,86,24,tinyFmt_.Get(),brush_.muted.Get());
+        std::wstring caps;
+        if(capabilities.Has(sentinel::channels::Capability::SendText)) caps+=L"TEXT ";
+        if(capabilities.Has(sentinel::channels::Capability::SendImage)) caps+=L"IMAGE ";
+        if(capabilities.Has(sentinel::channels::Capability::AutomatedSending)) caps+=L"AUTO-CAPABLE";
+        TextLine(caps.empty()?L"None":caps,x+112,y+116,infoW-132,28,tinyFmt_.Get(),brush_.cyan.Get());
+
+        const auto gate=CurrentOrdinaryReplyAutomationGate();
+        TextLine(L"Automation",x+20,y+152,86,24,tinyFmt_.Get(),brush_.muted.Get());
+        const bool autoAllowed=gate.decision==sentinel::channels::AutomationDecisionKind::AutoSend;
+        TextLine(autoAllowed?L"Authorized ordinary auto-reply":L"Human review required",
+            x+112,y+148,infoW-132,28,smallFmt_.Get(),autoAllowed?brush_.green.Get():brush_.yellow.Get());
+        Text(Widen(gate.reason),x+20,y+184,infoW-40,36,tinyFmt_.Get(),brush_.muted.Get());
 
         auto msgs=messagingAdapter_?messagingAdapter_->Poll("local-sim"):std::vector<sentinel::operations::NormalizedMessage>{};
         const float qx=x+infoW+gap;
