@@ -478,6 +478,7 @@ struct Runtime {
 
 struct BrushSet {
     ComPtr<ID2D1SolidColorBrush> bg, panel, panel2, sidebar, border, text, muted, blue, cyan, green, yellow, red;
+    ComPtr<ID2D1SolidColorBrush> glowBlue, glowCyan, panelGlow, deepPanel;
 };
 
 class App {
@@ -744,11 +745,13 @@ public:
         float w=(float)rc.right,h=(float)rc.bottom;
 
         target_->BeginDraw();
-        target_->Clear(D2D1::ColorF(0x07131F));
+        target_->Clear(D2D1::ColorF(0x020A12));
 
         target_->FillRectangle(D2D1::RectF(0,0,(float)kSidebar,h),brush_.sidebar.Get());
-        target_->FillRectangle(D2D1::RectF((float)kSidebar,0,w,(float)kHeader),brush_.panel.Get());
+        target_->FillRectangle(D2D1::RectF((float)kSidebar,0,w,(float)kHeader),brush_.deepPanel.Get());
+        target_->FillRectangle(D2D1::RectF((float)kSidebar-1,0,(float)kSidebar+1,h),brush_.glowCyan.Get());
         target_->DrawLine(D2D1::Point2F((float)kSidebar,(float)kHeader),D2D1::Point2F(w,(float)kHeader),brush_.border.Get(),1);
+        target_->DrawLine(D2D1::Point2F((float)kSidebar+16,(float)kHeader-1),D2D1::Point2F(w-16,(float)kHeader-1),brush_.glowBlue.Get(),1.5f);
 
         DrawBrand();
         DrawSidebar();
@@ -919,6 +922,20 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
+            if(page_==Page::ModelLab) {
+                const int idx=(int)((y-kHeader-18)/42);
+                if(idx==0) {
+                    page_=Page::Dashboard;
+                } else if(idx>=1 && idx<=8) {
+                    modelLabSection_=(ModelLabSection)(idx-1);
+                } else if(y>650) {
+                    page_=Page::Settings;
+                }
+                ApplyPageControls();
+                InvalidateRect(hwnd_,nullptr,FALSE);
+                return;
+            }
+
             int idx=(int)((y-kHeader-18)/48);
             if (idx>=0&&idx<12) {
                 page_=(Page)idx;
@@ -1303,10 +1320,11 @@ private:
         }
         if (!brushesReady_ && target_) {
             auto mk=[&](UINT rgb,float a=1.0f){ ComPtr<ID2D1SolidColorBrush> b; target_->CreateSolidColorBrush(D2D1::ColorF(rgb,a),&b); return b; };
-            brush_.bg=mk(0x07131F); brush_.sidebar=mk(0x0A1826); brush_.panel=mk(0x0F2030);
-            brush_.panel2=mk(0x12283A); brush_.border=mk(0x24445C); brush_.text=mk(0xEEF6FF);
-            brush_.muted=mk(0x93A9BC); brush_.blue=mk(0x1597F6); brush_.cyan=mk(0x22C7FF);
-            brush_.green=mk(0x38E89A); brush_.yellow=mk(0xF6C84A); brush_.red=mk(0xFF5B66);
+            brush_.bg=mk(0x020A12); brush_.sidebar=mk(0x06121E); brush_.panel=mk(0x091725);
+            brush_.panel2=mk(0x10263A); brush_.deepPanel=mk(0x050F19); brush_.border=mk(0x173B55); brush_.text=mk(0xF2F8FF);
+            brush_.muted=mk(0x829CB2); brush_.blue=mk(0x1672FF); brush_.cyan=mk(0x18D7FF);
+            brush_.green=mk(0x2EE6A6); brush_.yellow=mk(0xF2C84B); brush_.red=mk(0xFF5D6C);
+            brush_.glowBlue=mk(0x1672FF,0.24f); brush_.glowCyan=mk(0x18D7FF,0.22f); brush_.panelGlow=mk(0x0D5B82,0.24f);
             brushesReady_=true;
         }
     }
@@ -1344,6 +1362,15 @@ private:
         auto rr=D2D1::RoundedRect(D2D1::RectF(x,y,x+w,y+h),radius,radius);
         target_->FillRoundedRectangle(rr,fill);
         if (stroke) target_->DrawRoundedRectangle(rr,stroke,1);
+    }
+
+    void GlowPanel(float x,float y,float w,float h,bool active=false,float radius=10) {
+        Rounded(x,y,w,h,active?brush_.panel2.Get():brush_.panel.Get(),active?brush_.cyan.Get():brush_.border.Get(),radius);
+        target_->DrawLine(
+            D2D1::Point2F(x+14,y+1),
+            D2D1::Point2F(x+w-14,y+1),
+            active?brush_.cyan.Get():brush_.panelGlow.Get(),
+            active?1.8f:1.1f);
     }
 
     void Badge(const std::wstring& s,float x,float y,ID2D1Brush* color,float width=76) {
@@ -1545,6 +1572,38 @@ private:
     }
 
     void DrawSidebar() {
+        if(page_==Page::ModelLab) {
+            static const wchar_t* labNames[]={
+                L"Home",L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+                L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+            };
+            static const IconKind labIcons[]={
+                IconKind::Home,IconKind::Database,IconKind::Chat,IconKind::Database,IconKind::Folder,
+                IconKind::Chain,IconKind::Gear,IconKind::Check,IconKind::Shield
+            };
+
+            TextLine(L"MODEL LAB",24,kHeader+8,172,20,tinyFmt_.Get(),brush_.cyan.Get());
+            constexpr float rowH=42.0f;
+            for(int i=0;i<9;i++) {
+                const float y=(float)kHeader+30+i*rowH;
+                const bool selected=i>0 && (int)modelLabSection_==(i-1);
+                if(selected) {
+                    Rounded(10,y-3,kSidebar-20,36,brush_.panel2.Get(),brush_.blue.Get(),8);
+                    target_->FillRectangle(D2D1::RectF(0,y-3,4,y+33),brush_.cyan.Get());
+                }
+                DrawIcon(labIcons[i],24,y+4,20,selected?brush_.cyan.Get():brush_.muted.Get());
+                TextLine(labNames[i],56,y+2,kSidebar-70,28,smallFmt_.Get(),selected?brush_.cyan.Get():brush_.text.Get());
+            }
+
+            target_->DrawLine(D2D1::Point2F(18,630),D2D1::Point2F(kSidebar-18,630),brush_.border.Get(),1);
+            DrawIcon(IconKind::Gear,24,650,20,brush_.muted.Get());
+            TextLine(L"Settings",56,648,kSidebar-70,28,smallFmt_.Get(),brush_.text.Get());
+            Text(L"SARA v1.0.18",24,694,170,20,smallFmt_.Get(),brush_.muted.Get());
+            StatusDot(28,722,4,brush_.green.Get());
+            Text(L"SARA Online",40,712,150,20,smallFmt_.Get(),brush_.green.Get());
+            return;
+        }
+
         static const wchar_t* names[]={
             L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Simulation Lab",
             L"Persona & Policy",L"Model Lab",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
@@ -1552,9 +1611,8 @@ private:
         for (int i=0;i<12;i++) {
             float y=(float)kHeader+18+i*48;
             if ((int)page_==i) {
-                target_->FillRectangle(D2D1::RectF(0,y-5,(float)kSidebar,y+39),brush_.panel2.Get());
-                target_->FillRectangle(D2D1::RectF(0,y-5,4,y+39),brush_.cyan.Get());
-                Rounded(20,y,36,32,brush_.sidebar.Get(),brush_.border.Get(),8);
+                Rounded(10,y-5,kSidebar-20,42,brush_.panel2.Get(),brush_.blue.Get(),8);
+                target_->FillRectangle(D2D1::RectF(0,y-5,4,y+37),brush_.cyan.Get());
             }
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
@@ -1564,6 +1622,23 @@ private:
     }
 
     void DrawHeader(float w) {
+        if(page_==Page::ModelLab) {
+            TextLine(L"Model Lab / Trainer",kSidebar+28,13,220,27,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"TRAIN  •  REFINE  •  EVALUATE  •  DEPLOY",kSidebar+30,42,290,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+            Rounded(kSidebar+330,17,280,40,brush_.sidebar.Get(),brush_.border.Get(),10);
+            DrawIcon(IconKind::Search,kSidebar+344,28,17,brush_.muted.Get());
+            TextLine(L"Search models, datasets, or jobs...",kSidebar+370,20,220,32,smallFmt_.Get(),brush_.muted.Get());
+
+            StatusDot(w-170,30,4,brush_.green.Get());
+            TextLine(L"SARA Online",w-156,16,90,28,smallFmt_.Get(),brush_.green.Get());
+            Rounded(w-54,18,30,30,brush_.panel2.Get(),brush_.blue.Get(),15);
+            TextLine(L"S",w-47,20,16,24,smallFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            if(!hoverHelp_.empty())
+                TextLine(hoverHelp_,kSidebar+640,47,std::max(160.0f,w-kSidebar-830.0f),18,tinyFmt_.Get(),brush_.cyan.Get());
+            return;
+        }
+
         Text(L"EVIDENCE",kSidebar+28,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
         Text(L"|",kSidebar+104,24,12,20,tinyFmt_.Get(),brush_.border.Get());
         Text(L"INTEGRITY",kSidebar+118,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
