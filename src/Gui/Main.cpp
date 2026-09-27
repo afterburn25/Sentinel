@@ -410,7 +410,7 @@ std::wstring ReadTextFileTail(const std::filesystem::path& path,size_t maxChars=
     return Widen(bytes);
 }
 
-bool StartBundledAiService(std::wstring* failure = nullptr) {
+bool StartBundledAiService(std::wstring* failure = nullptr,bool forceRestart=false) {
     const auto aiDir = ExeDir() / L"ai";
     const auto script = aiDir / L"Start-Sentinel-With-AI.ps1";
     const auto setup = ExeDir() / L"Setup-Sentinel-AI.cmd";
@@ -453,6 +453,7 @@ bool StartBundledAiService(std::wstring* failure = nullptr) {
     std::wstring command =
         L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" +
         script.wstring() + L"\" -NoLaunch";
+    if(forceRestart) command+=L" -ForceRestart";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
