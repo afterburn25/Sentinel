@@ -135,6 +135,7 @@ install(FILES
 )
 
 install(DIRECTORY resources/ai/ DESTINATION ai)
+install(DIRECTORY resources/trainer/ DESTINATION trainer)
 install(FILES
     resources/assets/SARA-Logo.png
     resources/assets/SARA-Icon.png
