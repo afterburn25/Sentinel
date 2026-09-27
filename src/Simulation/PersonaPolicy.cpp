@@ -60,6 +60,21 @@ std::string ApplyPersonaWritingVariation(const PersonaProfile& persona,std::stri
     auto emoji=Lower(persona.emojiTendency);
     auto mood=Lower(persona.mood);
     auto intelligence=Lower(persona.intelligenceLevel);
+    const int age=persona.age;
+
+    // Age is a light stylistic influence only. Explicit persona style settings
+    // remain authoritative and age never changes factual or policy behavior.
+    if(age>0 && age<=17) {
+        if(text.size()>120) {
+            auto p=text.find('.',70);
+            if(p!=std::string::npos) text=text.substr(0,p+1);
+        }
+        if(level!="none" && variationSeed%4==0 && text.find("Okay")!=std::string::npos)
+            text.replace(text.find("Okay"),4,"yeah");
+    } else if(age>=35) {
+        if(variationSeed%5==0 && text.find("fr")!=std::string::npos)
+            text.replace(text.find("fr"),2,"really");
+    }
 
     if(level=="high" || level=="very high") {
         if(variationSeed%3==0 && text.find("really")!=std::string::npos) {
