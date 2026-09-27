@@ -2582,7 +2582,7 @@ private:
             const float bodyY=heroY+heroH+12.0f;
             const float rightW=std::clamp(contentW*0.29f,286.0f,342.0f);
             const float leftW=contentW-rightW-gap;
-            const float advancedY=bodyY+292.0f;
+            const float advancedY=bodyY+232.0f;
             const float fieldSplit=leftW*0.48f;
 
             MoveControl(trainerModeCombo_,
@@ -2591,24 +2591,24 @@ private:
                 (int)(x+fieldSplit),(int)(bodyY+66),(int)std::max(190.0f,leftW-fieldSplit-18.0f),180,TRUE);
 
             MoveControl(trainerInstructionEdit_,
-                (int)(x+18),(int)(bodyY+158),(int)(leftW-36),122,TRUE);
-            RECT trainerTextRect{12,10,std::max(24,(int)(leftW-60)),108};
+                (int)(x+18),(int)(bodyY+146),(int)(leftW-36),74,TRUE);
+            RECT trainerTextRect{12,8,std::max(24,(int)(leftW-60)),64};
             SendMessageW(trainerInstructionEdit_,EM_SETRECTNP,0,(LPARAM)&trainerTextRect);
 
             MoveControl(trainerForkNameEdit_,
-                (int)(x+108),(int)(advancedY+28),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+                (int)(x+100),(int)(advancedY+20),(int)std::max(130.0f,fieldSplit-118.0f),28,TRUE);
             MoveControl(trainerBasePathEdit_,
-                (int)(x+fieldSplit+112),(int)(advancedY+28),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
+                (int)(x+fieldSplit+102),(int)(advancedY+20),(int)std::max(150.0f,leftW-fieldSplit-120.0f),28,TRUE);
 
             MoveControl(trainerLoraNameEdit_,
-                (int)(x+108),(int)(advancedY+70),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+                (int)(x+100),(int)(advancedY+54),(int)std::max(130.0f,fieldSplit-118.0f),28,TRUE);
             MoveControl(trainerLoraPathEdit_,
-                (int)(x+fieldSplit+112),(int)(advancedY+70),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
+                (int)(x+fieldSplit+102),(int)(advancedY+54),(int)std::max(150.0f,leftW-fieldSplit-120.0f),28,TRUE);
 
             MoveControl(trainerDatasetEdit_,
-                (int)(x+108),(int)(advancedY+112),(int)std::max(130.0f,fieldSplit-126.0f),30,TRUE);
+                (int)(x+100),(int)(advancedY+88),(int)std::max(130.0f,fieldSplit-118.0f),28,TRUE);
             MoveControl(trainerOutputEdit_,
-                (int)(x+fieldSplit+112),(int)(advancedY+112),(int)std::max(150.0f,leftW-fieldSplit-130.0f),30,TRUE);
+                (int)(x+fieldSplit+102),(int)(advancedY+88),(int)std::max(150.0f,leftW-fieldSplit-120.0f),28,TRUE);
         }
 
         if(page_==Page::Agency) {
@@ -5162,25 +5162,25 @@ private:
 
         // The native edit control is the real editable training conversation/
         // instruction surface. It is positioned by LayoutNativeControls().
-        TextLine(L"TRAINING INSTRUCTION / CORRECTION",x+18,bodyY+137,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"TRAINING INSTRUCTION / CORRECTION",x+18,bodyY+126,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
 
         // Advanced recovered 1.0.15 training controls remain available below
         // the conversational surface instead of being deleted by the redesign.
-        const float advancedY=bodyY+292.0f;
+        const float advancedY=bodyY+232.0f;
         target_->DrawLine(
             D2D1::Point2F(x+18,advancedY-10),
             D2D1::Point2F(x+leftW-18,advancedY-10),
             brush_.border.Get(),1.0f);
         TextLine(L"Advanced Training Setup",x+18,advancedY,220,24,smallFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Fork name",x+18,advancedY+34,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Trainable source",x+leftW*0.48f,advancedY+34,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Fork name",x+18,advancedY+25,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Trainable source",x+leftW*0.48f,advancedY+25,100,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"LoRA name",x+18,advancedY+76,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Adapter path",x+leftW*0.48f,advancedY+76,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LoRA name",x+18,advancedY+59,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Adapter path",x+leftW*0.48f,advancedY+59,100,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Dataset",x+18,advancedY+118,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Output",x+leftW*0.48f,advancedY+118,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Dataset",x+18,advancedY+93,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Output",x+leftW*0.48f,advancedY+93,100,18,tinyFmt_.Get(),brush_.muted.Get());
 
         const float actionY=bodyY+bodyH-42.0f;
         AddButton(L"trainer_apply_instruction",L"Apply Instruction",x+18,actionY,142,30,true);
