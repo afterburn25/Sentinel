@@ -538,11 +538,19 @@ begin
         'Click Upgrade to update SARA while preserving your existing data and valid local AI model.';
       WizardForm.NextButton.Caption := '&Upgrade';
     end
+    else if CurPageID = wpPreparing then
+    begin
+      WizardForm.PageNameLabel.Caption := 'Preparing SARA Upgrade';
+      WizardForm.PageDescriptionLabel.Caption :=
+        'Setup is preparing to upgrade your existing SARA installation.';
+      WizardForm.StatusLabel.Caption := 'Preparing upgrade...';
+    end
     else if CurPageID = wpInstalling then
     begin
       WizardForm.PageNameLabel.Caption := 'Upgrading SARA';
       WizardForm.PageDescriptionLabel.Caption :=
         'Please wait while Setup upgrades SARA on your computer.';
+      WizardForm.StatusLabel.Caption := 'Upgrading SARA...';
     end
     else if CurPageID = wpFinished then
     begin
@@ -557,6 +565,12 @@ begin
     WizardForm.ReadyLabel.Caption :=
       'Setup is ready to install SARA on this computer.';
   end;
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+begin
+  if IsUpgrade then
+    WizardForm.StatusLabel.Caption := 'Upgrading SARA...';
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
