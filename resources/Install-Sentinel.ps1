@@ -16,12 +16,12 @@ Get-ChildItem -LiteralPath $Source -Force | Where-Object {
 if (-not $NoShortcut) {
     $shell = New-Object -ComObject WScript.Shell
     $desktop = [Environment]::GetFolderPath("Desktop")
-    $shortcut = $shell.CreateShortcut((Join-Path $desktop "Sentinel.lnk"))
-    $shortcut.TargetPath = Join-Path $dest "Sentinel.exe"
+    $shortcut = $shell.CreateShortcut((Join-Path $desktop "SARA.lnk"))
+    $shortcut.TargetPath = Join-Path $dest "SARA.exe"
     $shortcut.WorkingDirectory = $dest
-    $shortcut.Description = "Sentinel Secure Evidence & Integrity"
+    $shortcut.Description = "SARA — Synthetic Adaptive Response Agent"
     $shortcut.Save()
 }
 
-Write-Host "Sentinel installed to $dest"
-Write-Host "Run: $(Join-Path $dest 'Sentinel.exe')"
+Write-Host "SARA installed to $dest"
+Write-Host "Run: $(Join-Path $dest 'SARA.exe')"
