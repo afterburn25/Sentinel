@@ -63,7 +63,7 @@ std::string GetHttps(const std::string& url) {
     if(!WinHttpCrackUrl(w.c_str(),0,0,&uc)) throw std::runtime_error("invalid update manifest URL");
     if(uc.nScheme!=INTERNET_SCHEME_HTTPS) throw std::runtime_error("update manifest must use HTTPS");
 
-    HINTERNET session=WinHttpOpen(L"SARA-Update/1.0.16",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
+    HINTERNET session=WinHttpOpen(L"SARA-Update/1.0.17",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,nullptr,nullptr,0);
     if(!session) throw std::runtime_error("cannot initialize update connection");
     WinHttpSetTimeouts(session,5000,5000,10000,15000);
     std::wstring h(host,uc.dwHostNameLength),p(path,uc.dwUrlPathLength);
@@ -74,7 +74,7 @@ std::string GetHttps(const std::string& url) {
         WinHttpCloseHandle(connect); WinHttpCloseHandle(session);
         throw std::runtime_error("cannot create update request");
     }
-    std::wstring headers=L"Accept: application/json\r\nUser-Agent: SARA/1.0.16\r\n";
+    std::wstring headers=L"Accept: application/json\r\nUser-Agent: SARA/1.0.17\r\n";
     BOOL ok=WinHttpSendRequest(request,headers.c_str(),(DWORD)-1L,WINHTTP_NO_REQUEST_DATA,0,0,0);
     if(ok) ok=WinHttpReceiveResponse(request,nullptr);
     if(!ok) {
