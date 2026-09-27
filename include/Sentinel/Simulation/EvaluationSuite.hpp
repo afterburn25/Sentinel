@@ -19,6 +19,14 @@ enum class EvaluationDimension {
     ResponseDiversity
 };
 
+struct EvaluationTestCase {
+    std::string id;
+    std::string name;
+    EvaluationDimension dimension{EvaluationDimension::PersonaConsistency};
+    std::string prompt;
+    std::string expectedFact;
+};
+
 struct EvaluationDimensionResult {
     EvaluationDimension dimension{EvaluationDimension::PersonaConsistency};
     int score{100};
@@ -67,6 +75,7 @@ private:
 };
 
 std::string ToString(EvaluationDimension dimension);
+const std::vector<EvaluationTestCase>& DefaultEvaluationTestCases();
 
 EvaluationDimensionResult ScorePersonaConsistency(
     const PersonaProfile& persona,
