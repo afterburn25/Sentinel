@@ -4165,7 +4165,7 @@ private:
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
 
-        Rounded(x,y,contentW,150,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(x,y,contentW,300,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Model Registry & Persona Controls",x+18,y+12,340,30,h1Fmt_.Get(),brush_.text.Get());
 
         const float gap=10.0f;
@@ -4182,21 +4182,53 @@ private:
 
         TextLine(L"Trigger",x+18,y+110,64,24,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Response",x+318,y+110,60,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"rule_wording_toggle",
+            responseRuleExactWording_?L"Wording: Exact":L"Wording: Persona",
+            x+contentW-486,y+105,126,32,responseRuleExactWording_);
         AddButton(L"rule_add_contains",L"Add Contains",x+contentW-350,y+105,104,32,false);
         AddButton(L"rule_add_exact",L"Add Exact",x+contentW-238,y+105,94,32,true);
-        AddButton(L"rule_clear",L"Clear",x+contentW-136,y+105,70,32,false);
-        TextLine(L"Rules "+std::to_wstring(PersonaResponseRuleCount()),x+contentW-62,y+111,56,20,tinyFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"rule_clear",L"Clear All",x+contentW-136,y+105,76,32,false);
 
-        Rounded(x,y+164,contentW,278,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Registered Models",x+18,y+176,260,30,h1Fmt_.Get(),brush_.text.Get());
+        auto rules=PersonaResponseRules(3);
+        TextLine(L"Saved Rules ("+std::to_wstring(PersonaResponseRuleCount())+L")",
+            x+18,y+152,190,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"MATCH",x+34,y+181,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"WORDING",x+114,y+181,84,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"TRIGGER",x+210,y+181,250,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"RESPONSE",x+470,y+181,contentW-610,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"MODEL",x+34,y+213,280,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+332,y+213,100,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+452,y+213,72,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"LATENCY",x+544,y+213,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+646,y+213,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+        float ruleY=y+202;
+        if(rules.empty()) {
+            TextLine(L"No response rules saved for this persona.",
+                x+34,ruleY,contentW-68,28,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& rule:rules) {
+                Rounded(x+22,ruleY,contentW-44,30,brush_.sidebar.Get(),brush_.border.Get(),6);
+                TextLine(Widen(rule.matchType),x+34,ruleY+4,70,22,tinyFmt_.Get(),brush_.cyan.Get());
+                TextLine(rule.responseMode=="exact"?L"Exact":L"Persona",
+                    x+114,ruleY+4,84,22,tinyFmt_.Get(),brush_.text.Get());
+                std::wstring trigger=Widen(rule.trigger);
+                if(trigger.size()>34) trigger=trigger.substr(0,31)+L"...";
+                std::wstring response=Widen(rule.response);
+                if(response.size()>58) response=response.substr(0,55)+L"...";
+                TextLine(trigger,x+210,ruleY+4,250,22,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(response,x+470,ruleY+4,contentW-610,22,tinyFmt_.Get(),brush_.muted.Get());
+                AddButton(L"rule_delete:"+std::to_wstring(rule.id),L"Delete",
+                    x+contentW-112,ruleY+2,78,26,false);
+                ruleY+=34;
+            }
+        }
 
-        float yy=y+239;
+        Rounded(x,y+314,contentW,220,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Registered Models",x+18,y+326,260,30,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"MODEL",x+34,y+363,280,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+332,y+363,100,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+452,y+363,72,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+544,y+363,80,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+646,y+363,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+389;
         if(modelRegistry_.Models().empty()) {
             Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
             TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
@@ -4219,10 +4251,10 @@ private:
             yy+=62;
         }
 
-        Rounded(x,y+456,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Last Evaluation",x+18,y+468,220,30,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(x,y+548,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Last Evaluation",x+18,y+560,220,30,h1Fmt_.Get(),brush_.text.Get());
 
-        const float metricY=y+516;
+        const float metricY=y+608;
         Rounded(x+22,metricY,110,48,brush_.sidebar.Get(),brush_.border.Get(),8);
         TextLine(L"Score",x+34,metricY+4,86,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(std::to_wstring(lastEvaluation_.score),x+34,metricY+20,86,22,bodyFmt_.Get(),
@@ -4242,7 +4274,7 @@ private:
             TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
         }
 
-        const float reviewY=y+602;
+        const float reviewY=y+694;
         Rounded(x,reviewY,contentW,118,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Reviewed Learning Dataset",x+18,reviewY+10,300,28,h1Fmt_.Get(),brush_.text.Get());
 
