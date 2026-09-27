@@ -1194,8 +1194,10 @@ public:
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
             else if (b.id==L"training_export") ExportApprovedTrainingDataset();
+            else if (b.id==L"rule_add_smart") AddPersonaResponseRule("smart");
             else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
             else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
+            else if (b.id==L"rule_test") TestPersonaResponseRuleMatch();
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
             else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
             else if (b.id.rfind(L"rule_delete:",0)==0)
@@ -2402,6 +2404,72 @@ private:
         return out;
     }
 
+
+    static std::vector<std::string> RuleWords(std::string_view input) {
+        auto normalized=NormalizeRuleText(input);
+        std::vector<std::string> words;
+        std::istringstream in(normalized);
+        std::string word;
+        while(in>>word) {
+            if(word=="whats") { words.push_back("what"); words.push_back("is"); continue; }
+            if(word=="im") { words.push_back("i"); words.push_back("am"); continue; }
+            if(word=="youre") { words.push_back("you"); words.push_back("are"); continue; }
+            if(word=="dont") { words.push_back("do"); words.push_back("not"); continue; }
+            if(word=="cant") { words.push_back("can"); words.push_back("not"); continue; }
+            if(word=="wont") { words.push_back("will"); words.push_back("not"); continue; }
+            words.push_back(word);
+        }
+        return words;
+    }
+
+    static int EditDistance(std::string_view a,std::string_view b) {
+        std::vector<int> prev(b.size()+1),cur(b.size()+1);
+        for(size_t j=0;j<=b.size();++j) prev[j]=(int)j;
+        for(size_t i=1;i<=a.size();++i) {
+            cur[0]=(int)i;
+            for(size_t j=1;j<=b.size();++j) {
+                const int cost=a[i-1]==b[j-1]?0:1;
+                cur[j]=std::min({prev[j]+1,cur[j-1]+1,prev[j-1]+cost});
+            }
+            prev.swap(cur);
+        }
+        return prev[b.size()];
+    }
+
+    static bool WordClose(std::string_view a,std::string_view b) {
+        if(a==b) return true;
+        if(a.size()<4 || b.size()<4) return false;
+        return EditDistance(a,b)<=1;
+    }
+
+    static int SmartRuleScore(std::string_view input,std::string_view trigger) {
+        const auto inputWords=RuleWords(input);
+        const auto triggerWords=RuleWords(trigger);
+        if(triggerWords.empty() || inputWords.empty()) return 0;
+
+        size_t matched=0;
+        std::vector<bool> used(inputWords.size(),false);
+        for(const auto& tw:triggerWords) {
+            for(size_t i=0;i<inputWords.size();++i) {
+                if(used[i]) continue;
+                if(WordClose(tw,inputWords[i])) {
+                    used[i]=true;
+                    ++matched;
+                    break;
+                }
+            }
+        }
+
+        const double recall=(double)matched/(double)triggerWords.size();
+        const double precision=(double)matched/(double)inputWords.size();
+        const int score=(int)std::lround((recall*0.75+precision*0.25)*100.0);
+
+        // Require nearly all meaningful trigger words so "favorite color"
+        // cannot accidentally match a totally different favorite-* question.
+        if(triggerWords.size()<=2) return recall>=1.0?score:0;
+        return recall>=0.75?score:0;
+    }
+
     struct PersonaResponseRuleView {
         long long id{};
         std::string matchType;
@@ -2409,6 +2477,7 @@ private:
         std::string response;
         std::string responseMode{"persona_variation"};
         bool enabled{};
+        int matchScore{};
     };
 
     std::vector<PersonaResponseRuleView> PersonaResponseRules(size_t limit=8) const {
@@ -2459,7 +2528,7 @@ private:
             "SELECT id,match_type,trigger_text,response_text,response_mode,enabled "
             "FROM persona_response_rules "
             "WHERE persona_name=? AND enabled=1 "
-            "ORDER BY CASE match_type WHEN 'exact' THEN 0 ELSE 1 END, priority DESC, id ASC";
+            "ORDER BY priority DESC,id ASC";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
             return std::nullopt;
 
@@ -2481,15 +2550,47 @@ private:
             item.enabled=sqlite3_column_int(s,5)!=0;
 
             const auto trigger=NormalizeRuleText(item.trigger);
-            if((item.matchType=="exact" && !trigger.empty() && normalized==trigger) ||
-               (item.matchType=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)) {
+            int score=0;
+            if(item.matchType=="exact" && !trigger.empty() && normalized==trigger)
+                score=100;
+            else if(item.matchType=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)
+                score=95;
+            else if(item.matchType=="smart")
+                score=SmartRuleScore(input,item.trigger);
+
+            if(score>0 && (!found || score>found->matchScore)) {
+                item.matchScore=score;
                 found=item;
-                break;
+                if(score==100) break;
             }
         }
 
         sqlite3_finalize(s);
         return found;
+    }
+
+    void TestPersonaResponseRuleMatch() {
+        const auto sample=Narrow(EditText(responseRuleTriggerEdit_));
+        if(sample.empty()) {
+            statusText_=L"Enter a sample question in Trigger first";
+            return;
+        }
+        auto rule=FindPersonaResponseRule(sample);
+        if(!rule) {
+            statusText_=L"No response rule matched that sample";
+            MessageBoxW(hwnd_,L"No saved response rule matched the sample text.",
+                L"Rule Test",MB_OK|MB_ICONINFORMATION);
+            return;
+        }
+        const std::wstring msg=
+            L"Matched Rule #"+std::to_wstring(rule->id)+
+            L"\nMatch: "+Widen(rule->matchType)+
+            L" ("+std::to_wstring(rule->matchScore)+L"%)"+
+            L"\nTrigger: "+Widen(rule->trigger)+
+            L"\nResponse: "+Widen(rule->response);
+        statusText_=L"Rule #"+std::to_wstring(rule->id)+L" matched sample at "+
+            std::to_wstring(rule->matchScore)+L"%";
+        MessageBoxW(hwnd_,msg.c_str(),L"Rule Test Result",MB_OK|MB_ICONINFORMATION);
     }
 
     void AddPersonaResponseRule(const std::string& matchType) {
@@ -3229,7 +3330,8 @@ private:
                 simRuleResponseMode_=rule->responseMode;
                 if(rule->responseMode=="exact")
                     simPreparedReply_=rule->response;
-                statusText_=L"Response rule matched: "+Widen(rule->trigger);
+                statusText_=L"Rule #"+std::to_wstring(rule->id)+L" matched ("+
+                    std::to_wstring(rule->matchScore)+L"%): "+Widen(rule->trigger);
             } else {
                 statusText_=L"Matched response rule was blocked by active policy";
             }
