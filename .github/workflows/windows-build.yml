@@ -6,7 +6,7 @@ on:
     branches: [ main, develop, 'sara-*' ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, validation-sara-1.0.18.2-persona-profiles ]
   workflow_dispatch:
 
 permissions:
