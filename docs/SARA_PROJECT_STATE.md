@@ -12,7 +12,7 @@ The repository was originally named Sentinel and still uses Sentinel in many sou
 
 - GitHub: `afterburn25/Sentinel`
 - Default branch: `main`
-- Active development branch: `sara-1.0.17-dataset-adapter-management`
+- Active development branch: `sara-1.0.18-evaluation-suite`
 - Desktop implementation: native Windows C++20
 - Build system: CMake + vcpkg
 - Main GUI implementation currently lives in `src/Gui/Main.cpp`
@@ -26,7 +26,7 @@ The GitHub source still contains older internal version strings such as Sentinel
 
 ## Current development target
 
-**SARA 1.0.17 — Dataset & Adapter Management**
+**SARA 1.0.18 — Evaluation Suite**
 
 SARA 1.0.16 is merged into `main` and is the validated baseline. 1.0.17 extends the Model Lab without changing the approved hybrid UI system.
 
@@ -250,3 +250,26 @@ Microsoft Artifact Signing is wired into CI, but repository signing secrets are 
 - Persona adapter comparison and version history.
 - Richer training-run history including creation/start/completion timestamps.
 - Preserve all 1.0.16 runtime and release compatibility.
+
+
+## 1.0.18 active goals
+
+SARA 1.0.18 adds a persistent, repeatable evaluation framework on top of the merged 1.0.17 Model Lab.
+
+Evaluation dimensions:
+- Persona identity / factual consistency
+- Policy compliance
+- Configured style consistency
+- Long-context / memory recall
+- Trigger-rule regression
+- Response diversity / anti-canned-response behavior
+
+Requirements:
+- Versioned/persistent evaluation runs.
+- Candidate model identity and runtime foundation/adapter identity captured with every run.
+- Per-dimension scores and warnings.
+- Overall score derived from dimension results.
+- Baseline comparison against previous runs for regression detection.
+- Candidate comparison report in the existing hybrid Evaluation command-center UI.
+- Named test cases so future suites can grow without hard-coding all logic into the GUI.
+- Evaluation must never activate/deploy a candidate automatically.
