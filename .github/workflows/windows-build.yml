@@ -1,4 +1,4 @@
-# Sentinel release: 1.0.8
+# Sentinel release: 1.0.9
 name: Windows Build
 
 on:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: sentinel-v108-${{ github.workflow }}-${{ github.ref }}
+  group: sentinel-v109-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -88,7 +88,7 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/SARA-1.0.8-windows-x64
+          --prefix package/SARA-1.0.9-windows-x64
 
       - name: Azure login for Artifact Signing
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
@@ -105,7 +105,7 @@ jobs:
           endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\package\SARA-1.0.8-windows-x64
+          files-folder: ${{ github.workspace }}\package\SARA-1.0.9-windows-x64
           files-folder-filter: exe
           files-folder-recurse: true
           file-digest: SHA256
@@ -118,7 +118,7 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.8-windows-x64
+          $root = Resolve-Path package/SARA-1.0.9-windows-x64
           $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
           if (-not $executables) { throw "No executables found for signature verification" }
 
@@ -143,12 +143,12 @@ jobs:
           Production releases should be signed using Microsoft Artifact Signing.
           Repository: https://github.com/afterburn25/Sentinel
           Commit: ${{ github.sha }}
-          "@ | Set-Content -Encoding utf8 package/SARA-1.0.8-windows-x64/SIGNING-STATUS.txt
+          "@ | Set-Content -Encoding utf8 package/SARA-1.0.9-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.8-windows-x64
+          $root = Resolve-Path package/SARA-1.0.9-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -160,7 +160,7 @@ jobs:
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/SARA-1.0.8-windows-x64"
+          $root = "package/SARA-1.0.9-windows-x64"
           if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
@@ -178,7 +178,7 @@ jobs:
           $iscc = "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
           & $iscc "installer\\Sentinel.iss"
           if ($LASTEXITCODE -ne 0) { throw "Sentinel installer build failed" }
-          $setup = "installer\\output\\SARA-Setup-1.0.8.exe"
+          $setup = "installer\\output\\SARA-Setup-1.0.9.exe"
           if (-not (Test-Path $setup)) { throw "SARA Setup.exe was not created" }
 
       - name: Sign SARA Setup.exe
@@ -200,15 +200,15 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: SARA-1.0.8-windows-x64
-          path: package/SARA-1.0.8-windows-x64/
+          name: SARA-1.0.9-windows-x64
+          path: package/SARA-1.0.9-windows-x64/
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload SARA Setup
         uses: actions/upload-artifact@v4
         with:
-          name: SARA-Setup-1.0.8
-          path: installer/output/SARA-Setup-1.0.8.exe
+          name: SARA-Setup-1.0.9
+          path: installer/output/SARA-Setup-1.0.9.exe
           if-no-files-found: error
           retention-days: 30
