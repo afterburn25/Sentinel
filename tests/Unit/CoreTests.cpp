@@ -11,9 +11,17 @@
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
+#include "Sentinel/Simulation/ConversationMemory.hpp"
+#include "Sentinel/Channels/ChannelCore.hpp"
+#include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/AutomationEngine.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
+#include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
+#include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <filesystem>
@@ -315,6 +323,246 @@ void TestReusablePersonaProfiles()
     std::filesystem::remove_all(root);
 }
 
+
+void TestUnifiedChannelCore()
+{
+    using namespace sentinel::channels;
+
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-channels-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"channels.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    JurisdictionRuleStore jurisdictions(db);
+    jurisdictions.EnsureBuiltInBaselines();
+    auto federal=jurisdictions.LatestProfile(RuleLayerType::Federal,"US");
+    auto louisiana=jurisdictions.LatestProfile(RuleLayerType::State,"US","LA");
+    Require(federal.has_value(),"federal jurisdiction baseline missing");
+    Require(louisiana.has_value(),"Louisiana jurisdiction baseline missing");
+    Require(!federal->AutomationLegallyActive(),"federal reference baseline should not self-authorize automation");
+    Require(!louisiana->AutomationLegallyActive(),"Louisiana reference baseline should not self-authorize automation");
+
+    jurisdictions.SelectForOperation(
+        "unit-operation","US","LA",federal->id,louisiana->id,{},"unit-test");
+    auto stack=jurisdictions.SelectedForOperation("unit-operation");
+    Require(stack.has_value(),"operation jurisdiction stack was not persisted");
+    Require(stack->federal.has_value(),"operation jurisdiction stack missing federal layer");
+    Require(stack->state.has_value(),"operation jurisdiction stack missing state layer");
+    Require(!stack->fullyActive,"draft jurisdiction stack unexpectedly marked active");
+
+    ChannelCoreStore store(db);
+    const auto subjectId=store.CreateSubject("case-1","Synthetic subject");
+    Require(!subjectId.empty(),"subject creation failed");
+
+    const auto identityId=store.AddSubjectIdentity(
+        subjectId,"username","local","test-user","test-user",
+        IdentityLinkState::Candidate,0.60);
+    Require(!identityId.empty(),"identity creation failed");
+    Require(store.ConfirmSubjectIdentity(identityId,"unit-test"),"identity confirmation failed");
+
+    ChannelAccount account;
+    account.id="account-1";
+    account.type=ChannelType::LocalSimulation;
+    account.provider="local";
+    account.externalAccountId="local-account";
+    account.displayName="Local Simulation";
+    account.address="local";
+    account.jurisdiction="test";
+    account.complianceStatus="test-only";
+    account.capabilities.Set(Capability::ReceiveText);
+    account.capabilities.Set(Capability::SendText);
+    account.capabilities.Set(Capability::SendImage);
+    account.capabilities.Set(Capability::AutomatedSending);
+    Require(store.UpsertChannelAccount(account)=="account-1","channel account upsert failed");
+
+    ChannelConversation conversation;
+    conversation.subjectId=subjectId;
+    conversation.personaName="Samantha";
+    conversation.channelAccountId=account.id;
+    conversation.type=ChannelType::LocalSimulation;
+    conversation.provider="local";
+    conversation.providerConversationId="conversation-1";
+    conversation.externalPeerId="test-peer";
+    const auto conversationId=store.OpenConversation(conversation);
+    Require(!conversationId.empty(),"channel conversation creation failed");
+
+    auto found=store.FindConversation("local",account.id,"conversation-1");
+    Require(found.has_value(),"channel conversation lookup failed");
+    Require(found->personaName=="Samantha","channel conversation persona mismatch");
+    Require(found->subjectId==subjectId,"channel conversation subject mismatch");
+
+    RawChannelEvent event;
+    event.id="event-1";
+    event.channelConversationId=conversationId;
+    event.provider="local";
+    event.type=ChannelType::LocalSimulation;
+    event.providerAccountId="local-account";
+    event.providerConversationId="conversation-1";
+    event.providerMessageId="provider-message-1";
+    event.eventType="message";
+    event.direction=Direction::Inbound;
+    event.senderExternalId="test-peer";
+    event.recipientExternalId="local-account";
+    event.providerTimestamp="2026-09-27T00:00:00Z";
+    event.rawPayload="{\"text\":\"hello\"}";
+    event.payloadSha256="test-hash";
+    store.RecordRawEvent(event);
+
+    sentinel::channels::NormalizedMessage normalized;
+    normalized.id="message-1";
+    normalized.eventId=event.id;
+    normalized.channelConversationId=conversationId;
+    normalized.subjectId=subjectId;
+    normalized.personaName="Samantha";
+    normalized.direction=Direction::Inbound;
+    normalized.senderExternalId="test-peer";
+    normalized.recipientExternalId="local-account";
+    normalized.body="hello";
+    normalized.automationMode=AutomationMode::Manual;
+    normalized.providerMessageId=event.providerMessageId;
+    store.RecordMessage(normalized);
+
+    auto recent=store.RecentMessages(conversationId,10);
+    Require(recent.size()==1,"normalized message count mismatch");
+    Require(recent[0].body=="hello","normalized message body mismatch");
+    Require(recent[0].subjectId==subjectId,"normalized message subject mismatch");
+
+    ChannelAdapterRegistry registry;
+    auto legacyAdapter=sentinel::operations::CreateInMemoryMessageAdapter();
+    Require(legacyAdapter!=nullptr,"legacy local messaging adapter missing");
+    registry.Register(std::make_unique<LocalSimulationChannelAdapter>(*legacyAdapter));
+    auto* adapter=registry.FindByName("SARA Local Simulation");
+    Require(adapter!=nullptr,"SARA local channel adapter missing");
+    Require(adapter->Connected(),"SARA local channel adapter offline");
+    Require(adapter->Capabilities().Has(Capability::SendText),"local adapter missing text capability");
+    Require(adapter->Capabilities().Has(Capability::SendImage),"local adapter missing image capability");
+
+    auto send=adapter->SendText({conversationId,"approved reply","reply-1"});
+    Require(send.accepted,"approved local text was not accepted");
+    auto media=adapter->SendMedia({conversationId,"approved image","C:/synthetic/test.png","image/png","abc123","media-1"});
+    Require(media.accepted,"approved local media was not accepted");
+
+    AutomationEngine engine;
+    AutomationRequest request;
+    request.mode=AutomationMode::AuthorizedAutomatic;
+    request.action=ActionKind::OrdinaryReply;
+    request.providerSupportsAutomation=true;
+    request.policyAllowed=true;
+    request.policyRequiresSupervisor=false;
+    request.jurisdictionProfileActive=true;
+    request.jurisdictionAllowsAutomation=true;
+    request.jurisdictionRequiresReview=false;
+
+    auto decision=engine.Decide(request);
+    Require(decision.decision==AutomationDecisionKind::AutoSend,
+        "ordinary authorized automatic reply should auto-send when every gate is satisfied");
+    Require(!decision.requiresHuman,"authorized ordinary auto-reply unexpectedly requires human review");
+
+    request.action=ActionKind::MeetingArrangement;
+    decision=engine.Decide(request);
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "meeting arrangement should remain approval-gated");
+    Require(decision.requiresHuman,"meeting arrangement should require human review");
+
+    request.action=ActionKind::OrdinaryReply;
+    request.jurisdictionProfileActive=false;
+    decision=engine.Decide(request);
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "inactive jurisdiction should force approval");
+    Require(decision.requiresHuman,"inactive jurisdiction should require human review");
+
+    request.jurisdictionProfileActive=true;
+    request.policyRequiresSupervisor=true;
+    decision=engine.Decide(request);
+    Require(decision.decision==AutomationDecisionKind::RequireApproval,
+        "supervisor policy requirement should force approval");
+    Require(decision.requiresHuman,"supervisor policy requirement should require human review");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+
+void TestPersonaScopedConversationMemory()
+{
+    using namespace sentinel::simulation;
+
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-memory-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"memory-test.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    ConversationMemoryStore memory(db);
+
+    const auto samanthaOld=memory.StartConversation(
+        "Samantha old","Samantha","Samantha, age 24, playful","Neutral");
+    memory.Append(samanthaOld,ChatTurn::Speaker::Investigator,"My favorite gemstone is cobalt.");
+    memory.Append(samanthaOld,ChatTurn::Speaker::SyntheticSubject,"Got it, cobalt.");
+
+    const auto samanthaCurrent=memory.StartConversation(
+        "Samantha current","Samantha","Samantha, age 24, playful","Neutral");
+    memory.Append(samanthaCurrent,ChatTurn::Speaker::SyntheticSubject,"Current Samantha session.");
+
+    const auto nikkiOld=memory.StartConversation(
+        "Nikki old","Nikki","Nikki, age 27, confident","Neutral");
+    memory.Append(nikkiOld,ChatTurn::Speaker::Investigator,"My favorite gemstone is amber.");
+    memory.Append(nikkiOld,ChatTurn::Speaker::SyntheticSubject,"Got it, amber.");
+
+    const auto nikkiCurrent=memory.StartConversation(
+        "Nikki current","Nikki","Nikki, age 27, confident","Neutral");
+    memory.Append(nikkiCurrent,ChatTurn::Speaker::SyntheticSubject,"Current Nikki session.");
+
+    const auto samanthaList=memory.ListForPersona("Samantha",20);
+    Require(samanthaList.size()==2,"Samantha conversation count mismatch");
+    Require(std::all_of(samanthaList.begin(),samanthaList.end(),
+        [](const auto& item){return item.personaName=="Samantha";}),
+        "Samantha conversation list leaked another persona");
+
+    const auto nikkiList=memory.ListForPersona("Nikki",20);
+    Require(nikkiList.size()==2,"Nikki conversation count mismatch");
+    Require(std::all_of(nikkiList.begin(),nikkiList.end(),
+        [](const auto& item){return item.personaName=="Nikki";}),
+        "Nikki conversation list leaked another persona");
+
+    const auto samanthaRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",samanthaCurrent,"Samantha",12);
+    Require(samanthaRecall.find("cobalt")!=std::string::npos,
+        "Samantha recall missed Samantha memory");
+    Require(samanthaRecall.find("amber")==std::string::npos,
+        "Samantha recall leaked Nikki memory");
+
+    const auto nikkiRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",nikkiCurrent,"Nikki",12);
+    Require(nikkiRecall.find("amber")!=std::string::npos,
+        "Nikki recall missed Nikki memory");
+    Require(nikkiRecall.find("cobalt")==std::string::npos,
+        "Nikki recall leaked Samantha memory");
+
+    ModelContext loaded;
+    Require(memory.Load(samanthaOld,loaded),"failed to load Samantha conversation");
+    Require(loaded.personaSummary.find("Samantha")!=std::string::npos,
+        "loaded persona summary lost persona identity");
+    Require(loaded.personaSummary.find("playful")!=std::string::npos,
+        "loaded persona summary lost persona details");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -436,12 +684,31 @@ void TestWindowsCryptoAndSev()
 
 int main()
 {
-    TestIdsAndHashes();
-    TestSaraModelLabRegistries();
-    TestSaraEvaluationSuite();
-    TestReusablePersonaProfiles();
+    try {
+        auto run=[](const char* name,auto&& fn){
+            std::cerr<<"[TEST START] "<<name<<"\n";
+            std::cerr.flush();
+            fn();
+            std::cerr<<"[TEST PASS] "<<name<<"\n";
+            std::cerr.flush();
+        };
+
+        run("IdsAndHashes",[](){TestIdsAndHashes();});
+        run("ModelLabRegistries",[](){TestSaraModelLabRegistries();});
+        run("EvaluationSuite",[](){TestSaraEvaluationSuite();});
+        run("ReusablePersonaProfiles",[](){TestReusablePersonaProfiles();});
+        run("PersonaScopedConversationMemory",[](){TestPersonaScopedConversationMemory();});
+        run("UnifiedChannelCore",[](){TestUnifiedChannelCore();});
 #ifdef _WIN32
-    TestWindowsCryptoAndSev();
+        run("WindowsCryptoAndSev",[](){TestWindowsCryptoAndSev();});
 #endif
-    std::cout << "SARA Core Tests passed\n";
+        std::cout<<"SARA Core Tests passed\n";
+        return 0;
+    } catch(const std::exception& e) {
+        std::cerr<<"SARA Core Tests exception: "<<e.what()<<"\n";
+        return 1;
+    } catch(...) {
+        std::cerr<<"SARA Core Tests unknown exception\n";
+        return 2;
+    }
 }
