@@ -24,7 +24,9 @@ struct EvaluationTestCase {
     std::string name;
     EvaluationDimension dimension{EvaluationDimension::PersonaConsistency};
     std::string prompt;
-    std::string expectedFact;
+    std::vector<std::string> expectedContains;
+    std::vector<std::string> forbiddenContains;
+    size_t minimumHistoryTurns{0};
 };
 
 struct EvaluationDimensionResult {
@@ -33,6 +35,16 @@ struct EvaluationDimensionResult {
     bool passed{true};
     std::string details;
     std::vector<std::string> warnings;
+};
+
+struct EvaluationCaseResult {
+    std::string caseId;
+    std::string caseName;
+    EvaluationDimension dimension{EvaluationDimension::PersonaConsistency};
+    int score{100};
+    bool passed{true};
+    std::string response;
+    std::string details;
 };
 
 struct EvaluationRun {
@@ -48,6 +60,7 @@ struct EvaluationRun {
     int previousOverallScore{-1};
     int regressionDelta{0};
     std::vector<EvaluationDimensionResult> dimensions;
+    std::vector<EvaluationCaseResult> cases;
     std::vector<std::string> warnings;
 };
 
@@ -60,7 +73,8 @@ public:
         std::string foundationName,
         std::string adapterId,
         std::string adapterName,
-        std::vector<EvaluationDimensionResult> dimensions);
+        std::vector<EvaluationDimensionResult> dimensions,
+        std::vector<EvaluationCaseResult> cases={});
 
     std::vector<EvaluationRun>& Runs();
     const std::vector<EvaluationRun>& Runs() const;
@@ -100,5 +114,17 @@ EvaluationDimensionResult ScoreTriggerRegression(
 
 EvaluationDimensionResult ScoreResponseDiversity(
     const std::vector<std::string>& responses);
+
+EvaluationCaseResult ScoreNamedCase(
+    const EvaluationTestCase& testCase,
+    std::string response);
+
+int DimensionScore(
+    const EvaluationRun& run,
+    EvaluationDimension dimension);
+
+std::string BuildCandidateComparisonReport(
+    const EvaluationRun& left,
+    const EvaluationRun& right);
 
 }
