@@ -130,3 +130,11 @@ install(FILES
     resources/Uninstall-Sentinel.ps1
     DESTINATION .
 )
+
+
+install(FILES
+    resources/assets/SARA-Logo.png
+    resources/assets/SARA-Icon.png
+    resources/assets/SARA-Splash.png
+    DESTINATION assets
+)
