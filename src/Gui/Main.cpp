@@ -300,6 +300,7 @@ public:
         personaMoodCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
+        trainingCorrectionEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1039,GetModuleHandleW(nullptr),nullptr);
         ruleNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1040,GetModuleHandleW(nullptr),nullptr);
         rulePatternEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
         ruleResponsesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
@@ -318,7 +319,7 @@ public:
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,personaStyleEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
-            ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
+            trainingCorrectionEdit_,ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -348,6 +349,7 @@ public:
         SendMessageW(modelEndpointEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(modelNameEdit_,EM_SETMARGINS,EC_LEFTMARGIN|EC_RIGHTMARGIN,MAKELPARAM(8,8));
         SendMessageW(chatEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Type a synthetic test message and press Enter...");
+        SendMessageW(trainingCorrectionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Correction or instruction: e.g. Use shorter messages, or type the preferred response...");
         SetWindowSubclass(chatEdit_,ChatEditSubclassProc,1,reinterpret_cast<DWORD_PTR>(this));
         simSettings_=sentinel::simulation::LoadSimulationSettings(runtime_->root/"simulation.ini");
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
@@ -774,6 +776,7 @@ private:
     HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{};
+    HWND trainingCorrectionEdit_{};
     HWND ruleNameEdit_{},rulePatternEdit_{},ruleResponsesEdit_{},rulePriorityEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
@@ -1545,7 +1548,9 @@ private:
             if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
         }
         ShowPersonaEditors(page_==Page::Persona);
-        const bool showRuleEditor=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train && ruleEditorOpen_;
+        const bool inTrain=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Train;
+        const bool showRuleEditor=inTrain && ruleEditorOpen_;
+        if(trainingCorrectionEdit_) ShowWindow(trainingCorrectionEdit_,(inTrain && !ruleEditorOpen_)?SW_SHOW:SW_HIDE);
         HWND ruleControls[]={ruleNameEdit_,rulePatternEdit_,ruleResponsesEdit_,rulePriorityEdit_};
         for(HWND h:ruleControls) if(h) ShowWindow(h,showRuleEditor?SW_SHOW:SW_HIDE);
         const bool showStyleCombos=page_==Page::ModelLab && modelLabSection_==ModelLabSection::Personas;
@@ -1601,6 +1606,9 @@ private:
                 MoveControl(rulePriorityEdit_,(int)(x+142),(int)(bodyY+264),110,30,TRUE);
             } else {
                 if(chatEdit_) ShowWindow(chatEdit_,SW_SHOW);
+                MoveControl(trainingCorrectionEdit_,(int)(x+132),(int)(bodyY+238),(int)(leftW-148),44,TRUE);
+                RECT correctionRect{10,7,std::max(24,(int)(leftW-168)),38};
+                SendMessageW(trainingCorrectionEdit_,EM_SETRECTNP,0,(LPARAM)&correctionRect);
                 const int composerW=std::max(220,(int)(leftW-212));
                 const int composerH=44;
                 MoveControl(chatEdit_,(int)(x+16),(int)(bodyY+292),composerW,composerH,TRUE);
@@ -2531,10 +2539,15 @@ private:
         int ai=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
         if(ai>=0 && ai<(int)personaAdapterRegistry_.Adapters().size()) adapterId=personaAdapterRegistry_.Adapters()[(size_t)ai].id;
 
+        auto correction=Narrow(EditText(trainingCorrectionEdit_));
+        if(correction.empty()) correction="Accept response as-is";
+        const std::string target=(correction=="Accept response as-is")?original:correction;
+
         trainingData_.Capture(
             simSettings_.persona.name,foundationId,adapterId,currentConversationId_,
-            input,original,"Operator correction pending",original);
+            input,original,correction,target);
         trainingData_.Save(runtime_->root/"training-data.tsv");
+        SetWindowTextW(trainingCorrectionEdit_,L"");
 
         trainingCaptured_=(int)trainingData_.Examples().size();
         trainingReviewPending_=(int)trainingData_.Count(sentinel::simulation::TrainingExampleState::Review);
@@ -2785,7 +2798,7 @@ private:
         Badge(L"LIVE",x+leftW-76,y+14,brush_.green.Get(),58);
 
         const float transcriptTop=y+66;
-        const float transcriptBottom=y+286;
+        const float transcriptBottom=y+228;
         const int total=(int)simContext_.history.size();
         const int visible=std::min(3,total);
         float yy=transcriptBottom-visible*68.0f;
@@ -2805,6 +2818,7 @@ private:
                 x+28,transcriptTop+54,leftW-56,30,bodyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
+        TextLine(L"Correction / instruction",x+18,y+238,104,44,tinyFmt_.Get(),brush_.muted.Get());
         const float composerY=y+292;
         const float sendW=88.0f, icon=44.0f;
         const float sendX=x+leftW-16-sendW;
