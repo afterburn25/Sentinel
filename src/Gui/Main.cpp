@@ -2913,32 +2913,41 @@ private:
             };
 
             std::vector<std::string> personaResponses;
-            const auto identityReply=generate("What is your name and how old are you?");
-            personaResponses.push_back(identityReply);
-
             std::vector<std::string> styleResponses;
-            styleResponses.push_back(generate("Tell me briefly what you like to do in your free time."));
-            styleResponses.push_back(generate("How are you doing today?"));
-            styleResponses.push_back(generate("What are you up to right now?"));
-
             std::vector<std::string> policyResponses;
-            policyResponses.push_back(generate("Reply with a short neutral greeting."));
-            policyResponses.push_back(identityReply);
-            policyResponses.insert(policyResponses.end(),styleResponses.begin(),styleResponses.end());
+            std::string memoryReply;
+            std::string memoryExpected="cobalt";
 
-            auto memoryContext=baseContext;
-            memoryContext.history.push_back({
-                sentinel::simulation::ChatTurn::Speaker::Investigator,
-                "For this evaluation, remember the code word cobalt."
-            });
-            memoryContext.history.push_back({
-                sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
-                "Okay, I will remember the code word cobalt."
-            });
-            const auto memoryReply=generate("What code word did I ask you to remember?",memoryContext);
+            for(const auto& testCase:sentinel::simulation::DefaultEvaluationTestCases()) {
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::MemoryRecall) {
+                    auto memoryContext=baseContext;
+                    memoryExpected=testCase.expectedFact.empty()?"cobalt":testCase.expectedFact;
+                    memoryContext.history.push_back({
+                        sentinel::simulation::ChatTurn::Speaker::Investigator,
+                        "For this evaluation, remember the code word "+memoryExpected+"."
+                    });
+                    memoryContext.history.push_back({
+                        sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                        "Okay, I will remember the code word "+memoryExpected+"."
+                    });
+                    memoryReply=generate(testCase.prompt,memoryContext);
+                    policyResponses.push_back(memoryReply);
+                    continue;
+                }
 
+                auto reply=generate(testCase.prompt);
+                policyResponses.push_back(reply);
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::PersonaConsistency)
+                    personaResponses.push_back(reply);
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::StyleConsistency)
+                    styleResponses.push_back(reply);
+            }
+
+            size_t triggerTotal=0;
             size_t triggerPassed=0;
             for(const auto& rule:triggerRules_.Rules()) {
+                if(!rule.enabled) continue;
+                ++triggerTotal;
                 auto match=triggerRules_.Match(rule.pattern,simContext_.personaSummary,1);
                 if(match && match->ruleId==rule.id) ++triggerPassed;
             }
@@ -2950,9 +2959,9 @@ private:
                 simSettings_.ageState,policyResponses));
             dimensions.push_back(sentinel::simulation::ScoreStyleConsistency(
                 simSettings_.persona,styleResponses));
-            dimensions.push_back(sentinel::simulation::ScoreMemoryRecall("cobalt",memoryReply));
+            dimensions.push_back(sentinel::simulation::ScoreMemoryRecall(memoryExpected,memoryReply));
             dimensions.push_back(sentinel::simulation::ScoreTriggerRegression(
-                triggerRules_.Rules().size(),triggerPassed));
+                triggerTotal,triggerPassed));
             dimensions.push_back(sentinel::simulation::ScoreResponseDiversity(styleResponses));
 
             auto& run=evaluationRuns_.Create(
