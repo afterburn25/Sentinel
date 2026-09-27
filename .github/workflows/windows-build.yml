@@ -48,10 +48,24 @@ jobs:
       - name: Verify restored SARA visual assets
         shell: pwsh
         run: |
-          python -c "from PIL import Image; import hashlib; p=r'resources/assets/SARA-Splash.png'; raw=open(p,'rb').read(); im=Image.open(p); assert im.format=='PNG'; assert im.size==(1672,941), im.size; assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Approved SARA 1.0.15 splash verified:', im.size)"
+          $splash = Resolve-Path "resources/assets/SARA-Splash.png"
+          $hash = (Get-FileHash $splash -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne "dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4") {
+            throw "Approved SARA 1.0.15 splash hash mismatch: $hash"
+          }
+          Add-Type -AssemblyName System.Drawing
+          $img = [System.Drawing.Image]::FromFile($splash)
+          try {
+            if ($img.Width -ne 1672 -or $img.Height -ne 941) {
+              throw "Approved SARA splash dimensions must be 1672x941, got $($img.Width)x$($img.Height)"
+            }
+          } finally {
+            $img.Dispose()
+          }
           if (-not (Test-Path "resources/assets/SARA-Logo.png")) { throw "SARA logo asset missing" }
           if (-not (Test-Path "resources/assets/SARA-Icon.png")) { throw "SARA icon asset missing" }
           if (-not (Test-Path "resources/SARA.ico")) { throw "SARA ICO resource missing" }
+          Write-Host "Approved SARA 1.0.15 visual assets verified."
 
       - name: Configure
         shell: pwsh
