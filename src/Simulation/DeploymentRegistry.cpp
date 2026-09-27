@@ -24,6 +24,27 @@ std::string NowUtc() {
     return out.str();
 }
 
+std::string JsonEscape(std::string_view input) {
+    std::string out;
+    for(unsigned char c:input) {
+        switch(c) {
+            case '\\': out+="\\\\"; break;
+            case '"': out+="\\\""; break;
+            case '\n': out+="\\n"; break;
+            case '\r': out+="\\r"; break;
+            case '\t': out+="\\t"; break;
+            default:
+                if(c<0x20) {
+                    static const char* hex="0123456789abcdef";
+                    out+="\\u00";
+                    out+=hex[(c>>4)&0xf];
+                    out+=hex[c&0xf];
+                } else out+=(char)c;
+        }
+    }
+    return out;
+}
+
 std::string Escape(std::string_view input) {
     std::string out;
     for(char c:input) {
@@ -158,16 +179,16 @@ std::string DeploymentRegistry::BuildManifest(size_t index) const {
     std::ostringstream out;
     out<<"{\n";
     out<<"  \"schema\": \"sara-deployment-v1\",\n";
-    out<<"  \"deployment_id\": \""<<p.id<<"\",\n";
-    out<<"  \"created_utc\": \""<<p.createdUtc<<"\",\n";
-    out<<"  \"candidate_id\": \""<<p.candidateId<<"\",\n";
-    out<<"  \"candidate_name\": \""<<p.candidateName<<"\",\n";
-    out<<"  \"foundation_id\": \""<<p.foundationId<<"\",\n";
-    out<<"  \"foundation_name\": \""<<p.foundationName<<"\",\n";
-    out<<"  \"adapter_id\": \""<<p.adapterId<<"\",\n";
-    out<<"  \"adapter_name\": \""<<p.adapterName<<"\",\n";
-    out<<"  \"persona_name\": \""<<p.personaName<<"\",\n";
-    out<<"  \"evaluation_run_id\": \""<<p.evaluationRunId<<"\",\n";
+    out<<"  \"deployment_id\": \""<<JsonEscape(p.id)<<"\",\n";
+    out<<"  \"created_utc\": \""<<JsonEscape(p.createdUtc)<<"\",\n";
+    out<<"  \"candidate_id\": \""<<JsonEscape(p.candidateId)<<"\",\n";
+    out<<"  \"candidate_name\": \""<<JsonEscape(p.candidateName)<<"\",\n";
+    out<<"  \"foundation_id\": \""<<JsonEscape(p.foundationId)<<"\",\n";
+    out<<"  \"foundation_name\": \""<<JsonEscape(p.foundationName)<<"\",\n";
+    out<<"  \"adapter_id\": \""<<JsonEscape(p.adapterId)<<"\",\n";
+    out<<"  \"adapter_name\": \""<<JsonEscape(p.adapterName)<<"\",\n";
+    out<<"  \"persona_name\": \""<<JsonEscape(p.personaName)<<"\",\n";
+    out<<"  \"evaluation_run_id\": \""<<JsonEscape(p.evaluationRunId)<<"\",\n";
     out<<"  \"evaluation_score\": "<<p.evaluationScore<<",\n";
     out<<"  \"version_locked\": "<<(p.versionLocked?"true":"false")<<",\n";
     out<<"  \"stage\": \""<<ToString(p.stage)<<"\"\n";
