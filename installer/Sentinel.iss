@@ -1,8 +1,8 @@
-#define MyAppName "Sentinel"
+#define MyAppName "SARA"
 #define MyAppVersion "1.0.8"
-#define MyAppPublisher "Sentinel Project"
-#define MyAppExeName "Sentinel.exe"
-#define PackageDir "..\package\Sentinel-1.0.8-windows-x64"
+#define MyAppPublisher "SARA Project"
+#define MyAppExeName "SARA.exe"
+#define PackageDir "..\package\SARA-1.0.8-windows-x64"
 
 [Setup]
 AppId={{A6717D99-89F5-4C14-B4BE-2B42EACBC108}
@@ -10,30 +10,35 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={localappdata}\Programs\Sentinel
-DefaultGroupName=Sentinel
+DefaultDirName={code:GetDefaultDirName}
+DefaultGroupName=SARA
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-OutputBaseFilename=Sentinel-Setup-1.0.8
+OutputBaseFilename=SARA-Setup-1.0.8
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\resources\SARA.ico
 CloseApplications=yes
 RestartApplications=no
 UsePreviousAppDir=yes
 SetupLogging=yes
-UninstallDisplayIcon={app}\Sentinel.exe
+UninstallDisplayIcon={app}\SARA.exe
 VersionInfoVersion=1.0.8.0
-VersionInfoCompany=Sentinel Project
-VersionInfoDescription=Sentinel Installer
-VersionInfoProductName=Sentinel
+VersionInfoCompany=SARA Project
+VersionInfoDescription=SARA Installer
+VersionInfoProductName=SARA
 VersionInfoProductVersion=1.0.8.0
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+Type: files; Name: "{autodesktop}\Sentinel.lnk"
+Type: filesandordirs; Name: "{userprograms}\Sentinel"
 
 [Dirs]
 Name: "{app}\ai\models"
@@ -42,14 +47,29 @@ Name: "{app}\ai\runtime_cpu"
 Name: "{app}\ai\logs"
 
 [Icons]
-Name: "{autodesktop}\Sentinel"; Filename: "{app}\Sentinel.exe"; WorkingDir: "{app}"
-Name: "{userprograms}\Sentinel\Sentinel"; Filename: "{app}\Sentinel.exe"; WorkingDir: "{app}"
-Name: "{userprograms}\Sentinel\Repair Local AI"; Filename: "{app}\Setup-Sentinel-AI.cmd"; WorkingDir: "{app}"
+Name: "{autodesktop}\SARA"; Filename: "{app}\SARA.exe"; WorkingDir: "{app}"
+Name: "{userprograms}\SARA\SARA"; Filename: "{app}\SARA.exe"; WorkingDir: "{app}"
+Name: "{userprograms}\SARA\Repair Local AI"; Filename: "{app}\Setup-Sentinel-AI.cmd"; WorkingDir: "{app}"
 
 [Run]
-Filename: "{app}\Sentinel.exe"; Description: "Launch Sentinel"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\SARA.exe"; Description: "Launch SARA"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function GetDefaultDirName(Param: String): String;
+var
+  LegacyDir, SaraDir: String;
+begin
+  LegacyDir := ExpandConstant('{localappdata}\Programs\Sentinel');
+  SaraDir := ExpandConstant('{localappdata}\Programs\SARA');
+
+  if DirExists(SaraDir) then
+    Result := SaraDir
+  else if DirExists(LegacyDir) then
+    Result := LegacyDir
+  else
+    Result := SaraDir;
+end;
+
 const
   LlamaBuild = 'b10977';
   ModelFileName = 'Qwen3.5-9B-Q4_K_M.gguf';
@@ -94,16 +114,20 @@ procedure StopSentinelApp;
 var
   ResultCode: Integer;
 begin
-  SetStatus('Closing Sentinel before upgrade...');
+  SetStatus('Closing SARA before upgrade...');
 
   { Ask Windows to close any running Sentinel instance first. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM SARA.exe',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM Sentinel.exe',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
-  { Give Sentinel a moment to finish its shutdown path and release files. }
+  { Give SARA and legacy Sentinel instances a moment to finish their shutdown path. }
   Sleep(1200);
 
-  { If an instance is still running, force it closed so the upgrade can continue. }
+  { Force-close only if either process is still holding upgrade files. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM SARA.exe',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM Sentinel.exe',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
@@ -112,7 +136,7 @@ procedure StopSentinelAI;
 var
   ResultCode: Integer;
 begin
-  SetStatus('Stopping the existing Sentinel AI service...');
+  SetStatus('Stopping the existing SARA AI service...');
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM llama-server.exe',
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
@@ -213,7 +237,7 @@ begin
   begin
     LastDownloadItem := Item;
     if CompareText(Item, ModelFileName) = 0 then
-      Log('Downloading Sentinel local model (~5.68 GB)...')
+      Log('Downloading SARA local model (~5.68 GB)...')
     else
       Log('Downloading AI runtime: ' + Item);
   end;
@@ -239,7 +263,7 @@ var
 begin
   if RuntimeAlreadyValid then
   begin
-    SetStatus('Existing Sentinel AI runtime is current; skipping runtime download.');
+    SetStatus('Existing SARA AI runtime is current; skipping runtime download.');
     ProgressPage.SetProgress(45, 100);
     exit;
   end;
@@ -308,27 +332,27 @@ var
 begin
   if ModelAlreadyValid then
   begin
-    SetStatus('Existing Sentinel model verified; skipping 5.68 GB model download.');
+    SetStatus('Existing SARA model verified; skipping 5.68 GB model download.');
     ProgressPage.SetProgress(90, 100);
     exit;
   end;
 
   EnsureDir(ExpandConstant('{app}\ai\models'));
-  SetStatus('Downloading Sentinel local model (~5.68 GB)...');
+  SetStatus('Downloading SARA local model (~5.68 GB)...');
   DownloadOne(ModelURL, ModelFileName, ModelSHA256);
   TempModel := ExpandConstant('{tmp}\') + ModelFileName;
 
   if not FileSHA256Matches(TempModel, ModelSHA256) then
-    RaiseException('Downloaded Sentinel model failed SHA-256 verification.');
+    RaiseException('Downloaded SARA model failed SHA-256 verification.');
 
   if FileExists(ModelPath) then
     DeleteFile(ModelPath);
 
-  SetStatus('Installing verified Sentinel model...');
+  SetStatus('Installing verified SARA model...');
   if not RenameFile(TempModel, ModelPath) then
   begin
     if not FileCopy(TempModel, ModelPath, False) then
-      RaiseException('Unable to move the verified Sentinel model into the application folder.');
+      RaiseException('Unable to move the verified SARA model into the application folder.');
     DeleteFile(TempModel);
   end;
   ProgressPage.SetProgress(90, 100);
@@ -345,7 +369,7 @@ begin
       ExpandConstant('{app}\ai\Configure-Sentinel.ps1') + '"',
       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) or
       (ResultCode <> 0) then
-    RaiseException('Sentinel local model configuration failed.');
+    RaiseException('SARA local model configuration failed.');
 
   ProgressPage.SetProgress(96, 100);
 end;
@@ -353,12 +377,12 @@ end;
 procedure InitializeWizard;
 begin
   DownloadPage := CreateDownloadPage(
-    'Installing Sentinel local AI',
-    'Sentinel Setup downloads only the components this computer still needs.',
+    'Installing SARA local AI',
+    'SARA Setup downloads only the components this computer still needs.',
     @OnDownloadProgress);
   DownloadPage.ShowBaseNameInsteadOfUrl := True;
   ProgressPage := CreateOutputProgressPage(
-    'Installing Sentinel',
+    'Installing SARA',
     'Installing application files and preparing the local AI model.');
 end;
 
@@ -376,7 +400,7 @@ begin
     ProgressPage.Show;
     try
       ProgressPage.SetProgress(5, 100);
-      SetStatus('Checking the existing Sentinel installation...');
+      SetStatus('Checking the existing SARA installation...');
 
       ModelAlreadyValid := FileSHA256Matches(ModelPath, ModelSHA256);
       RuntimeAlreadyValid := RuntimeValid;
@@ -396,7 +420,7 @@ begin
       InstallModel;
       ConfigureAI;
 
-      SetStatus('Finalizing Sentinel installation...');
+      SetStatus('Finalizing SARA installation...');
       ProgressPage.SetProgress(100, 100);
       Sleep(300);
     finally
