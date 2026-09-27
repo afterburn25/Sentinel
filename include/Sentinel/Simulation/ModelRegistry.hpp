@@ -24,6 +24,35 @@ struct TrainingJob {
     int progress{0};
 };
 
+enum class FoundationStage { Base, Candidate, Approved, Active, Retired };
+
+struct FoundationModel {
+    std::string id;
+    std::string name;
+    std::string parentId;
+    std::string version;
+    bool immutableBase{false};
+    FoundationStage stage{FoundationStage::Candidate};
+};
+
+class FoundationRegistry {
+public:
+    FoundationModel& EnsureBase(std::string name,std::string version="base");
+    FoundationModel& CreateFork(size_t parentIndex,std::string name,std::string version);
+    void Approve(size_t index);
+    void Activate(size_t index);
+    bool Rollback();
+    std::vector<FoundationModel>& Models();
+    const std::vector<FoundationModel>& Models() const;
+    int ActiveIndex() const;
+    void Save(const std::filesystem::path& path) const;
+    void Load(const std::filesystem::path& path);
+private:
+    std::vector<FoundationModel> models_;
+    int activeIndex_{-1};
+    int previousActiveIndex_{-1};
+};
+
 class ModelRegistry {
 public:
     RegisteredModel& Register(std::string endpoint,std::string modelName);
@@ -43,5 +72,6 @@ private:
 };
 
 std::string ToString(ModelStage stage);
+std::string ToString(FoundationStage stage);
 
 }
