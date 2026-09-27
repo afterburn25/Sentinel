@@ -2983,7 +2983,7 @@ private:
             apply(personaTypoCombo_,"TYPOS");
             apply(personaEmojiCombo_,"EMOJI");
 
-            SaveProfileEditors();
+            SaveProfileEditors(false);
             RecordLearnedPersonaNote(
                 "TRAINER BEHAVIOR INSTRUCTION: "+instruction,
                 "trainer_behavior_instruction");
@@ -3200,7 +3200,7 @@ private:
         SetWindowTextW(maxDelayEdit_,std::to_wstring(simSettings_.persona.responseStartMaxMs).c_str());
     }
 
-    void SaveProfileEditors() {
+    void SaveProfileEditors(bool showConfirmation=true) {
         try {
             simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
             {
@@ -3283,7 +3283,13 @@ private:
                 ", message length "+simSettings_.persona.messageLength+".";
             LoadPersonaMedia();
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
-            statusText_=L"Persona, policy, scenario, and delay settings saved";
+            statusText_=L"Persona saved: "+Widen(simSettings_.persona.name);
+            if(showConfirmation) {
+                const std::wstring msg=
+                    L"Persona '"+Widen(simSettings_.persona.name)+
+                    L"' has been saved successfully.";
+                MessageBoxW(hwnd_,msg.c_str(),L"Persona Saved",MB_OK|MB_ICONINFORMATION);
+            }
         } catch(const std::exception& e) {
             statusText_=L"Profile save failed";
             MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Save Profile Failed",MB_OK|MB_ICONERROR);
