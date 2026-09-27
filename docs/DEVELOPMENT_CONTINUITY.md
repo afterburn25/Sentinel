@@ -30,3 +30,18 @@ At the start of a future SARA development session, recover context in this order
 SARA — Synthetic Adaptive Response Agent is the canonical product name.
 
 Historical Sentinel naming may remain in repository paths, namespaces, database folders, or build targets until migration work explicitly replaces it.
+
+
+## UI verification requirement
+
+For SARA UI work, code review is insufficient by itself.
+
+Before considering a UI change complete:
+1. compile/package the real Windows application,
+2. launch the packaged EXE in CI,
+3. capture the splash and all Model Lab workspaces,
+4. upload those PNGs as build artifacts,
+5. inspect the actual captures for overlap, clipping, encoding errors, missing assets, wrong versions, and visual regressions,
+6. for installer work, launch and capture the compiled SARA Setup wizard too.
+
+Future sessions should use actual-build screenshots as the primary visual source of truth.
