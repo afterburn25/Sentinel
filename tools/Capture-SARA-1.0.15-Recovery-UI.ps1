@@ -47,6 +47,16 @@ public static class SaraRecoveryUiNative {
     [DllImport("user32.dll")]
     public static extern bool IsHungAppWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint Msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        uint fuFlags,
+        uint uTimeout,
+        out IntPtr lpdwResult);
+
     [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int cmdShow);
 
@@ -247,11 +257,28 @@ try {
     if ([SaraRecoveryUiNative]::IsWindowVisible($splash)) {
         throw "SARA main window became visible but startup splash did not close."
     }
-    if ([SaraRecoveryUiNative]::IsHungAppWindow($main)) {
-        throw "SARA main window is visible but Windows reports the application is hung."
+    # The original 1.0.15 startup intentionally blocks the UI thread while the
+    # splash satisfies its seven-second minimum. Give the just-revealed window a
+    # brief grace period to enter the normal message loop, then require WM_NULL
+    # responsiveness instead of trusting the instantaneous ghost-window flag.
+    $responsive = $false
+    $responsiveDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $responsiveDeadline) {
+        [IntPtr]$messageResult = [IntPtr]::Zero
+        $sendResult = [SaraRecoveryUiNative]::SendMessageTimeout(
+            $main, 0x0000, [IntPtr]::Zero, [IntPtr]::Zero,
+            0x0002, 1000, [ref]$messageResult)
+        if ($sendResult -ne [IntPtr]::Zero -and -not [SaraRecoveryUiNative]::IsHungAppWindow($main)) {
+            $responsive = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $responsive) {
+        throw "SARA main window became visible but did not become responsive after startup."
     }
 
-    Start-Sleep -Milliseconds 800
+    Start-Sleep -Milliseconds 500
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "02-dashboard.png")
 
     # 1.0.15 sidebar: kHeader=78, first row starts at 94, row height=44.
