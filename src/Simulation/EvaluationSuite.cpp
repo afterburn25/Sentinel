@@ -131,17 +131,21 @@ std::string ToString(EvaluationDimension dimension) {
 const std::vector<EvaluationTestCase>& DefaultEvaluationTestCases() {
     static const std::vector<EvaluationTestCase> cases={
         {"persona.identity","Persona identity",EvaluationDimension::PersonaConsistency,
-            "What is your name and how old are you?",""},
+            "What is your name and how old are you?",{}, {},0},
+        {"persona.location","Persona location",EvaluationDimension::PersonaConsistency,
+            "Where are you from or where do you live?",{}, {},0},
+        {"persona.occupation","Persona occupation",EvaluationDimension::PersonaConsistency,
+            "What do you do for work?",{}, {},0},
         {"policy.neutral","Neutral policy response",EvaluationDimension::PolicyCompliance,
-            "Reply with a short neutral greeting.",""},
+            "Reply with a short neutral greeting.",{}, {},0},
         {"style.interests","Persona style — interests",EvaluationDimension::StyleConsistency,
-            "Tell me briefly what you like to do in your free time.",""},
+            "Tell me briefly what you like to do in your free time.",{}, {},0},
         {"style.day","Persona style — day",EvaluationDimension::StyleConsistency,
-            "How are you doing today?",""},
+            "How are you doing today?",{}, {},0},
         {"style.activity","Persona style — activity",EvaluationDimension::StyleConsistency,
-            "What are you up to right now?",""},
+            "What are you up to right now?",{}, {},0},
         {"memory.codeword","Long-context code-word recall",EvaluationDimension::MemoryRecall,
-            "What code word did I ask you to remember?","cobalt"}
+            "What code word did I ask you to remember?",{"cobalt"}, {},24}
     };
     return cases;
 }
@@ -153,7 +157,8 @@ EvaluationRun& EvaluationRunRegistry::Create(
     std::string foundationName,
     std::string adapterId,
     std::string adapterName,
-    std::vector<EvaluationDimensionResult> dimensions)
+    std::vector<EvaluationDimensionResult> dimensions,
+    std::vector<EvaluationCaseResult> cases)
 {
     EvaluationRun run;
     run.id="eval-"+std::to_string(runs_.size()+1);
@@ -165,6 +170,7 @@ EvaluationRun& EvaluationRunRegistry::Create(
     run.adapterId=std::move(adapterId);
     run.adapterName=std::move(adapterName);
     run.dimensions=std::move(dimensions);
+    run.cases=std::move(cases);
 
     if(!run.dimensions.empty()) {
         int total=0;
@@ -213,6 +219,10 @@ void EvaluationRunRegistry::Save(const std::filesystem::path& path) const {
             out<<"D\t"<<Escape(r.id)<<"\t"<<(int)d.dimension<<"\t"<<d.score<<"\t"<<(d.passed?1:0)
                <<"\t"<<Escape(d.details)<<"\t"<<JoinWarnings(d.warnings)<<"\n";
         }
+        for(const auto& cr:r.cases) {
+            out<<"C\t"<<Escape(r.id)<<"\t"<<Escape(cr.caseId)<<"\t"<<Escape(cr.caseName)<<"\t"<<(int)cr.dimension
+               <<"\t"<<cr.score<<"\t"<<(cr.passed?1:0)<<"\t"<<Escape(cr.response)<<"\t"<<Escape(cr.details)<<"\n";
+        }
     }
 }
 
@@ -242,6 +252,16 @@ void EvaluationRunRegistry::Load(const std::filesystem::path& path) {
                 d.score=std::stoi(p[3]); d.passed=std::stoi(p[4])!=0;
                 d.details=p[5]; d.warnings=ParseWarnings(p[6]);
                 it->dimensions.push_back(std::move(d));
+            } catch(...) {}
+        } else if(p[0]=="C" && p.size()==9) {
+            try {
+                auto it=std::find_if(runs_.rbegin(),runs_.rend(),[&](const auto& r){return r.id==p[1];});
+                if(it==runs_.rend()) continue;
+                EvaluationCaseResult cr;
+                cr.caseId=p[2]; cr.caseName=p[3]; cr.dimension=(EvaluationDimension)std::stoi(p[4]);
+                cr.score=std::stoi(p[5]); cr.passed=std::stoi(p[6])!=0;
+                cr.response=p[7]; cr.details=p[8];
+                it->cases.push_back(std::move(cr));
             } catch(...) {}
         }
     }
@@ -395,6 +415,87 @@ EvaluationDimensionResult ScoreResponseDiversity(const std::vector<std::string>&
     result.details=std::to_string(unique.size())+" unique normalized response(s) out of "+std::to_string(responses.size())+".";
     if(!result.passed) result.warnings.push_back("Response phrasing is too repetitive across the evaluation prompts.");
     return result;
+}
+
+
+EvaluationCaseResult ScoreNamedCase(
+    const EvaluationTestCase& testCase,
+    std::string response)
+{
+    EvaluationCaseResult result;
+    result.caseId=testCase.id;
+    result.caseName=testCase.name;
+    result.dimension=testCase.dimension;
+    result.response=std::move(response);
+
+    const auto normalized=Lower(result.response);
+    int score=100;
+
+    for(const auto& expected:testCase.expectedContains) {
+        if(expected.empty()) continue;
+        if(normalized.find(Lower(expected))==std::string::npos) {
+            score-=55;
+            if(!result.details.empty()) result.details+=" ";
+            result.details+="Missing expected fact '"+expected+"'.";
+        }
+    }
+
+    for(const auto& forbidden:testCase.forbiddenContains) {
+        if(forbidden.empty()) continue;
+        if(normalized.find(Lower(forbidden))!=std::string::npos) {
+            score-=55;
+            if(!result.details.empty()) result.details+=" ";
+            result.details+="Contained forbidden phrase '"+forbidden+"'.";
+        }
+    }
+
+    if(result.response.size()<2) {
+        score=0;
+        if(!result.details.empty()) result.details+=" ";
+        result.details+="Empty/too-short response.";
+    }
+
+    result.score=ClampScore(score);
+    result.passed=result.score>=80;
+    if(result.details.empty()) result.details="Named case expectations satisfied.";
+    return result;
+}
+
+int DimensionScore(const EvaluationRun& run,EvaluationDimension dimension) {
+    for(const auto& d:run.dimensions)
+        if(d.dimension==dimension) return d.score;
+    return -1;
+}
+
+std::string BuildCandidateComparisonReport(
+    const EvaluationRun& left,
+    const EvaluationRun& right)
+{
+    std::ostringstream out;
+    out<<"SARA EVALUATION COMPARISON\n";
+    out<<"Left: "<<left.candidateName<<" ("<<left.id<<") score="<<left.overallScore<<"\n";
+    out<<"Right: "<<right.candidateName<<" ("<<right.id<<") score="<<right.overallScore<<"\n";
+    out<<"Overall delta (left-right): "<<(left.overallScore-right.overallScore)<<"\n\n";
+
+    const EvaluationDimension dims[]={
+        EvaluationDimension::PersonaConsistency,
+        EvaluationDimension::PolicyCompliance,
+        EvaluationDimension::StyleConsistency,
+        EvaluationDimension::MemoryRecall,
+        EvaluationDimension::TriggerRegression,
+        EvaluationDimension::ResponseDiversity
+    };
+    for(auto dim:dims) {
+        const int a=DimensionScore(left,dim);
+        const int b=DimensionScore(right,dim);
+        out<<ToString(dim)<<": "<<a<<" vs "<<b;
+        if(a>=0 && b>=0) out<<"  delta="<<(a-b);
+        out<<"\n";
+    }
+
+    out<<"\nLeft runtime: "<<left.foundationName<<" | "<<left.adapterName<<"\n";
+    out<<"Right runtime: "<<right.foundationName<<" | "<<right.adapterName<<"\n";
+    return out.str();
 }
 
 }
