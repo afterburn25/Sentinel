@@ -18,6 +18,11 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
+#include "Sentinel/Channels/ChannelCore.hpp"
+#include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/AutomationEngine.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
+#include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
@@ -423,6 +428,10 @@ struct Runtime {
     sentinel::WindowsAesGcmCipher cipher;
     sentinel::WindowsDpapiSecretProtector dpapi;
     sentinel::MigrationService migrations;
+    sentinel::channels::ChannelCoreStore channelCore;
+    sentinel::channels::AutomationEngine automationEngine;
+    sentinel::channels::ChannelAdapterRegistry channelAdapters;
+    sentinel::channels::JurisdictionRuleStore jurisdictionRules;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::KeyManager keys;
@@ -434,6 +443,8 @@ struct Runtime {
         : root(AppDataRoot()),
           cipher(random),
           migrations(db),
+          channelCore(db),
+          jurisdictionRules(db),
           conversationMemory(db),
           personaProfiles(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
@@ -443,6 +454,7 @@ struct Runtime {
         std::filesystem::create_directories(root);
         db.Open(root/"sentinel.db");
         migrations.ApplyDirectory(MigrationsDir());
+        jurisdictionRules.EnsureBuiltInBaselines();
         keys.Initialize();
     }
 
@@ -589,6 +601,7 @@ public:
         personaMoodCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1038,GetModuleHandleW(nullptr),nullptr);
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
+        operatingStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1046,GetModuleHandleW(nullptr),nullptr);
         trainingCorrectionEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1039,GetModuleHandleW(nullptr),nullptr);
         trainingCategoryCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1044,GetModuleHandleW(nullptr),nullptr);
         trainingReviewTargetEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1045,GetModuleHandleW(nullptr),nullptr);
@@ -618,7 +631,7 @@ public:
         }
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,personaIntelligenceCombo_,personaSlangCombo_,
-            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,trainingCategoryCombo_,modelCombo_};
+            personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,personaMoodCombo_,trainingCategoryCombo_,modelCombo_,operatingStateCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)GetStockObject(DEFAULT_GUI_FONT),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -711,11 +724,29 @@ public:
         fillCombo(personaMoodCombo_,moodItems,std::size(moodItems));
         fillCombo(trainingCategoryCombo_,correctionCategoryItems,std::size(correctionCategoryItems));
         SendMessageW(trainingCategoryCombo_,CB_SETCURSEL,0,0);
+        const wchar_t* stateItems[]={
+            L"Alabama (AL)",L"Alaska (AK)",L"Arizona (AZ)",L"Arkansas (AR)",L"California (CA)",
+            L"Colorado (CO)",L"Connecticut (CT)",L"Delaware (DE)",L"Florida (FL)",L"Georgia (GA)",
+            L"Hawaii (HI)",L"Idaho (ID)",L"Illinois (IL)",L"Indiana (IN)",L"Iowa (IA)",
+            L"Kansas (KS)",L"Kentucky (KY)",L"Louisiana (LA)",L"Maine (ME)",L"Maryland (MD)",
+            L"Massachusetts (MA)",L"Michigan (MI)",L"Minnesota (MN)",L"Mississippi (MS)",L"Missouri (MO)",
+            L"Montana (MT)",L"Nebraska (NE)",L"Nevada (NV)",L"New Hampshire (NH)",L"New Jersey (NJ)",
+            L"New Mexico (NM)",L"New York (NY)",L"North Carolina (NC)",L"North Dakota (ND)",L"Ohio (OH)",
+            L"Oklahoma (OK)",L"Oregon (OR)",L"Pennsylvania (PA)",L"Rhode Island (RI)",L"South Carolina (SC)",
+            L"South Dakota (SD)",L"Tennessee (TN)",L"Texas (TX)",L"Utah (UT)",L"Vermont (VT)",
+            L"Virginia (VA)",L"Washington (WA)",L"West Virginia (WV)",L"Wisconsin (WI)",L"Wyoming (WY)"
+        };
+        for(const auto* state:stateItems) SendMessageW(operatingStateCombo_,CB_ADDSTRING,0,(LPARAM)state);
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
         LoadProfileEditors();
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
+        if(messagingAdapter_) {
+            runtime_->channelAdapters.Register(
+                std::make_unique<sentinel::channels::LocalSimulationChannelAdapter>(*messagingAdapter_));
+        }
         agencyConfig_.workstationId="local-workstation";
+        LoadOperatingJurisdiction();
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
         personaAdapterRegistry_.Load(runtime_->root/"persona-adapters.tsv");
@@ -1056,6 +1087,7 @@ public:
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
             else if (b.id==L"approval_approve") ApproveFirstPending();
             else if (b.id==L"agency_toggle") ToggleAgency();
+            else if (b.id==L"jurisdiction_apply") ApplyOperatingJurisdiction();
             else if (b.id==L"agency_enqueue") EnqueueAgencySnapshot();
             else if (b.id==L"check_updates") CheckForUpdates();
             else if (b.id.rfind(L"copy:",0)==0) CopySimulationMessage((size_t)std::stoul(b.id.substr(5)));
@@ -1233,7 +1265,7 @@ private:
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND personaIntelligenceCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{},personaMoodCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
-    HWND agencyEndpointEdit_{},agencyIdEdit_{};
+    HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
     HWND trainingCorrectionEdit_{},trainingCategoryCombo_{},trainingReviewTargetEdit_{};
     HWND ruleNameEdit_{},rulePatternEdit_{},ruleResponsesEdit_{},rulePriorityEdit_{};
     std::unique_ptr<Runtime> runtime_;
@@ -1285,6 +1317,8 @@ private:
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
+    std::string operatingStateCode_;
+    std::wstring jurisdictionStatus_=L"No operating jurisdiction selected - automation review-only";
     std::wstring updateStatus_=L"Updates not checked";
     std::wstring lastTriggerMatch_=L"None";
     bool ruleEditorOpen_{false};
@@ -2100,6 +2134,7 @@ private:
     void ShowAgencyEditors(bool show) {
         if(agencyEndpointEdit_) ShowWindow(agencyEndpointEdit_,show?SW_SHOW:SW_HIDE);
         if(agencyIdEdit_) ShowWindow(agencyIdEdit_,show?SW_SHOW:SW_HIDE);
+        if(operatingStateCombo_) ShowWindow(operatingStateCombo_,show?SW_SHOW:SW_HIDE);
     }
 
     void ApplyPageControls() {
@@ -2257,6 +2292,7 @@ private:
             const float leftW=(contentW-gap)*0.58f;
             MoveControl(agencyEndpointEdit_,(int)(x+142),(int)(y+62),(int)(leftW-164),32);
             MoveControl(agencyIdEdit_,(int)(x+142),(int)(y+108),(int)(leftW-164),32);
+            MoveControl(operatingStateCombo_,(int)(x+142),(int)(y+340),(int)(leftW-164),220);
         }
     }
 
@@ -2832,6 +2868,96 @@ private:
             }
         }
         statusText_=L"No pending approvals";
+    }
+
+    std::string SelectedStateCode() const {
+        int sel=(int)SendMessageW(operatingStateCombo_,CB_GETCURSEL,0,0);
+        if(sel==CB_ERR) return {};
+        wchar_t buf[128]{};
+        SendMessageW(operatingStateCombo_,CB_GETLBTEXT,sel,(LPARAM)buf);
+        std::wstring text=buf;
+        const auto l=text.find_last_of(L'(');
+        const auto r=text.find_last_of(L')');
+        if(l==std::wstring::npos || r==std::wstring::npos || r<=l+1) return {};
+        return Narrow(text.substr(l+1,r-l-1));
+    }
+
+    void RefreshJurisdictionStatus() {
+        if(operatingStateCode_.empty()) {
+            jurisdictionStatus_=L"No operating jurisdiction selected - automation review-only";
+            return;
+        }
+
+        auto profile=runtime_->jurisdictionRules.LatestProfile(
+            sentinel::channels::RuleLayerType::State,"US",operatingStateCode_);
+        if(!profile) {
+            jurisdictionStatus_=L"No rules profile installed for "+Widen(operatingStateCode_)+L" - automation review-only";
+            return;
+        }
+
+        const wchar_t* review=L"DRAFT";
+        if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::LegallyReviewed) review=L"LEGALLY REVIEWED";
+        else if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::Active) review=L"ACTIVE";
+        else if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::Expired) review=L"EXPIRED";
+
+        jurisdictionStatus_=Widen(profile->name)+L" | "+review+L" | version "+Widen(profile->version);
+        if(!profile->AutomationLegallyActive()) jurisdictionStatus_+=L" | AUTO-SEND LOCKED";
+    }
+
+    void LoadOperatingJurisdiction() {
+        operatingStateCode_.clear();
+        sqlite3_stmt* stmt{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),
+            "SELECT region_code FROM operation_jurisdiction WHERE operation_key='local-default' LIMIT 1",
+            -1,&stmt,nullptr)==SQLITE_OK && sqlite3_step(stmt)==SQLITE_ROW) {
+            const auto* value=reinterpret_cast<const char*>(sqlite3_column_text(stmt,0));
+            if(value) operatingStateCode_=value;
+        }
+        sqlite3_finalize(stmt);
+
+        if(!operatingStateCode_.empty()) {
+            const int count=(int)SendMessageW(operatingStateCombo_,CB_GETCOUNT,0,0);
+            for(int i=0;i<count;i++) {
+                wchar_t buf[128]{};
+                SendMessageW(operatingStateCombo_,CB_GETLBTEXT,i,(LPARAM)buf);
+                const std::wstring needle=L"("+Widen(operatingStateCode_)+L")";
+                if(std::wstring(buf).find(needle)!=std::wstring::npos) {
+                    SendMessageW(operatingStateCombo_,CB_SETCURSEL,i,0);
+                    break;
+                }
+            }
+        }
+        RefreshJurisdictionStatus();
+    }
+
+    void ApplyOperatingJurisdiction() {
+        const auto state=SelectedStateCode();
+        if(state.empty()) {
+            statusText_=L"Select an operating state";
+            return;
+        }
+
+        operatingStateCode_=state;
+        const auto federal=runtime_->jurisdictionRules.LatestProfile(
+            sentinel::channels::RuleLayerType::Federal,"US");
+        const auto stateProfile=runtime_->jurisdictionRules.LatestProfile(
+            sentinel::channels::RuleLayerType::State,"US",state);
+
+        runtime_->jurisdictionRules.SelectForOperation(
+            "local-default","US",state,
+            federal?federal->id:"",
+            stateProfile?stateProfile->id:"",
+            {},
+            "local-operator");
+
+        RefreshJurisdictionStatus();
+        if(!stateProfile) {
+            statusText_=L"State selected; no rules profile installed, automation remains review-only";
+        } else if(stateProfile->AutomationLegallyActive()) {
+            statusText_=L"Operating state and ACTIVE rules profile applied";
+        } else {
+            statusText_=L"Operating state applied; legal activation required before auto-send";
+        }
     }
 
     void ToggleAgency() {
@@ -4923,8 +5049,19 @@ private:
         Text(L"Case and evidence access stays available even when no agency server is configured.",
             rx+34,y+207,rightW-68,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x,y+294,contentW,246,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Planned Server Responsibilities",x+18,y+306,320,30,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(x,y+294,leftW,148,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Operating Jurisdiction",x+18,y+306,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"State",x+20,y+348,100,28,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"jurisdiction_apply",L"Apply Rules Profile",x+20,y+390,156,34,true);
+        TextLine(jurisdictionStatus_,x+188,y+386,leftW-208,42,tinyFmt_.Get(),brush_.cyan.Get());
+
+        Rounded(rx,y+294,rightW,148,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Automation Gate",rx+18,y+306,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"Missing, draft, expired, or unreviewed jurisdiction profiles force human review even when a channel supports automation.",
+            rx+20,y+348,rightW-40,72,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x,y+456,contentW,174,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Planned Server Responsibilities",x+18,y+468,320,30,h1Fmt_.Get(),brush_.text.Get());
 
         const wchar_t* items[]={
             L"Encrypted case and evidence synchronization",
@@ -4932,7 +5069,7 @@ private:
             L"Workstation registration and role administration",
             L"Multi-investigator coordination and redundant backup"
         };
-        float iy=y+354;
+        float iy=y+516;
         for(auto* item:items) {
             StatusDot(x+28,iy+10,3,brush_.cyan.Get());
             TextLine(item,x+42,iy,contentW-64,22,smallFmt_.Get(),brush_.text.Get());
