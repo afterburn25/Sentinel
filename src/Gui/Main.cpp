@@ -1925,7 +1925,7 @@ private:
         if(!chatEdit_) return;
         DWORD start=0,end=0;
         SendMessageW(chatEdit_,EM_GETSEL,(WPARAM)&start,(LPARAM)&end);
-        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)L"🙂");
+        SendMessageW(chatEdit_,EM_REPLACESEL,TRUE,(LPARAM)L"\U0001F642");
         SetFocus(chatEdit_);
         statusText_=L"Emoji inserted";
     }
