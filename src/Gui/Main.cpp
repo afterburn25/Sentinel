@@ -37,6 +37,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -3770,7 +3771,7 @@ private:
             if(latest<0) continue;
             const auto& run=evaluationRuns_.Runs()[(size_t)latest];
             const bool chosen=latest==comparisonEvaluationRun_;
-            if(chosen) Rounded(rx+12,cy-2,rightW-24,24,brush_.sidebar.Get(),brush_.purple.Get(),5);
+            if(chosen) Rounded(rx+12,cy-2,rightW-24,24,brush_.sidebar.Get(),brush_.blue.Get(),5);
             TextLine(Widen(model.modelName),rx+20,cy,rightW-150,20,tinyFmt_.Get(),brush_.text.Get());
             TextLine(std::to_wstring(run.overallScore),rx+rightW-124,cy,42,20,tinyFmt_.Get(),
                 run.overallScore>=80?brush_.green.Get():run.overallScore>=60?brush_.yellow.Get():brush_.red.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
