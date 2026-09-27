@@ -389,6 +389,7 @@ public:
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
+        personaAdapterRegistry_.Load(runtime_->root/"persona-adapters.tsv");
         trainingJobRegistry_.Load(runtime_->root/"training-jobs.tsv");
         triggerRules_.Load(runtime_->root/"trigger-rules.tsv");
         if(foundationRegistry_.Models().empty()) {
@@ -396,6 +397,7 @@ public:
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
         }
         selectedFoundation_=foundationRegistry_.ActiveIndex()>=0?foundationRegistry_.ActiveIndex():0;
+        ResolvePersonaAdapter();
 
         model_=sentinel::simulation::CreateRuleBasedTestModel();
         modelStatus_=L"Built-in contextual model";
@@ -499,6 +501,9 @@ public:
                 page_=Page::Persona;
                 statusText_=L"Persona editor opened";
             }
+            else if (b.id==L"adapter_new") CreatePersonaAdapter();
+            else if (b.id.rfind(L"adapter_activate:",0)==0) ActivatePersonaAdapter((size_t)std::stoul(b.id.substr(17)));
+            else if (b.id==L"adapter_rollback") RollbackPersonaAdapter();
             else if (b.id==L"foundation_new_fork") CreateFoundationFork();
             else if (b.id==L"foundation_approve") ApproveSelectedFoundation();
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
@@ -718,6 +723,7 @@ private:
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
     sentinel::simulation::FoundationRegistry foundationRegistry_;
+    sentinel::simulation::PersonaAdapterRegistry personaAdapterRegistry_;
     sentinel::simulation::TrainingJobRegistry trainingJobRegistry_;
     sentinel::simulation::TriggerRuleRegistry triggerRules_;
     int selectedRegistryModel_{-1};
@@ -1606,6 +1612,7 @@ private:
                 ", background "+simSettings_.persona.background+", interests "+simSettings_.persona.interests+
                 ", writing style "+simSettings_.persona.writingStyle+".";
             policyStatus_=L"Profile saved. Age state: "+Widen(sentinel::simulation::ToString(simSettings_.ageState));
+            ResolvePersonaAdapter();
             statusText_=L"Persona, policy, scenario, and delay settings saved";
         } catch(const std::exception& e) {
             statusText_=L"Profile save failed";
@@ -2117,6 +2124,52 @@ private:
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void ResolvePersonaAdapter() {
+        int idx=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
+        if(idx>=0 && idx<(int)personaAdapterRegistry_.Adapters().size()) {
+            const auto& a=personaAdapterRegistry_.Adapters()[(size_t)idx];
+            assignedPersonaLoRA_=Widen(a.adapterName+" "+a.version);
+        } else {
+            assignedPersonaLoRA_=L"No active LoRA";
+        }
+    }
+
+    void CreatePersonaAdapter() {
+        std::string persona=simSettings_.persona.name.empty()?"Default Persona":simSettings_.persona.name;
+        std::string foundationId;
+        if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size())
+            foundationId=foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].id;
+        else if(!foundationRegistry_.Models().empty()) foundationId=foundationRegistry_.Models()[0].id;
+
+        int count=0;
+        for(const auto& a:personaAdapterRegistry_.Adapters()) if(a.personaName==persona) ++count;
+        auto& adapter=personaAdapterRegistry_.Add(persona,persona+".lora","v"+std::to_string(count+1),foundationId);
+        personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+        assignedPersonaLoRA_=Widen(adapter.adapterName+" "+adapter.version);
+        statusText_=L"Persona LoRA created in staging";
+    }
+
+    void ActivatePersonaAdapter(size_t index) {
+        if(index>=personaAdapterRegistry_.Adapters().size()) return;
+        const auto persona=personaAdapterRegistry_.Adapters()[index].personaName;
+        if(persona!=simSettings_.persona.name) {
+            statusText_=L"Adapter belongs to a different persona";
+            return;
+        }
+        personaAdapterRegistry_.Activate(index);
+        personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+        ResolvePersonaAdapter();
+        statusText_=L"Persona LoRA activated";
+    }
+
+    void RollbackPersonaAdapter() {
+        if(personaAdapterRegistry_.Rollback(simSettings_.persona.name)) {
+            personaAdapterRegistry_.Save(runtime_->root/"persona-adapters.tsv");
+            ResolvePersonaAdapter();
+            statusText_=L"Persona LoRA rollback completed";
+        } else statusText_=L"No archived LoRA is available for rollback";
+    }
+
     void CreateTrainingJob() {
         std::string foundation="SARA Foundation";
         if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()) {
@@ -2508,14 +2561,25 @@ private:
         Badge(L"ACTIVE",x+574,rowY+20,brush_.green.Get(),74);
 
         Rounded(x+18,y+188,listW-36,174,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Adapter Versioning",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Persona adapters augment the foundation model and remain independently versioned.",x+32,y+226,listW-64,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Active adapter",x+32,y+262,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(assignedPersonaLoRA_,x+156,y+258,220,24,smallFmt_.Get(),brush_.cyan.Get());
-        TextLine(L"Compatibility",x+32,y+294,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Foundation/version checked before load",x+156,y+290,listW-188,24,smallFmt_.Get(),brush_.green.Get());
-        TextLine(L"Rollback",x+32,y+326,110,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Previous approved adapter remains available",x+156,y+322,listW-188,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Adapter Versions",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"adapter_new",L"New Persona LoRA",x+listW-160,y+198,128,28,true);
+        AddButton(L"adapter_rollback",L"Rollback",x+listW-258,y+198,88,28,false);
+        float ay=y+236;
+        int shown=0;
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
+            const auto& a=personaAdapterRegistry_.Adapters()[i];
+            if(a.personaName!=simSettings_.persona.name) continue;
+            TextLine(Widen(a.adapterName+" "+a.version),x+32,ay,220,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+264,ay,90,22,tinyFmt_.Get(),
+                a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(Widen(a.foundationId),x+366,ay,listW-520,22,tinyFmt_.Get(),brush_.muted.Get());
+            if(a.stage!=sentinel::simulation::AdapterStage::Active)
+                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-126,ay-2,94,26,false);
+            ay+=38; ++shown;
+        }
+        if(shown==0) {
+            TextLine(L"No LoRA versions for this persona yet.",x+32,ay,300,22,smallFmt_.Get(),brush_.muted.Get());
+        }
 
         const float rx=x+listW+gap;
         Rounded(rx,y,inspectorW,382,brush_.panel.Get(),brush_.border.Get(),10);
@@ -2646,6 +2710,92 @@ private:
         }
     }
 
+    void DrawModelLabEvaluation(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float scoreW=220.0f;
+        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Candidate comparison and release gates",x+18,y+40,contentW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x+18,y+74,scoreW,112,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"LATEST SCORE",x+34,y+84,scoreW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),x+34,y+104,scoreW-32,48,bigFmt_.Get(),
+            lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"Policy gate passed":L"Policy gate blocked",x+34,y+156,scoreW-32,20,tinyFmt_.Get(),
+            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
+
+        const float cx=x+scoreW+gap+18;
+        const float cw=contentW-scoreW-gap-54;
+        Rounded(cx,y+74,cw,112,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Evaluation Gates",cx+16,y+84,cw-32,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Persona consistency",cx+16,y+118,160,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.personaConsistent?L"PASS":L"REVIEW",cx+188,y+114,80,24,smallFmt_.Get(),
+            lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+        TextLine(L"Policy",cx+300,y+118,80,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"PASS":L"BLOCK",cx+386,y+114,80,24,smallFmt_.Get(),
+            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
+
+        Rounded(x+18,y+202,contentW-36,160,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Candidate Models",x+34,y+212,200,24,smallFmt_.Get(),brush_.text.Get());
+        float yy=y+248;
+        for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
+            const auto& m=modelRegistry_.Models()[i];
+            TextLine(Widen(m.modelName),x+34,yy,240,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+286,yy,100,22,tinyFmt_.Get(),
+                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
+            TextLine(std::to_wstring(m.evaluationScore),x+398,yy,70,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+480,yy,90,22,tinyFmt_.Get(),brush_.muted.Get());
+            AddButton(L"regmodel:"+std::to_wstring(i),L"Select",x+contentW-116,yy-3,80,26,false);
+            yy+=36;
+        }
+        AddButton(L"model_eval",L"Run Evaluation",x+contentW-160,y+14,142,30,true);
+    }
+
+    void DrawModelLabDeployment(float x,float y,float contentW) {
+        const float gap=12.0f;
+        const float leftW=(contentW-gap)*0.58f;
+        const float rightW=contentW-leftW-gap;
+
+        Rounded(x,y,leftW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Deployment",x+18,y+12,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Explicit promotion only — production stays pinned until activated.",x+18,y+40,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        int active=modelRegistry_.ActiveIndex();
+        Rounded(x+18,y+76,leftW-36,94,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"PRODUCTION MODEL",x+34,y+86,leftW-68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(active>=0?Widen(modelRegistry_.Models()[(size_t)active].modelName):L"No active deployment",
+            x+34,y+108,leftW-68,30,h1Fmt_.Get(),active>=0?brush_.green.Get():brush_.muted.Get());
+        TextLine(active>=0?L"Pinned and rollback-protected":L"Approve and activate a candidate to deploy",
+            x+34,y+140,leftW-68,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+        Rounded(x+18,y+184,leftW-36,178,brush_.sidebar.Get(),brush_.border.Get(),9);
+        TextLine(L"Release Controls",x+34,y+194,180,24,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"model_activate",L"Activate Selected",x+34,y+232,140,32,true);
+        AddButton(L"model_rollback",L"Rollback",x+186,y+232,100,32,false);
+        Text(L"Candidates must be approved before activation. Rollback returns to the previous active model without rewriting model history.",
+            x+34,y+278,leftW-68,52,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float rx=x+leftW+gap;
+        Rounded(rx,y,rightW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Runtime Stack",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Foundation",rx+18,y+62,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(!foundationRegistry_.Models().empty()?Widen(foundationRegistry_.Models()[(size_t)std::max(0,foundationRegistry_.ActiveIndex())].name):L"Base",
+            rx+118,y+58,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Persona",rx+18,y+96,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rx+118,y+92,rightW-136,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"LoRA",rx+18,y+130,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(assignedPersonaLoRA_,rx+118,y+126,rightW-136,24,smallFmt_.Get(),brush_.cyan.Get());
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+166),D2D1::Point2F(rx+rightW-18,y+166),brush_.border.Get(),1);
+        TextLine(L"Trigger Engine",rx+18,y+180,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(triggerRules_.Rules().size())+L" rules",rx+148,y+176,90,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Last match",rx+18,y+214,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastTriggerMatch_,rx+148,y+210,rightW-166,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Training jobs",rx+18,y+248,120,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainingJobRegistry_.Jobs().size()),rx+148,y+244,90,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Production weights change only through explicit deployment.",rx+18,y+302,rightW-36,42,tinyFmt_.Get(),brush_.green.Get());
+    }
+
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
@@ -2678,9 +2828,9 @@ private:
             case ModelLabSection::Jobs:
                 DrawModelLabJobs(x,bodyY,contentW); break;
             case ModelLabSection::Evaluation:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Evaluation",L"Compare candidates and run persona, policy, quality, and regression evaluations."); break;
+                DrawModelLabEvaluation(x,bodyY,contentW); break;
             case ModelLabSection::Deployment:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Deployment",L"Promote approved candidates, pin production versions, and roll back safely."); break;
+                DrawModelLabDeployment(x,bodyY,contentW); break;
         }
     }
 
