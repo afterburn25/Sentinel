@@ -1010,8 +1010,8 @@ private:
     void DrawBrand() {
         DrawShield(22,14,48,brush_.cyan.Get(),brush_.panel2.Get(),false);
         DrawShield(31,24,30,brush_.blue.Get(),nullptr,false);
-        Text(L"Sentinel",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
-        Text(L"EVIDENCE  |  INTEGRITY  |  JUSTICE",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA",78,15,132,40,titleFmt_.Get(),brush_.text.Get());
+        Text(L"SYNTHETIC ADAPTIVE RESPONSE AGENT",79,51,136,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawSidebar() {
@@ -1029,7 +1029,7 @@ private:
             DrawIcon(NavIcon(i),26,y+4,23,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
             TextLine(names[i],66,y+4,145,28,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(L"Sentinel v1.0.7",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA v1.0.16",24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
     }
 
