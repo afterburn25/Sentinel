@@ -38,6 +38,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <chrono>
+#include <ctime>
+#include <iomanip>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -488,6 +490,96 @@ public:
         if (hr==D2DERR_RECREATE_TARGET) { target_.Reset(); brushesReady_=false; }
     }
 
+    static std::string CurrentUtcText() {
+        auto now=std::chrono::system_clock::now();
+        auto t=std::chrono::system_clock::to_time_t(now);
+        std::tm tm{};
+#ifdef _WIN32
+        gmtime_s(&tm,&t);
+#else
+        gmtime_r(&t,&tm);
+#endif
+        std::ostringstream out;
+        out<<std::put_time(&tm,"%Y-%m-%dT%H:%M:%SZ");
+        return out.str();
+    }
+
+    void AppendTriggerMatchLog(const sentinel::simulation::TriggerMatch& match,const std::string& input,const std::string& response) {
+        auto path=runtime_->root/"trigger-matches.tsv";
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream out(path,std::ios::app);
+        auto clean=[](std::string s){
+            std::replace(s.begin(),s.end(),'\t',' ');
+            std::replace(s.begin(),s.end(),'\n',' ');
+            std::replace(s.begin(),s.end(),'\r',' ');
+            return s;
+        };
+        out<<CurrentUtcText()<<"\t"<<clean(currentConversationId_)<<"\t"<<clean(simSettings_.persona.name)
+           <<"\t"<<clean(match.ruleId)<<"\t"<<clean(match.ruleName)<<"\t"<<(match.terminal?1:0)
+           <<"\t"<<clean(input)<<"\t"<<clean(response)<<"\n";
+    }
+
+    void ExportModelLabDiagnostics() {
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-1.0.16-Diagnostics.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<"SARA 1.0.16 MODEL LAB DIAGNOSTICS\n";
+        out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
+        out<<"Persona: "<<simSettings_.persona.name<<"\n";
+        out<<"Age: "<<simSettings_.persona.age<<"\n";
+        out<<"Personality: "<<simSettings_.persona.personality<<"\n";
+        out<<"Writing style: "<<simSettings_.persona.writingStyle<<"\n";
+        out<<"Intelligence: "<<simSettings_.persona.intelligenceLevel<<"\n";
+        out<<"Slang: "<<simSettings_.persona.slangLevel<<"\n";
+        out<<"Grammar: "<<simSettings_.persona.grammarQuality<<"\n";
+        out<<"Typos: "<<simSettings_.persona.typoTendency<<"\n";
+        out<<"Emoji tendency: "<<simSettings_.persona.emojiTendency<<"\n";
+        out<<"Mood: "<<simSettings_.persona.mood<<"\n";
+        out<<"Training mode: "<<Narrow(TrainingModeName())<<"\n";
+        out<<"Foundation: "<<simContext_.foundationName<<" ["<<simContext_.foundationId<<"]\n";
+        out<<"Adapter: "<<simContext_.adapterName<<" ["<<simContext_.adapterId<<"]\n";
+        out<<"Model status: "<<Narrow(modelStatus_)<<"\n";
+        out<<"Last trigger match: "<<Narrow(lastTriggerMatch_)<<"\n";
+        out<<"Trigger rules: "<<triggerRules_.Rules().size()<<"\n";
+        out<<"Training examples: "<<trainingData_.Examples().size()<<"\n";
+        out<<"Review pending: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Review)<<"\n";
+        out<<"Approved: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Approved)<<"\n";
+        out<<"Rejected: "<<trainingData_.Count(sentinel::simulation::TrainingExampleState::Rejected)<<"\n";
+        out<<"Dataset snapshots: "<<trainingData_.Snapshots().size()<<"\n";
+        out<<"Training jobs: "<<trainingJobRegistry_.Jobs().size()<<"\n";
+        out<<"Registered models: "<<modelRegistry_.Models().size()<<"\n";
+        out<<"Foundation versions: "<<foundationRegistry_.Models().size()<<"\n";
+        out<<"Persona adapters: "<<personaAdapterRegistry_.Adapters().size()<<"\n";
+        out<<"Last evaluation score: "<<lastEvaluation_.score<<"\n";
+        out<<"Policy allowed: "<<(lastEvaluation_.policyAllowed?"yes":"no")<<"\n";
+        out<<"Persona consistent: "<<(lastEvaluation_.personaConsistent?"yes":"no")<<"\n\n";
+
+        out<<"TRIGGER RULES\n";
+        for(const auto& rule:triggerRules_.Rules())
+            out<<rule.id<<" | "<<rule.name<<" | pattern="<<rule.pattern<<" | priority="<<rule.priority
+               <<" | "<<(rule.terminal?"terminal":"continue")<<" | responses="<<rule.responses.size()<<"\n";
+
+        out<<"\nRECENT TRAINING EXAMPLES\n";
+        size_t start=trainingData_.Examples().size()>10?trainingData_.Examples().size()-10:0;
+        for(size_t i=start;i<trainingData_.Examples().size();++i) {
+            const auto& e=trainingData_.Examples()[i];
+            out<<e.id<<" | "<<sentinel::simulation::ToString(e.state)<<" | "<<e.category
+               <<" | persona="<<e.persona<<" | created="<<e.createdUtc<<" | reviewer="<<e.reviewer<<"\n";
+        }
+        out.close();
+        statusText_=L"Model Lab diagnostics exported";
+    }
+
     std::wstring HoverHelpFor(const std::wstring& id) const {
         if(id==L"sim_emoji") return L"Emoji";
         if(id==L"sim_attach") return L"Attach a file";
@@ -499,6 +591,7 @@ public:
         if(id==L"foundation_new_fork") return L"Create a versioned SARA Foundation descendant without altering the base";
         if(id==L"model_activate") return L"Activate the selected approved candidate";
         if(id==L"model_rollback") return L"Roll back to the previous active model";
+        if(id==L"ml_diagnostics_export") return L"Export Model Lab state, persona settings, rules, datasets, jobs, and evaluation diagnostics";
         return {};
     }
 
@@ -567,6 +660,7 @@ public:
                 modelLabSection_=(ModelLabSection)std::clamp((int)std::stol(b.id.substr(6)),0,7);
                 statusText_=L"Model Lab workspace changed";
             }
+            else if (b.id==L"ml_diagnostics_export") ExportModelLabDiagnostics();
             else if (b.id==L"ml_rules_manage") OpenRuleEditor();
             else if (b.id==L"ml_rule_cancel") CloseRuleEditor();
             else if (b.id==L"ml_rule_new") NewTriggerRuleDraft();
@@ -719,6 +813,7 @@ public:
                         auto generated=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
                         if(!generated.empty()) simPreparedReply_+=" "+generated;
                     }
+                    AppendTriggerMatchLog(*triggerMatch,simPendingMessage_,simPreparedReply_);
                 } else if(model_) {
                     lastTriggerMatch_=L"None";
                     simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
@@ -2377,12 +2472,12 @@ private:
         statusText_=L"Training example selected for review";
     }
 
-    void SaveSelectedTrainingTarget() {
-        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) return;
+    bool SaveSelectedTrainingTarget() {
+        if(selectedTrainingExample_<0 || selectedTrainingExample_>=(int)trainingData_.Examples().size()) return false;
         auto target=Narrow(EditText(trainingReviewTargetEdit_));
         if(target.empty()) {
             statusText_=L"Target response cannot be empty";
-            return;
+            return false;
         }
         auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
         e.targetResponse=target;
@@ -2390,6 +2485,7 @@ private:
         e.reviewer="local-operator";
         trainingData_.Save(runtime_->root/"training-data.tsv");
         statusText_=L"Training target updated";
+        return true;
     }
 
     void ReviewSelectedTrainingExample(bool approve) {
@@ -2397,7 +2493,7 @@ private:
             statusText_=L"Select a training example first";
             return;
         }
-        SaveSelectedTrainingTarget();
+        if(!SaveSelectedTrainingTarget()) return;
         auto& e=trainingData_.Examples()[(size_t)selectedTrainingExample_];
         e.reviewer="local-operator";
         trainingData_.SetState((size_t)selectedTrainingExample_,approve?
@@ -2784,6 +2880,7 @@ private:
 
         Rounded(x,y,leftW,286,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Model Registry",x+18,y+10,240,30,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_diagnostics_export",L"Export Diagnostics",x+leftW-492,y+14,128,32,false);
         TextLine(L"Candidate models, evaluation state, and activation",x+18,y+38,leftW-36,20,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"model_register",L"Register",x+leftW-354,y+14,82,32,false);
         AddButton(L"model_eval",L"Evaluate",x+leftW-262,y+14,82,32,false);
