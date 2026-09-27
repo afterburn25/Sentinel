@@ -12,7 +12,7 @@ The repository was originally named Sentinel and still uses Sentinel in many sou
 
 - GitHub: `afterburn25/Sentinel`
 - Default branch: `main`
-- Active development branch: `sara-1.0.16-trainer-redesign`
+- Active development branch: `sara-1.0.17-dataset-adapter-management`
 - Desktop implementation: native Windows C++20
 - Build system: CMake + vcpkg
 - Main GUI implementation currently lives in `src/Gui/Main.cpp`
@@ -26,7 +26,9 @@ The GitHub source still contains older internal version strings such as Sentinel
 
 ## Current development target
 
-**SARA 1.0.16 — Trainer / Model Lab Redesign and Training Architecture**
+**SARA 1.0.17 — Dataset & Adapter Management**
+
+SARA 1.0.16 is merged into `main` and is the validated baseline. 1.0.17 extends the Model Lab without changing the approved hybrid UI system.
 
 ### Primary goals
 
@@ -238,3 +240,13 @@ Final release validation completed on 2026-09-27 from branch `sara-1.0.16-traine
 ### Signing status
 
 Microsoft Artifact Signing is wired into CI, but repository signing secrets are not configured. The release artifacts are therefore **unsigned development builds** and the workflow records that status explicitly.
+
+
+## 1.0.17 active goals
+
+- Versioned dataset lineage with parent snapshot relationships and timestamps.
+- Dataset browser/selection details in the hybrid Datasets workspace.
+- Dataset import/export for portable reviewed training sets.
+- Persona adapter comparison and version history.
+- Richer training-run history including creation/start/completion timestamps.
+- Preserve all 1.0.16 runtime and release compatibility.
