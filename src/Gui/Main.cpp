@@ -3064,6 +3064,7 @@ private:
         if(message.empty()) return;
         auto utf8=Narrow(message);
         if(currentConversationId_.empty()) ResetSimulation();
+        simContext_.learningMode=simSettings_.learningMode;
         simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
             utf8,currentConversationId_,12);
         const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
@@ -3071,6 +3072,12 @@ private:
         if(!participantFacts.empty()) {
             if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
             simContext_.recalledMemory+=participantFacts;
+        }
+        const auto personaClaims=runtime_->conversationMemory.RecallPersonaClaims(
+            currentConversationId_,12);
+        if(!personaClaims.empty()) {
+            if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+            simContext_.recalledMemory+=personaClaims;
         }
         LogPersonaConversationEvent("inbound",utf8,{},0,0);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
