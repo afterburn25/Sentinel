@@ -49,6 +49,10 @@ public:
         std::string_view currentConversationId,
         size_t maxMessages=10) const;
 
+    std::string RecallPersonaClaims(
+        std::string_view currentConversationId,
+        size_t maxMessages=12) const;
+
 private:
     SqliteDatabase& db_;
 };
