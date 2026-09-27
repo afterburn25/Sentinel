@@ -6,7 +6,6 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
-#include <unordered_map>
 
 namespace sentinel::simulation {
 namespace {
@@ -159,13 +158,11 @@ DatasetSnapshot& TrainingDataRegistry::ImportSnapshot(const std::filesystem::pat
         }
     };
 
-    std::unordered_map<std::string,std::string> remap;
+    const size_t appendStart=examples_.size();
     for(auto& e:importedExamples) {
-        const auto original=e.id;
         e.id=uniqueId(e.id,[&](const std::string& id){
             return std::any_of(examples_.begin(),examples_.end(),[&](const auto& x){return x.id==id;});
         });
-        remap[original]=e.id;
         examples_.push_back(std::move(e));
     }
 
@@ -173,15 +170,7 @@ DatasetSnapshot& TrainingDataRegistry::ImportSnapshot(const std::filesystem::pat
         return std::any_of(snapshots_.begin(),snapshots_.end(),[&](const auto& x){return x.id==id;});
     });
     imported.exampleIds.clear();
-    for(const auto& e:importedExamples) {
-        auto it=remap.find(e.id);
-        imported.exampleIds.push_back(it==remap.end()?e.id:it->second);
-    }
-    // importedExamples have been moved, so rebuild IDs from the newly appended range.
-    imported.exampleIds.clear();
-    const size_t count=importedExamples.size();
-    const size_t start=examples_.size()>=count?examples_.size()-count:0;
-    for(size_t i=start;i<examples_.size();++i) imported.exampleIds.push_back(examples_[i].id);
+    for(size_t i=appendStart;i<examples_.size();++i) imported.exampleIds.push_back(examples_[i].id);
     if(imported.createdUtc.empty()) imported.createdUtc=NowUtc();
     snapshots_.push_back(std::move(imported));
     return snapshots_.back();
