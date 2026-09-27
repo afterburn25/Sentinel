@@ -633,6 +633,10 @@ public:
                     lastTriggerMatch_=L"None";
                     simPreparedReply_=model_->GenerateSyntheticReply(simPendingMessage_,simContext_);
                 }
+                if(!simPreparedReply_.empty() && simPreparedReply_.rfind("Model error:",0)!=0) {
+                    simPreparedReply_=sentinel::simulation::ApplyPersonaWritingVariation(
+                        simSettings_.persona,simPreparedReply_,simContext_.history.size()+simPendingMessage_.size());
+                }
             } catch(const std::exception& e) {
                 simPreparedReply_=std::string("Model error: ")+e.what();
             }
