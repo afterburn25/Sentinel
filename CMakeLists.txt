@@ -36,6 +36,10 @@ add_library(sentinel_core
     src/Simulation/ModelRegistry.cpp
     src/Simulation/TriggerRules.cpp
     src/Simulation/TrainingData.cpp
+    src/Channels/ChannelCore.cpp
+    src/Channels/ChannelAdapterRegistry.cpp
+    src/Channels/AutomationEngine.cpp
+    src/Channels/LocalSimulationChannelAdapter.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
     src/Agency/AgencyServer.cpp
