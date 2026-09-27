@@ -1,7 +1,11 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
-$data=Join-Path $env:LOCALAPPDATA 'Sentinel'
+$sara=Join-Path $env:LOCALAPPDATA 'SARA'
+$legacy=Join-Path $env:LOCALAPPDATA 'Sentinel'
+if(Test-Path $sara){$data=$sara}
+elseif(Test-Path $legacy){$data=$legacy}
+else{$data=$sara}
 $ini=Join-Path $data 'simulation.ini'
 New-Item -ItemType Directory -Force -Path $data | Out-Null
 $lines=if(Test-Path $ini){@(Get-Content -LiteralPath $ini)}else{@()}
