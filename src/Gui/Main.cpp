@@ -2384,6 +2384,76 @@ private:
         return found;
     }
 
+    void AddPersonaResponseRule(const std::string& matchType) {
+        const auto trigger=Narrow(EditText(responseRuleTriggerEdit_));
+        const auto response=Narrow(EditText(responseRuleResponseEdit_));
+        if(trigger.empty() || response.empty()) {
+            statusText_=L"Enter both a trigger and a response";
+            return;
+        }
+
+        const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+            simSettings_.ageState,response);
+        if(!policy.allowed) {
+            statusText_=L"Response rule rejected by active safety policy";
+            MessageBoxW(hwnd_,Widen(policy.reason).c_str(),
+                L"Response Rule Blocked",MB_OK|MB_ICONWARNING);
+            return;
+        }
+
+        sqlite3_stmt* s{};
+        const char* sql=
+            "INSERT INTO persona_response_rules("
+            "persona_name,match_type,trigger_text,response_text,enabled,priority"
+            ") VALUES(?,?,?,?,1,100)";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
+            statusText_=L"Unable to prepare response rule";
+            return;
+        }
+        sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,2,matchType.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,3,trigger.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,4,response.c_str(),-1,SQLITE_TRANSIENT);
+        const int rc=sqlite3_step(s);
+        sqlite3_finalize(s);
+
+        if(rc==SQLITE_DONE) {
+            SetWindowTextW(responseRuleTriggerEdit_,L"");
+            SetWindowTextW(responseRuleResponseEdit_,L"");
+            statusText_=matchType=="exact"
+                ? L"Exact response rule added"
+                : L"Contains-match response rule added";
+        } else {
+            statusText_=L"Response rule could not be saved";
+        }
+    }
+
+    void ClearPersonaResponseRules() {
+        if(MessageBoxW(hwnd_,
+            (L"Delete all response rules for "+Widen(simSettings_.persona.name)+L"?").c_str(),
+            L"Clear Response Rules",MB_YESNO|MB_ICONQUESTION)!=IDYES) return;
+
+        sqlite3_stmt* s{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),
+            "DELETE FROM persona_response_rules WHERE persona_name=?",
+            -1,&s,nullptr)==SQLITE_OK) {
+            sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_step(s);
+        }
+        sqlite3_finalize(s);
+        statusText_=L"Persona response rules cleared";
+    }
+
+    void ToggleLearningMode() {
+        simSettings_.learningMode=!simSettings_.learningMode;
+        simContext_.learningMode=simSettings_.learningMode;
+        sentinel::simulation::SaveSimulationSettings(
+            runtime_->root/"simulation.ini",simSettings_);
+        statusText_=simSettings_.learningMode
+            ? L"Learning mode enabled"
+            : L"Learning mode disabled";
+    }
+
     std::string BuildPersonaSummary() const {
         const auto& p=simSettings_.persona;
         return p.name+", age "+std::to_string(p.age)+
