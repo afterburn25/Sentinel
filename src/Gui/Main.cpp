@@ -2178,12 +2178,12 @@ private:
             const float listW=contentW-inspectorW-gap;
             const float rx=x+listW+gap;
             const int comboW=150, comboH=130;
-            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(bodyY+244),comboW,comboH,TRUE);
-            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(bodyY+244),comboW,comboH,TRUE);
-            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(bodyY+282),comboW,comboH,TRUE);
-            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(bodyY+282),comboW,comboH,TRUE);
-            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(bodyY+320),comboW,comboH,TRUE);
-            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(bodyY+320),comboW,comboH,TRUE);
+            MoveControl(personaIntelligenceCombo_,(int)(rx+18),(int)(bodyY+228),comboW,comboH,TRUE);
+            MoveControl(personaSlangCombo_,(int)(rx+184),(int)(bodyY+228),comboW,comboH,TRUE);
+            MoveControl(personaGrammarCombo_,(int)(rx+18),(int)(bodyY+266),comboW,comboH,TRUE);
+            MoveControl(personaTypoCombo_,(int)(rx+184),(int)(bodyY+266),comboW,comboH,TRUE);
+            MoveControl(personaEmojiCombo_,(int)(rx+18),(int)(bodyY+304),comboW,comboH,TRUE);
+            MoveControl(personaMoodCombo_,(int)(rx+184),(int)(bodyY+304),comboW,comboH,TRUE);
         }
 
         if(page_==Page::Persona) {
@@ -3909,94 +3909,130 @@ private:
         const float gap=12.0f;
         const float inspectorW=360.0f;
         const float listW=contentW-inspectorW-gap;
+        const float mainH=354.0f;
 
-        GlowPanel(x,y,listW,382,true,11);
-        TextLine(L"Personas & LoRAs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Reusable persona behavior profiles and their assigned adapters.",x+18,y+40,listW-36,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"ml_persona_editor",L"Open Persona Editor",x+listW-158,y+14,140,30,true);
+        // Management workspace.
+        GlowPanel(x,y,listW,mainH,true,11);
+        TextLine(L"Personas & LoRAs",x+18,y+10,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Customize. Adapt. Scale.",x+18,y+38,220,20,tinyFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"ml_persona_editor",L"+ New Persona",x+listW-132,y+12,114,28,true);
 
-        TextLine(L"PERSONA",x+28,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"FOUNDATION",x+210,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ASSIGNED LORA",x+392,y+78,170,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATUS",x+574,y+78,listW-602,18,tinyFmt_.Get(),brush_.muted.Get());
+        // Segmented management tabs from the approved concept.
+        const wchar_t* subtabs[]={L"Personas",L"LoRAs",L"Assignments",L"Templates"};
+        const float tabW=92.0f;
+        for(int i=0;i<4;i++) {
+            const float tx=x+18+i*(tabW+4);
+            Rounded(tx,y+60,tabW,26,i==0?brush_.panel2.Get():brush_.deepPanel.Get(),
+                i==0?brush_.cyan.Get():brush_.border.Get(),6);
+            TextLine(subtabs[i],tx+5,y+61,tabW-10,24,tinyFmt_.Get(),i==0?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
 
-        const float rowY=y+102;
-        Rounded(x+18,rowY,listW-36,70,brush_.panel2.Get(),brush_.cyan.Get(),8);
-        TextLine(Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name),
-            x+28,rowY+7,170,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(Widen(simSettings_.persona.personality.empty()?std::string("Configured behavior profile"):simSettings_.persona.personality),
-            x+28,rowY+34,170,20,tinyFmt_.Get(),brush_.muted.Get());
+        // Search / filter bar.
+        Rounded(x+18,y+96,listW-36,32,brush_.deepPanel.Get(),brush_.border.Get(),8);
+        DrawIcon(IconKind::Search,x+30,y+103,16,brush_.muted.Get());
+        TextLine(L"Search personas...",x+54,y+98,180,28,tinyFmt_.Get(),brush_.muted.Get());
+        Badge(L"All Types",x+listW-220,y+100,brush_.blue.Get(),82);
+        Badge(L"All Status",x+listW-126,y+100,brush_.cyan.Get(),92);
 
-        const std::wstring foundation=selectedRegistryModel_>=0 && selectedRegistryModel_<(int)modelRegistry_.Models().size()
-            ? Widen(modelRegistry_.Models()[(size_t)selectedRegistryModel_].modelName)
-            : L"SARA Foundation / base";
-        TextLine(foundation,x+210,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Version-pinned",x+210,rowY+36,170,18,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"NAME",x+28,y+140,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"TYPE",x+188,y+140,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LINKED LORA",x+288,y+140,135,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"BASE MODEL",x+435,y+140,135,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",x+582,y+140,listW-610,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(assignedPersonaLoRA_,x+392,rowY+10,170,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Augments foundation",x+392,rowY+36,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        const std::wstring personaName=Widen(simSettings_.persona.name.empty()?std::string("Default Persona"):simSettings_.persona.name);
+        const std::wstring type=Widen(simSettings_.persona.personality.empty()?std::string("General"):simSettings_.persona.personality);
+        const std::wstring foundation=foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()
+            ? Widen(foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].name+" "+foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()].version)
+            : L"SARA Base";
 
-        Badge(L"ACTIVE",x+574,rowY+20,brush_.green.Get(),74);
+        Rounded(x+18,y+162,listW-36,48,brush_.panel2.Get(),brush_.cyan.Get(),7);
+        TextLine(personaName,x+28,y+166,150,22,smallFmt_.Get(),brush_.text.Get());
+        TextLine(type,x+188,y+166,90,22,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(assignedPersonaLoRA_,x+288,y+166,135,22,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(foundation,x+435,y+166,135,22,tinyFmt_.Get(),brush_.text.Get());
+        Badge(L"ACTIVE",x+582,y+174,brush_.green.Get(),70);
 
-        Rounded(x+18,y+188,listW-36,174,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Adapter Versions",x+32,y+198,220,26,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"adapter_new",L"New Persona LoRA",x+listW-160,y+198,128,28,true);
-        AddButton(L"adapter_rollback",L"Rollback",x+listW-258,y+198,88,28,false);
-        AddButton(L"adapter_export",L"Export",x+listW-346,y+198,78,28,false);
-        float ay=y+236;
+        // Adapter version rows as additional management entries.
+        float ay=y+220;
         int shown=0;
-        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<2;i++) {
+        for(size_t i=0;i<personaAdapterRegistry_.Adapters().size() && shown<3;i++) {
             const auto& a=personaAdapterRegistry_.Adapters()[i];
             if(a.personaName!=simSettings_.persona.name) continue;
             const bool selected=(int)i==selectedPersonaAdapter_;
-            if(selected) Rounded(x+26,ay-4,listW-52,30,brush_.panel2.Get(),brush_.cyan.Get(),6);
-            TextLine(Widen(a.adapterName+" "+a.version),x+32,ay,220,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+264,ay,90,22,tinyFmt_.Get(),
+            Rounded(x+18,ay,listW-36,34,selected?brush_.panel2.Get():brush_.deepPanel.Get(),
+                selected?brush_.blue.Get():brush_.border.Get(),6);
+            TextLine(Widen(a.adapterName+" "+a.version),x+28,ay+3,220,26,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(a.foundationId),x+268,ay+3,160,26,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(sentinel::simulation::ToString(a.stage)),x+442,ay+3,90,26,tinyFmt_.Get(),
                 a.stage==sentinel::simulation::AdapterStage::Active?brush_.green.Get():brush_.cyan.Get());
-            TextLine(Widen(a.foundationId),x+366,ay,listW-520,22,tinyFmt_.Get(),brush_.muted.Get());
             if(a.stage!=sentinel::simulation::AdapterStage::Active)
-                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-126,ay-2,94,26,false);
-            buttons_.push_back({{x+26,ay-4,x+listW-132,ay+26},L"adapter_select:"+std::to_wstring(i)});
-            ay+=38; ++shown;
+                AddButton(L"adapter_activate:"+std::to_wstring(i),L"Activate",x+listW-112,ay+3,80,26,false);
+            buttons_.push_back({{x+18,ay,x+listW-124,ay+34},L"adapter_select:"+std::to_wstring(i)});
+            ay+=40; ++shown;
         }
-        if(shown==0) {
-            TextLine(L"No LoRA versions for this persona yet.",x+32,ay,300,22,smallFmt_.Get(),brush_.muted.Get());
-        }
-        int activeAdapter=personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name);
-        TextLine(L"Compare",x+32,y+316,64,18,tinyFmt_.Get(),brush_.muted.Get());
-        if(selectedPersonaAdapter_>=0 && selectedPersonaAdapter_<(int)personaAdapterRegistry_.Adapters().size()) {
-            const auto& selected=personaAdapterRegistry_.Adapters()[(size_t)selectedPersonaAdapter_];
-            TextLine(L"Selected "+Widen(selected.version)+L" • "+Widen(selected.foundationId),x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.cyan.Get());
-        } else TextLine(L"Select an adapter version",x+100,y+312,listW-250,22,tinyFmt_.Get(),brush_.muted.Get());
-        if(activeAdapter>=0) {
-            const auto& active=personaAdapterRegistry_.Adapters()[(size_t)activeAdapter];
-            TextLine(L"Active "+Widen(active.version)+L" • "+Widen(active.foundationId),x+100,y+336,listW-250,20,tinyFmt_.Get(),brush_.green.Get());
-        }
+        if(shown==0)
+            TextLine(L"No persona LoRA versions yet. Create one to start adaptation.",x+28,ay+8,listW-56,24,tinyFmt_.Get(),brush_.muted.Get());
 
+        AddButton(L"adapter_new",L"+ New LoRA",x+18,y+316,88,24,false);
+        AddButton(L"adapter_export",L"Export",x+114,y+316,72,24,false);
+        AddButton(L"adapter_rollback",L"Rollback",x+194,y+316,82,24,false);
+
+        // Persona inspector.
         const float rx=x+listW+gap;
-        GlowPanel(rx,y,inspectorW,382,false,11);
-        TextLine(L"Persona Inspector",rx+18,y+12,inspectorW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        Badge(L"RUNTIME",rx+inspectorW-104,y+16,brush_.cyan.Get(),86);
+        GlowPanel(rx,y,inspectorW,mainH,false,11);
+        TextLine(L"Persona Details",rx+18,y+10,inspectorW-130,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_persona_editor",L"Edit",rx+inspectorW-72,y+12,54,24,false);
 
-        TextLine(L"Name",rx+18,y+62,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.name),rx+118,y+58,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Age",rx+18,y+92,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(simSettings_.persona.age),rx+118,y+88,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Personality",rx+18,y+122,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.personality),rx+118,y+118,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
-        TextLine(L"Writing style",rx+18,y+152,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.writingStyle),rx+118,y+148,inspectorW-136,24,smallFmt_.Get(),brush_.text.Get());
+        target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(rx+44,y+66),22,22),brush_.panel2.Get());
+        DrawIcon(IconKind::Chat,rx+31,y+53,26,brush_.cyan.Get());
+        TextLine(personaName,rx+80,y+48,inspectorW-98,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(type,rx+80,y+70,inspectorW-98,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        target_->DrawLine(D2D1::Point2F(rx+18,y+184),D2D1::Point2F(rx+inspectorW-18,y+184),brush_.border.Get(),1);
-        TextLine(L"Style Tuning",rx+18,y+196,inspectorW-140,24,smallFmt_.Get(),brush_.cyan.Get());
-        AddButton(L"ml_style_save",L"Save Style",rx+inspectorW-112,y+194,94,28,true);
-        TextLine(L"Intelligence",rx+18,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Slang",rx+184,y+228,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Grammar",rx+18,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Typos",rx+184,y+266,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Emoji",rx+18,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Mood",rx+184,y+304,150,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Foundation → LoRA → Behavior → Memory → Context",rx+18,y+350,inspectorW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Linked LoRA",rx+18,y+108,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(assignedPersonaLoRA_,rx+116,y+104,inspectorW-134,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Base Model",rx+18,y+136,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(foundation,rx+116,y+132,inspectorW-134,24,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"Status",rx+18,y+164,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Active",rx+116,y+160,inspectorW-134,24,tinyFmt_.Get(),brush_.green.Get());
+
+        target_->DrawLine(D2D1::Point2F(rx+18,y+194),D2D1::Point2F(rx+inspectorW-18,y+194),brush_.border.Get(),1);
+        TextLine(L"Style Tuning",rx+18,y+204,inspectorW-140,24,smallFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"ml_style_save",L"Save",rx+inspectorW-72,y+202,54,24,true);
+        TextLine(L"Intelligence",rx+18,y+226,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Slang",rx+184,y+226,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Grammar",rx+18,y+264,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Typos",rx+184,y+264,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Emoji",rx+18,y+302,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Mood",rx+184,y+302,150,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        // Bottom resource + recent-activity strip from concept 3.
+        const float bottomY=y+366;
+        const float resourceW=(contentW-gap)*0.46f;
+        const float activityW=contentW-gap-resourceW;
+        GlowPanel(x,bottomY,resourceW,110,false,10);
+        TextLine(L"Resource Usage",x+14,bottomY+8,resourceW-28,22,smallFmt_.Get(),brush_.text.Get());
+        const wchar_t* labels[]={L"CPU",L"Memory",L"Disk",L"Jobs"};
+        const int vals[]={42,68,28,(int)trainingJobRegistry_.Jobs().size()};
+        for(int i=0;i<4;i++) {
+            const float cx=x+48+i*((resourceW-80)/4.0f);
+            target_->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx,bottomY+60),24,24),brush_.border.Get(),4);
+            TextLine(std::to_wstring(vals[i])+(i<3?L"%":L""),cx-24,bottomY+48,48,22,smallFmt_.Get(),
+                i==3?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            TextLine(labels[i],cx-30,bottomY+82,60,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+
+        const float bx=x+resourceW+gap;
+        GlowPanel(bx,bottomY,activityW,110,false,10);
+        TextLine(L"Recent Activity",bx+14,bottomY+8,activityW-28,22,smallFmt_.Get(),brush_.text.Get());
+        float ry=bottomY+36;
+        StatusDot(bx+20,ry+8,3,brush_.cyan.Get());
+        TextLine(L"Persona profile loaded",bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get()); ry+=22;
+        StatusDot(bx+20,ry+8,3,personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?brush_.green.Get():brush_.muted.Get());
+        TextLine(personaAdapterRegistry_.ResolveActiveIndex(simSettings_.persona.name)>=0?L"Active LoRA resolved":L"No active LoRA assigned",
+            bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get()); ry+=22;
+        StatusDot(bx+20,ry+8,3,brush_.green.Get());
+        TextLine(L"Runtime stack ready for evaluation",bx+30,ry,activityW-44,18,tinyFmt_.Get(),brush_.text.Get());
     }
 
     void DrawModelLabFoundationForks(float x,float y,float contentW) {
