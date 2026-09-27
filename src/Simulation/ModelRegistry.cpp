@@ -1,6 +1,7 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include <algorithm>
 #include <fstream>
+#include <stdexcept>
 
 namespace sentinel::simulation {
 std::string ToString(ModelStage stage) {
