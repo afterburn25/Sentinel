@@ -1998,7 +1998,7 @@ private:
             const int active=page_==Page::ModelLab?0:1;
 
             TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
-            TextLine(L"TRAIN  •  ADAPT  •  EVALUATE  •  DEPLOY",
+            TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
                 22,startY+15,176,18,tinyFmt_.Get(),brush_.muted.Get());
 
             for(int i=0;i<8;i++) {
@@ -2055,7 +2055,7 @@ private:
             Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
             Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
             Text(page_==Page::Trainer?L"TRAIN":L"OVERVIEW",kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Train  •  Adapt  •  Evaluate  •  Deploy",
+            TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
                 kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
 
             Rounded(w-405,16,255,42,brush_.sidebar.Get(),brush_.border.Get(),8);
@@ -2682,10 +2682,18 @@ private:
         }
 
         if(page_==Page::ModelLab) {
-            const float x=kSidebar+28.0f, y=kHeader+104.0f;
+            const float x=kSidebar+28.0f;
+            const float y=kHeader+94.0f;
             const float contentW=w-x-28.0f;
-            MoveControl(responseRuleTriggerEdit_,(int)(x+88),(int)(y+108),220,30,TRUE);
-            MoveControl(responseRuleResponseEdit_,(int)(x+382),(int)(y+108),(int)std::max(180.0f,contentW-880.0f),30,TRUE);
+            const float dashY=y+48.0f;
+            const float metricsY=dashY+88.0f;
+            const float mainY=metricsY+98.0f;
+            const float rulesY=mainY+204.0f+12.0f;
+            MoveControl(responseRuleTriggerEdit_,
+                (int)(x+76),(int)(rulesY+43),(int)std::max(150.0f,contentW*0.27f),28,TRUE);
+            MoveControl(responseRuleResponseEdit_,
+                (int)(x+contentW*0.39f+72),(int)(rulesY+43),
+                (int)std::max(160.0f,contentW*0.31f),28,TRUE);
         }
 
         if(page_==Page::Trainer) {
@@ -5069,142 +5077,188 @@ private:
     }
 
     void DrawModelLab(float w,float h) {
-        PageTitle(L"Model Lab",L"Curate reviewed training examples, evaluate candidates, and control deployment");
+        PageTitle(
+            L"Model Lab - Executive Dashboard",
+            L"Current model, training, persona, review, and evaluation state from the recovered SARA 1.0.15 backend");
+
         const float x=kSidebar+28.0f;
-        const float y=kHeader+104.0f;
+        const float y=kHeader+94.0f;
         const float contentW=w-x-28.0f;
+        const float gap=12.0f;
 
-        Rounded(x,y,contentW,300,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Registry & Persona Controls",x+18,y+12,340,30,h1Fmt_.Get(),brush_.text.Get());
+        // Shared hybrid Model Lab navigation.
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==0;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
 
-        const float gap=10.0f;
-        const float bw=136.0f;
-        float bx=x+18;
-        AddButton(L"model_register",L"Register Current",bx,y+50,bw,36,true); bx+=bw+gap;
-        AddButton(L"model_eval",L"Evaluate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_approve",L"Approve",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_activate",L"Activate",bx,y+50,bw,36,false); bx+=bw+gap;
-        AddButton(L"model_rollback",L"Rollback",bx,y+50,bw,36,false);
-        AddButton(L"learning_toggle",
-            simSettings_.learningMode?L"Learning: ON":L"Learning: OFF",
-            x+contentW-168,y+50,150,36,simSettings_.learningMode);
+        const float dashY=y+48.0f;
+        const auto reviewCounts=runtime_->trainingReviews.Counts();
+        const auto jobs=runtime_->trainer.ListJobs(8);
+        size_t runningJobs=0;
+        for(const auto& job:jobs) {
+            if(job.state=="running" || job.state=="queued") ++runningJobs;
+        }
 
-        TextLine(L"Trigger",x+18,y+110,64,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Response",x+318,y+110,60,24,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"rule_wording_toggle",
-            responseRuleExactWording_?L"Wording: Exact":L"Wording: Persona",
-            x+contentW-620,y+105,126,32,responseRuleExactWording_);
-        AddButton(L"rule_add_smart",L"Add Smart",x+contentW-484,y+105,94,32,true);
-        AddButton(L"rule_add_contains",L"Add Contains",x+contentW-380,y+105,104,32,false);
-        AddButton(L"rule_add_exact",L"Add Exact",x+contentW-266,y+105,94,32,false);
-        AddButton(L"rule_test",L"Test Match",x+contentW-162,y+105,92,32,false);
-        AddButton(L"rule_clear",L"Clear",x+contentW-60,y+105,54,32,false);
+        // Hero / current context.
+        Rounded(x,dashY,contentW,76,brush_.panel.Get(),brush_.cyan.Get(),11);
+        if(brandBitmap_) {
+            Rounded(x+12,dashY+8,64,60,brush_.text.Get(),brush_.cyan.Get(),8);
+            const auto sz=brandBitmap_->GetSize();
+            const float logoH=52.0f;
+            const float logoW=logoH*(sz.width/std::max(1.0f,sz.height));
+            target_->DrawBitmap(
+                brandBitmap_.Get(),
+                D2D1::RectF(x+44-logoW*0.5f,dashY+12,x+44+logoW*0.5f,dashY+12+logoH),
+                1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        }
+        TextLine(L"Model Lab Control Center",x+88,dashY+10,330,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Active persona: "+Widen(simSettings_.persona.name)+L"   |   Runtime: "+trainerRuntimeStatus_,
+            x+88,dashY+40,contentW-390,22,smallFmt_.Get(),brush_.muted.Get());
+        StatusDot(x+contentW-164,dashY+23,5,brush_.green.Get());
+        TextLine(L"LOCAL / READY",x+contentW-150,dashY+11,132,24,tinyFmt_.Get(),brush_.green.Get());
 
-        auto rules=PersonaResponseRules(3);
-        TextLine(L"Saved Rules ("+std::to_wstring(PersonaResponseRuleCount())+L")",
-            x+18,y+152,190,24,smallFmt_.Get(),brush_.cyan.Get());
-        TextLine(L"MATCH",x+34,y+181,70,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"WORDING",x+114,y+181,84,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"TRIGGER",x+210,y+181,250,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"RESPONSE",x+470,y+181,contentW-610,18,tinyFmt_.Get(),brush_.muted.Get());
+        // Four real metrics.
+        const float metricsY=dashY+88.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct DashboardMetric {
+            const wchar_t* label;
+            std::wstring value;
+            std::wstring sub;
+            ID2D1Brush* accent;
+            IconKind icon;
+        };
+        DashboardMetric metrics[]={
+            {L"Registered Models",std::to_wstring(modelRegistry_.Models().size()),
+                L"Model registry entries",brush_.cyan.Get(),IconKind::Database},
+            {L"Reviewed Examples",std::to_wstring(reviewCounts.approved),
+                L"Approved for training",brush_.green.Get(),IconKind::Check},
+            {L"Response Rules",std::to_wstring(PersonaResponseRuleCount()),
+                L"Active persona rules",brush_.blue.Get(),IconKind::Chat},
+            {L"Training Jobs",std::to_wstring(jobs.size()),
+                std::to_wstring(runningJobs)+L" queued / running",brush_.yellow.Get(),IconKind::Document}
+        };
+        for(int i=0;i<4;i++) {
+            const float mx=x+i*(cardW+gap);
+            Rounded(mx,metricsY,cardW,86,brush_.panel.Get(),brush_.border.Get(),10);
+            Rounded(mx+14,metricsY+16,38,38,brush_.panel2.Get(),nullptr,9);
+            DrawIcon(metrics[i].icon,mx+22,metricsY+24,22,metrics[i].accent);
+            TextLine(metrics[i].label,mx+62,metricsY+10,cardW-74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,mx+62,metricsY+28,cardW-74,28,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,mx+14,metricsY+62,cardW-28,18,tinyFmt_.Get(),metrics[i].accent);
+        }
 
-        float ruleY=y+202;
-        if(rules.empty()) {
-            TextLine(L"No response rules saved for this persona.",
-                x+34,ruleY,contentW-68,28,smallFmt_.Get(),brush_.muted.Get());
+        const float mainY=metricsY+98.0f;
+        const float mainH=204.0f;
+        const float leftW=contentW*0.58f-gap*0.5f;
+        const float rightW=contentW-leftW-gap;
+        const float rightX=x+leftW+gap;
+
+        // Recent training activity.
+        Rounded(x,mainY,leftW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Recent Training Activity",x+16,mainY+10,leftW-32,26,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_train",L"Open Trainer",x+leftW-112,mainY+10,96,26,false);
+
+        float jy=mainY+48.0f;
+        if(jobs.empty()) {
+            Rounded(x+14,jy,leftW-28,44,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No training jobs yet. Use Train to create the first reviewed job.",
+                x+26,jy+10,leftW-52,24,smallFmt_.Get(),brush_.muted.Get());
         } else {
-            for(const auto& rule:rules) {
-                Rounded(x+22,ruleY,contentW-44,30,brush_.sidebar.Get(),brush_.border.Get(),6);
-                TextLine(Widen(rule.matchType),x+34,ruleY+4,70,22,tinyFmt_.Get(),brush_.cyan.Get());
-                TextLine(rule.responseMode=="exact"?L"Exact":L"Persona",
-                    x+114,ruleY+4,84,22,tinyFmt_.Get(),brush_.text.Get());
-                std::wstring trigger=Widen(rule.trigger);
-                if(trigger.size()>34) trigger=trigger.substr(0,31)+L"...";
-                std::wstring response=Widen(rule.response);
-                if(response.size()>58) response=response.substr(0,55)+L"...";
-                TextLine(trigger,x+210,ruleY+4,250,22,tinyFmt_.Get(),brush_.text.Get());
-                TextLine(response,x+470,ruleY+4,contentW-610,22,tinyFmt_.Get(),brush_.muted.Get());
-                AddButton(L"rule_delete:"+std::to_wstring(rule.id),L"Delete",
-                    x+contentW-112,ruleY+2,78,26,false);
-                ruleY+=34;
+            for(size_t i=0;i<jobs.size() && i<4;i++) {
+                const auto& job=jobs[i];
+                Rounded(x+14,jy,leftW-28,32,brush_.sidebar.Get(),brush_.border.Get(),6);
+                StatusDot(x+28,jy+16,4,
+                    job.state=="completed"?brush_.green.Get():
+                    job.state=="running"?brush_.cyan.Get():brush_.yellow.Get());
+                TextLine(Widen(job.targetName),x+40,jy+5,leftW*0.43f,20,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(job.mode)),
+                    x+leftW*0.47f,jy+5,leftW*0.25f,20,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(job.state)+L"  "+std::to_wstring(job.progress)+L"%",
+                    x+leftW-132,jy+5,104,20,tinyFmt_.Get(),
+                    job.state=="completed"?brush_.green.Get():brush_.cyan.Get(),
+                    DWRITE_TEXT_ALIGNMENT_TRAILING);
+                jy+=38.0f;
             }
         }
 
-        Rounded(x,y+314,contentW,220,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Registered Models",x+18,y+326,260,30,h1Fmt_.Get(),brush_.text.Get());
+        // Evaluation + runtime status.
+        Rounded(rightX,mainY,rightW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation & Runtime",rightX+16,mainY+10,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
 
-        TextLine(L"MODEL",x+34,y+363,280,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STATE",x+332,y+363,100,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+452,y+363,72,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"LATENCY",x+544,y+363,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+646,y+363,contentW-680,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Last evaluation score",rightX+16,mainY+51,rightW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(lastEvaluation_.score),
+            rightX+16,mainY+70,92,34,bigFmt_.Get(),
+            lastEvaluation_.score>=80?brush_.green.Get():
+            lastEvaluation_.score>=50?brush_.yellow.Get():brush_.muted.Get());
 
-        float yy=y+389;
-        if(modelRegistry_.Models().empty()) {
-            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No registered models. Configure one in Simulation Lab, then choose Register Current.",
-                x+34,yy+7,contentW-68,38,bodyFmt_.Get(),brush_.muted.Get());
-        }
+        TextLine(L"Policy",rightX+122,mainY+51,72,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Not evaluated",
+            rightX+122,mainY+73,rightW-138,22,smallFmt_.Get(),
+            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.muted.Get());
 
-        for(size_t i=0;i<modelRegistry_.Models().size() && i<3;i++) {
-            const auto& m=modelRegistry_.Models()[i];
-            const bool selected=(int)i==selectedRegistryModel_;
-            Rounded(x+22,yy,contentW-44,52,selected?brush_.panel2.Get():brush_.sidebar.Get(),
-                selected?brush_.cyan.Get():brush_.border.Get(),8);
-            TextLine(Widen(m.modelName),x+34,yy+4,280,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(Widen(sentinel::simulation::ToString(m.stage)),x+332,yy+4,100,22,tinyFmt_.Get(),
-                m.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.cyan.Get());
-            TextLine(std::to_wstring(m.evaluationScore),x+452,yy+4,72,22,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(std::to_wstring(m.latencyMs)+L" ms",x+544,yy+4,80,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(Widen(m.endpoint),x+646,yy+4,contentW-680,22,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"ID "+Widen(m.id),x+34,yy+28,contentW-68,18,tinyFmt_.Get(),brush_.muted.Get());
-            buttons_.push_back({{x+22,yy,x+contentW-22,yy+52},L"regmodel:"+std::to_wstring(i)});
-            yy+=62;
-        }
+        TextLine(L"Persona consistency",rightX+16,mainY+112,rightW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"No result yet",
+            rightX+16,mainY+133,rightW-32,22,smallFmt_.Get(),
+            lastEvaluation_.personaConsistent?brush_.cyan.Get():brush_.muted.Get());
 
-        Rounded(x,y+548,contentW,132,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Last Evaluation",x+18,y+560,220,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Foundation forks",rightX+16,mainY+166,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(trainerFoundations_.size()),
+            rightX+124,mainY+164,48,22,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Review pending",rightX+184,mainY+166,88,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(reviewCounts.pending),
+            rightX+rightW-44,mainY+164,30,22,smallFmt_.Get(),brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-        const float metricY=y+608;
-        Rounded(x+22,metricY,110,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Score",x+34,metricY+4,86,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(lastEvaluation_.score),x+34,metricY+20,86,22,bodyFmt_.Get(),
-            lastEvaluation_.score>=80?brush_.green.Get():lastEvaluation_.score>=50?brush_.yellow.Get():brush_.red.Get());
+        // Review/rules card retains the real 1.0.15 rule editor functionality.
+        const float rulesY=mainY+mainH+12.0f;
+        const float rulesH=132.0f;
+        Rounded(x,rulesY,contentW,rulesH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Rules & Reviewed Learning",x+16,rulesY+10,310,26,h1Fmt_.Get(),brush_.text.Get());
 
-        Rounded(x+144,metricY,180,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Policy",x+156,metricY+4,156,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked",x+156,metricY+20,156,22,smallFmt_.Get(),
-            lastEvaluation_.policyAllowed?brush_.green.Get():brush_.red.Get());
+        AddButton(L"learning_toggle",
+            simSettings_.learningMode?L"Learning ON":L"Learning OFF",
+            x+contentW-126,rulesY+10,110,26,simSettings_.learningMode);
 
-        Rounded(x+336,metricY,220,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Persona consistency",x+348,metricY+4,196,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Contradiction",x+348,metricY+20,196,22,smallFmt_.Get(),
-            lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+        TextLine(L"Trigger",x+16,rulesY+48,58,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Response",x+contentW*0.39f,rulesY+48,66,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        if(!lastEvaluation_.warnings.empty()) {
-            TextLine(Widen(lastEvaluation_.warnings.front()),x+580,metricY,contentW-602,48,tinyFmt_.Get(),brush_.yellow.Get());
-        }
+        AddButton(L"rule_add_smart",L"Add Smart",x+contentW-310,rulesY+84,82,28,true);
+        AddButton(L"rule_test",L"Test",x+contentW-220,rulesY+84,60,28,false);
+        AddButton(L"rule_clear",L"Clear",x+contentW-152,rulesY+84,60,28,false);
+        AddButton(L"training_export",L"Export",x+contentW-84,rulesY+84,68,28,false);
 
-        const float reviewY=y+694;
-        Rounded(x,reviewY,contentW,118,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Reviewed Learning Dataset",x+18,reviewY+10,300,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Approved "+std::to_wstring(reviewCounts.approved)+
+            L"   Pending "+std::to_wstring(reviewCounts.pending)+
+            L"   Rejected "+std::to_wstring(reviewCounts.rejected),
+            x+16,rulesY+91,contentW-340,20,tinyFmt_.Get(),brush_.muted.Get());
 
-        auto reviewCounts=runtime_->trainingReviews.Counts();
-        TextLine(L"Pending "+std::to_wstring(reviewCounts.pending)+
-                 L"   Approved "+std::to_wstring(reviewCounts.approved)+
-                 L"   Rejected "+std::to_wstring(reviewCounts.rejected),
-                 x+330,reviewY+12,contentW-350,24,smallFmt_.Get(),brush_.muted.Get());
-
-        float tbx=x+18;
-        AddButton(L"training_stage",L"Stage Latest Reply",tbx,reviewY+54,150,36,true); tbx+=160;
-        AddButton(L"training_approve",L"Approve Staged",tbx,reviewY+54,150,36,false); tbx+=160;
-        AddButton(L"training_reject",L"Reject Staged",tbx,reviewY+54,140,36,false); tbx+=150;
-        AddButton(L"training_export",L"Export Approved",tbx,reviewY+54,150,36,false);
-
-        const std::wstring reviewHint=selectedTrainingReviewId_.empty()
-            ? L"No training example staged in this session."
-            : L"Selected review item: "+Widen(selectedTrainingReviewId_);
-        TextLine(reviewHint,x+18,reviewY+94,contentW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        // Quick actions anchor the dashboard to existing recovered workflows.
+        const float quickY=rulesY+rulesH+12.0f;
+        Rounded(x,quickY,contentW,62,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Quick Actions",x+16,quickY+9,100,20,smallFmt_.Get(),brush_.text.Get());
+        AddButton(L"ml_train",L"Start Training",x+128,quickY+14,112,32,true);
+        AddButton(L"ml_personas",L"Manage Persona",x+250,quickY+14,112,32,false);
+        AddButton(L"model_register",L"Register Model",x+372,quickY+14,112,32,false);
+        AddButton(L"model_eval",L"Evaluate",x+494,quickY+14,92,32,false);
+        AddButton(L"training_export",L"Export Reviewed",x+596,quickY+14,122,32,false);
     }
 
     void DrawTrainer(float w,float h) {
