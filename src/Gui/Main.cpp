@@ -4571,13 +4571,11 @@ private:
     }
 
     void DrawPersona(float w,float h) {
-        PageTitle(L"Persona Profile",L"Identity, age-banded behavior, bio/home-life context, gallery, scenario, and policy");
+        PageTitle(L"Persona Profile",L"Identity, background, age-banded behavior, scenario, gallery, and policy");
+
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
-        const float gap=14.0f;
         const float contentW=w-x-28.0f;
-        const float colW=(contentW-gap)/2.0f;
-        const float rightX=x+colW+gap;
 
         Rounded(x,y-46,contentW,38,brush_.panel.Get(),brush_.border.Get(),8);
         TextLine(L"Saved Persona",x+12,y-42,92,28,tinyFmt_.Get(),brush_.muted.Get());
@@ -4585,150 +4583,151 @@ private:
         AddButton(L"persona_delete",L"Delete",x+contentW-186,y-42,72,28,false);
         AddButton(L"persona_save",L"Save",x+contentW-106,y-42,88,28,true);
 
-        // Identity & background
-        Rounded(x,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Profile Identity",x+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
+        // Professional section tabs.
+        const float tabGap=8.0f;
+        const float tabW=(contentW-tabGap*4)/5.0f;
+        const wchar_t* labels[]={L"Profile",L"Bio & Home Life",L"Behavior & Speech",L"Scenario & Policy",L"Gallery"};
+        const wchar_t* ids[]={L"persona_tab_profile",L"persona_tab_bio",L"persona_tab_behavior",L"persona_tab_scenario",L"persona_tab_gallery"};
+        for(int i=0;i<5;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=(int)personaTab_==i;
+            Rounded(tx,y,tabW,42,active?brush_.panel2.Get():brush_.sidebar.Get(),active?brush_.cyan.Get():brush_.border.Get(),8);
+            TextLine(labels[i],tx+8,y+3,tabW-16,34,smallFmt_.Get(),active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+42},ids[i]});
+        }
 
-        const float lx=x+20, lf=x+132, lw=colW-152;
-        float row=y+54;
+        const float py=y+56;
+        const float panelH=std::max(520.0f,h-py-28.0f);
+        Rounded(x,py,contentW,panelH,brush_.panel.Get(),brush_.border.Get(),10);
 
-        TextLine(L"Name",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+        if(personaTab_==PersonaTab::Profile) {
+            TextLine(L"Core Profile",x+22,py+16,240,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Basic identity and everyday context used across every conversation.",x+270,py+20,contentW-292,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Age",lx,row,46,30,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Age state",lx+136,row,72,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            const float left=x+34, labelW=118, fieldX=left+labelW;
+            const float right=x+contentW*0.52f, rightField=right+126;
+            float row=py+74;
 
-        TextLine(L"Gender",lx,row,58,30,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Pronouns",lx+210,row,62,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            TextLine(L"Name",left,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Age",right,row,100,30,tinyFmt_.Get(),brush_.muted.Get()); row+=52;
 
-        TextLine(L"Location",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            TextLine(L"Gender",left,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Pronouns",right,row,100,30,tinyFmt_.Get(),brush_.muted.Get()); row+=52;
 
-        TextLine(L"Occupation",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            TextLine(L"Location",left,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Occupation",right,row,100,30,tinyFmt_.Get(),brush_.muted.Get()); row+=52;
 
-        TextLine(L"Education",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            TextLine(L"Education",left,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Relationship",right,row,100,30,tinyFmt_.Get(),brush_.muted.Get()); row+=52;
 
-        TextLine(L"Relationship",lx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Family",left,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Interests",right,row,100,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        // Behavior & context
-        Rounded(rightX,y,colW,382,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Behavior, Bio & Home Life",rightX+18,y+12,colW-36,32,h1Fmt_.Get(),brush_.text.Get());
+            Rounded(x+22,py+350,contentW-44,112,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Age Range",x+40,py+364,120,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Personas are restricted to ages 8 through 17. Speech and reasoning are automatically age-banded.",x+40,py+393,contentW-80,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"8-10: child | 11-13: preteen | 14-15: younger teen | 16-17: older teen",x+40,py+422,contentW-80,24,tinyFmt_.Get(),brush_.muted.Get());
+        }
+        else if(personaTab_==PersonaTab::Bio) {
+            TextLine(L"Bio, Background & Home Life",x+22,py+16,360,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"This long-form context is fed directly into the persona model and becomes part of its conversational grounding.",x+22,py+54,contentW-44,40,smallFmt_.Get(),brush_.muted.Get());
 
-        const float rx=rightX+20, rf=rightX+132, rw=colW-152;
-        row=y+54;
+            Rounded(x+22,py+104,contentW-44,panelH-154,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Useful details: home life, family dynamics, school routines, friends, habits, memories, likes/dislikes, hobbies, daily schedule, neighborhood context, and ordinary history.",
+                x+40,py+118,contentW-80,48,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Personality",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            AddButton(L"persona_generate_behavior",L"Generate Behavior from Bio",x+contentW-246,py+18,224,34,false);
+        }
+        else if(personaTab_==PersonaTab::Behavior) {
+            TextLine(L"Behavior & Speech",x+22,py+16,280,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Fine-tune how the persona thinks and writes without changing its core identity.",x+310,py+20,contentW-332,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Social style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            const float col1=x+34, col2=x+contentW*0.50f+10;
+            const float field1=col1+150, field2=col2+150;
+            float row=py+78;
+            TextLine(L"Personality",col1,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Social style",col2,row,130,30,tinyFmt_.Get(),brush_.muted.Get()); row+=54;
+            TextLine(L"Confidence",col1,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Writing style",col2,row,130,30,tinyFmt_.Get(),brush_.muted.Get()); row+=54;
+            TextLine(L"Communication",col1,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Cognitive",col2,row,130,30,tinyFmt_.Get(),brush_.muted.Get()); row+=54;
+            TextLine(L"Slang",col1,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Grammar",col2,row,130,30,tinyFmt_.Get(),brush_.muted.Get()); row+=54;
+            TextLine(L"Typos",col1,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Emoji",col2,row,130,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Confidence",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            Rounded(x+22,py+370,contentW-44,100,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Age-aware speech is mandatory",x+40,py+384,240,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"These controls modify the age band; they do not override it. An 8-year-old cannot be made to sound like an adult by selecting Advanced.",x+40,py+413,contentW-80,42,tinyFmt_.Get(),brush_.text.Get());
+        }
+        else if(personaTab_==PersonaTab::Scenario) {
+            TextLine(L"Scenario, Policy & Pacing",x+22,py+16,320,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Conversation scenario, age-state policy, and human-like response timing.",x+350,py+20,contentW-372,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Interests",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            const float left=x+34;
+            float row=py+82;
+            TextLine(L"Scenario",left,row,110,30,tinyFmt_.Get(),brush_.muted.Get()); row+=58;
+            TextLine(L"Objective",left,row,110,30,tinyFmt_.Get(),brush_.muted.Get()); row+=58;
+            TextLine(L"Seed",left,row,110,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Age state",x+contentW*0.42f,row,100,30,tinyFmt_.Get(),brush_.muted.Get()); row+=58;
+            TextLine(L"Start delay min",left,row,110,30,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Start delay max",x+contentW*0.42f,row,110,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Writing style",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            Rounded(x+22,py+360,contentW-44,100,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Policy Status",x+40,py+374,120,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(policyStatus_,x+40,py+405,contentW-80,36,smallFmt_.Get(),brush_.text.Get());
+        }
+        else if(personaTab_==PersonaTab::Gallery) {
+            TextLine(L"Profile Gallery",x+22,py+16,240,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(L"Approved images can be sent in chat. SARA never sends the same image twice.",x+270,py+20,contentW-292,24,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(L"Family",rx,row,96,30,tinyFmt_.Get(),brush_.muted.Get());
-        row+=42;
+            AddButton(L"media_import",L"Import Picture",x+22,py+60,126,34,true);
+            AddButton(L"media_approve",L"Approve / Revoke",x+158,py+60,146,34,false);
+            AddButton(L"media_delete",L"Delete",x+314,py+60,88,34,false);
 
-        TextLine(L"Bio / Home Life",rx,row,106,30,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"persona_generate_behavior",L"Generate Behavior",rightX+colW-158,row,140,28,false);
+            const float gridY=py+116;
+            const float cardW=172.0f;
+            const float cardH=132.0f;
+            const float gap=14.0f;
+            const int cols=std::max(1,(int)((contentW-44+gap)/(cardW+gap)));
 
-        // Scenario & pacing
-        const float sy=y+396;
-        Rounded(x,sy,contentW,144,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Scenario, Policy & Pacing",x+18,sy+10,300,30,h1Fmt_.Get(),brush_.text.Get());
+            if(personaMedia_.empty()) {
+                Rounded(x+22,gridY,contentW-44,120,brush_.sidebar.Get(),brush_.border.Get(),8);
+                TextLine(L"No gallery images yet.",x+40,gridY+24,contentW-80,28,bodyFmt_.Get(),brush_.muted.Get());
+                TextLine(L"Import benign persona images, review them, then approve the ones SARA may use in conversation.",x+40,gridY+58,contentW-80,40,smallFmt_.Get(),brush_.muted.Get());
+            } else {
+                const size_t maxCards=std::min<size_t>(personaMedia_.size(),(size_t)cols*3);
+                for(size_t i=0;i<maxCards;i++) {
+                    const int col=(int)i%cols;
+                    const int row=(int)i/cols;
+                    const float cx=x+22+col*(cardW+gap);
+                    const float cy=gridY+row*(cardH+gap);
+                    const auto& item=personaMedia_[i];
+                    const bool selected=(int)i==selectedPersonaMedia_;
 
-        TextLine(L"Scenario",x+20,sy+50,68,30,tinyFmt_.Get(),brush_.muted.Get());
+                    Rounded(cx,cy,cardW,cardH,
+                        selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                        selected?brush_.cyan.Get():brush_.border.Get(),8);
 
-        TextLine(L"Objective",x+316,sy+50,70,30,tinyFmt_.Get(),brush_.muted.Get());
+                    auto bitmap=LoadD2DBitmap(std::filesystem::path(Widen(item.storedPath)));
+                    if(bitmap) {
+                        const auto sz=bitmap->GetSize();
+                        const float maxW=cardW-16, maxH=86.0f;
+                        const float scale=std::min(maxW/std::max(1.0f,sz.width),maxH/std::max(1.0f,sz.height));
+                        const float dw=sz.width*scale, dh=sz.height*scale;
+                        const float dx=cx+(cardW-dw)/2.0f;
+                        target_->DrawBitmap(bitmap.Get(),D2D1::RectF(dx,cy+8,dx+dw,cy+8+dh),1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+                    }
 
-        TextLine(L"Seed",x+20,sy+92,48,30,tinyFmt_.Get(),brush_.muted.Get());
+                    TextLine(item.approved?L"APPROVED":L"REVIEW",
+                        cx+8,cy+96,cardW-16,18,tinyFmt_.Get(),
+                        item.approved?brush_.green.Get():brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
 
-        TextLine(L"Start delay ms",x+164,sy+92,82,30,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"to",x+342,sy+92,24,30,tinyFmt_.Get(),brush_.muted.Get());
-
-        AddButton(L"persona_save",L"Save Persona & Policy",x+contentW-210,sy+88,190,38,true);
-
-        // Compact policy status
-        TextLine(L"Policy",x+474,sy+92,52,30,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
-
-        // Texting voice / communication imperfections.
-        const float ty=sy+158;
-        Rounded(x,ty,contentW,142,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Texting Voice",x+18,ty+10,180,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Age influences vocabulary and message length; these controls tune how polished or casual the persona sounds.",
-            x+205,ty+10,contentW-225,28,tinyFmt_.Get(),brush_.muted.Get());
-
-        TextLine(L"Communication",x+20,ty+48,88,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Cognitive",x+275,ty+48,60,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Slang",x+485,ty+48,48,24,tinyFmt_.Get(),brush_.muted.Get());
-
-        TextLine(L"Grammar",x+20,ty+88,56,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Typos",x+275,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Emoji",x+485,ty+88,48,24,tinyFmt_.Get(),brush_.muted.Get());
-
-        // Approved benign persona media library.
-        const float my=ty+156;
-        Rounded(x,my,contentW,170,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Profile Gallery",x+18,my+10,250,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Approved gallery images are available to the persona during ordinary chat and picture requests.",
-            x+280,my+10,contentW-300,28,tinyFmt_.Get(),brush_.muted.Get());
-
-        AddButton(L"media_import",L"Import Picture",x+18,my+46,126,32,true);
-        AddButton(L"media_approve",L"Approve / Revoke",x+154,my+46,142,32,false);
-        AddButton(L"media_delete",L"Delete",x+306,my+46,88,32,false);
-
-        float mediaY=my+88;
-        if(personaMedia_.empty()) {
-            TextLine(L"No persona pictures imported.",x+20,mediaY,contentW-40,24,smallFmt_.Get(),brush_.muted.Get());
-        } else {
-            const float cardW=128.0f;
-            const float cardH=68.0f;
-            const float cardGap=12.0f;
-            const size_t maxCards=(size_t)std::max(1.0f,std::floor((contentW-36.0f)/(cardW+cardGap)));
-
-            for(size_t i=0;i<personaMedia_.size() && i<maxCards;i++) {
-                const auto& item=personaMedia_[i];
-                const bool selected=(int)i==selectedPersonaMedia_;
-                const float cx=x+18+(float)i*(cardW+cardGap);
-
-                Rounded(cx,mediaY,cardW,cardH,
-                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
-                    selected?brush_.cyan.Get():brush_.border.Get(),7);
-
-                auto bitmap=LoadD2DBitmap(std::filesystem::path(Widen(item.storedPath)));
-                if(bitmap) {
-                    const auto sz=bitmap->GetSize();
-                    const float imageW=72.0f;
-                    const float imageH=44.0f;
-                    const float scale=std::min(imageW/std::max(1.0f,sz.width),imageH/std::max(1.0f,sz.height));
-                    const float dw=sz.width*scale;
-                    const float dh=sz.height*scale;
-                    target_->DrawBitmap(
-                        bitmap.Get(),
-                        D2D1::RectF(cx+6,mediaY+6,cx+6+dw,mediaY+6+dh),
-                        1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+                    std::wstring name=Widen(item.originalName);
+                    if(name.size()>22) name=name.substr(0,19)+L"...";
+                    TextLine(name,cx+8,cy+112,cardW-16,16,tinyFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+                    buttons_.push_back({{cx,cy,cx+cardW,cy+cardH},L"media:"+std::to_wstring(i)});
                 }
-
-                TextLine(item.approved?L"APPROVED":L"REVIEW",
-                    cx+82,mediaY+6,40,18,tinyFmt_.Get(),
-                    item.approved?brush_.green.Get():brush_.yellow.Get());
-
-                std::wstring filename=Widen(item.originalName);
-                if(filename.size()>16) filename=filename.substr(0,13)+L"...";
-                TextLine(filename,cx+6,mediaY+50,cardW-12,14,tinyFmt_.Get(),brush_.text.Get());
-
-                buttons_.push_back({{cx,mediaY,cx+cardW,mediaY+cardH},L"media:"+std::to_wstring(i)});
             }
         }
     }
