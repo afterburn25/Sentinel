@@ -1243,6 +1243,10 @@ public:
             else if (b.id.rfind(L"rule_delete:",0)==0)
                 DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
+            else if (b.id==L"trainer_create_fork") CreateFoundationForkFromTrainer();
+            else if (b.id==L"trainer_bind_lora") BindCurrentPersonaLoraFromTrainer();
+            else if (b.id==L"trainer_queue") QueueTrainerJobFromControls();
+            else if (b.id==L"trainer_apply_instruction") ApplyTrainerBehaviorInstruction();
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
@@ -4898,6 +4902,70 @@ private:
             ? L"No training example staged in this session."
             : L"Selected review item: "+Widen(selectedTrainingReviewId_);
         TextLine(reviewHint,x+18,reviewY+94,contentW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
+    void DrawTrainer(float w,float h) {
+        PageTitle(
+            L"Trainer",
+            L"Conversational behavior tuning, foundation forks, training modes, and persona LoRA bindings");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+104.0f;
+        const float contentW=w-x-28.0f;
+
+        Rounded(x,y,contentW,70,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Mode",x+18,y+18,110,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Foundation",x+404,y+18,96,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            L"Behavior = immediate persona parameters | Correction = reviewed examples | Persona LoRA = personality adapter | Foundation Fork SFT = new SARA base | Preference = chosen-vs-rejected pairs",
+            x+18,y+46,contentW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(x,y+84,contentW,128,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Foundation Fork",x+18,y+96,210,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Fork name",x+18,y+142,104,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Trainable source",x+404,y+142,98,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"trainer_create_fork",L"Create Fork",x+contentW-132,y+176,114,30,true);
+
+        Rounded(x,y+226,contentW,128,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona LoRA Binding",x+18,y+238,260,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Persona: "+Widen(simSettings_.persona.name),
+            x+300,y+241,contentW-318,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"LoRA name",x+18,y+284,104,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Adapter path",x+404,y+284,94,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"trainer_bind_lora",L"Bind to Persona",x+contentW-160,y+318,142,30,true);
+
+        Rounded(x,y+368,contentW,168,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Job",x+18,y+380,200,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Dataset",x+18,y+426,94,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Output",x+530,y+426,92,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"trainer_queue",L"Queue Selected Mode",x+18,y+484,178,34,true);
+
+        auto jobs=runtime_->trainer.ListJobs(3);
+        float jy=y+484;
+        float jx=x+214;
+        if(jobs.empty()) {
+            TextLine(L"No training jobs queued yet.",jx,jy,contentW-232,34,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& job:jobs) {
+                const std::wstring line=
+                    Widen(sentinel::simulation::ToString(job.mode))+L" | "+
+                    Widen(job.targetName)+L" | "+Widen(job.state)+L" | "+
+                    std::to_wstring(job.progress)+L"%";
+                TextLine(line,jx,jy,contentW-232,24,tinyFmt_.Get(),brush_.text.Get());
+                jy+=24;
+            }
+        }
+
+        Rounded(x,y+550,contentW,174,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Conversational Trainer",x+18,y+562,260,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"In Behavior mode, describe how the loaded persona should change. SARA converts the instruction into persona parameters immediately. Other modes create persistent training jobs.",
+            x+286,y+563,contentW-304,42,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"trainer_apply_instruction",L"Apply Instruction",x+contentW-170,y+682,152,30,true);
+
+        TextLine(L"Runtime",x+18,y+735,70,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(trainerRuntimeStatus_,x+92,y+732,contentW-110,24,smallFmt_.Get(),brush_.cyan.Get());
     }
 
     void DrawMessaging(float w,float h) {
