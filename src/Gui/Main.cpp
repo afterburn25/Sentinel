@@ -82,7 +82,7 @@ std::string Narrow(const std::wstring& s) {
 std::filesystem::path AppDataRoot() {
     PWSTR p{};
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p))) {
-        std::filesystem::path out = std::filesystem::path(p) / L"Sentinel";
+        std::filesystem::path out = std::filesystem::path(p) / L"SARA";
         CoTaskMemFree(p);
         return out;
     }
@@ -2101,7 +2101,7 @@ private:
 
     void PreserveSimulationTranscript() {
         if(cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create or select a case before preserving the transcript.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -2579,7 +2579,7 @@ private:
         try {
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
             sentinel::simulation::ModelContext ctx;
-            ctx.scenario="Sentinel Model Lab candidate evaluation";
+            ctx.scenario="SARA Model Lab candidate evaluation";
             ctx.personaSummary=simContext_.personaSummary;
             ctx.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,"Hello, introduce yourself briefly."});
             auto reply=candidate->GenerateSyntheticReply("Hello, introduce yourself briefly.",ctx);
@@ -3502,7 +3502,7 @@ private:
         GetWindowTextW(caseTitleEdit_,tbuf,512);
         std::wstring wn=nbuf,wt=tbuf;
         if (wn.empty()||wt.empty()) {
-            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Enter both a case number and title.",L"SARA",MB_OK|MB_ICONINFORMATION);
             page_=Page::Cases; ShowCaseEditors(true); return;
         }
         try {
@@ -3535,7 +3535,7 @@ private:
 
     void ImportEvidence() {
         if (cases_.empty()) {
-            MessageBoxW(hwnd_,L"Create a case first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Create a case first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         auto file=PickFile(); if (!file) return;
@@ -3553,7 +3553,7 @@ private:
 
     void VerifySelected() {
         if (cases_.empty()||evidence_.empty()) {
-            MessageBoxW(hwnd_,L"Select or import evidence first.",L"Sentinel",MB_OK|MB_ICONINFORMATION);
+            MessageBoxW(hwnd_,L"Select or import evidence first.",L"SARA",MB_OK|MB_ICONINFORMATION);
             return;
         }
         try {
@@ -3574,7 +3574,7 @@ private:
         bool ok=runtime_->audit.VerifyChain();
         statusText_=ok?L"Audit chain verified":L"Audit integrity failure";
         MessageBoxW(hwnd_,ok?L"Audit chain is VALID. No tampering detected.":L"Audit chain verification FAILED.",
-            L"Sentinel Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
+            L"SARA Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
     }
 };
 
@@ -3585,10 +3585,16 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_CREATE:
             try { g_app=new App(); g_app->Init(hwnd); }
             catch (const std::exception& e) {
-                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"Sentinel Startup Failed",MB_OK|MB_ICONERROR);
+                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"SARA Startup Failed",MB_OK|MB_ICONERROR);
                 return -1;
             }
             return 0;
+        case WM_GETMINMAXINFO: {
+            auto* info=reinterpret_cast<MINMAXINFO*>(lp);
+            info->ptMinTrackSize.x=1280;
+            info->ptMinTrackSize.y=760;
+            return 0;
+        }
         case WM_SIZE: if(g_app) g_app->Resize(); return 0;
         case WM_PAINT: {
             PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
@@ -3632,7 +3638,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     RegisterClassExW(&wc);
 
     HWND hwnd=CreateWindowExW(
-        0,kClassName,L"Sentinel - Secure Evidence & Integrity",
+        0,kClassName,L"SARA - Synthetic Adaptive Response Agent",
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
         CW_USEDEFAULT,CW_USEDEFAULT,1500,900,
         nullptr,nullptr,instance,nullptr);
