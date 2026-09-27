@@ -4613,19 +4613,43 @@ private:
         if(personaMedia_.empty()) {
             TextLine(L"No persona pictures imported.",x+20,mediaY,contentW-40,24,smallFmt_.Get(),brush_.muted.Get());
         } else {
-            for(size_t i=0;i<personaMedia_.size() && i<3;i++) {
+            const float cardW=128.0f;
+            const float cardH=68.0f;
+            const float cardGap=12.0f;
+            const size_t maxCards=(size_t)std::max(1.0f,std::floor((contentW-36.0f)/(cardW+cardGap)));
+
+            for(size_t i=0;i<personaMedia_.size() && i<maxCards;i++) {
                 const auto& item=personaMedia_[i];
                 const bool selected=(int)i==selectedPersonaMedia_;
-                Rounded(x+18,mediaY,contentW-36,24,
+                const float cx=x+18+(float)i*(cardW+cardGap);
+
+                Rounded(cx,mediaY,cardW,cardH,
                     selected?brush_.panel2.Get():brush_.sidebar.Get(),
-                    selected?brush_.cyan.Get():brush_.border.Get(),6);
-                const std::wstring state=item.approved?L"APPROVED":L"UNAPPROVED";
-                TextLine(Widen(item.originalName),x+28,mediaY,300,24,tinyFmt_.Get(),brush_.text.Get());
-                TextLine(state,x+340,mediaY,90,24,tinyFmt_.Get(),item.approved?brush_.green.Get():brush_.yellow.Get());
-                TextLine(Widen(item.sha256.substr(0,16))+L"...",x+440,mediaY,160,24,tinyFmt_.Get(),brush_.muted.Get());
-                TextLine(Widen(item.tags),x+610,mediaY,contentW-650,24,tinyFmt_.Get(),brush_.muted.Get());
-                buttons_.push_back({{x+18,mediaY,x+contentW-18,mediaY+24},L"media:"+std::to_wstring(i)});
-                mediaY+=28;
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+
+                auto bitmap=LoadD2DBitmap(std::filesystem::path(Widen(item.storedPath)));
+                if(bitmap) {
+                    const auto sz=bitmap->GetSize();
+                    const float imageW=72.0f;
+                    const float imageH=44.0f;
+                    const float scale=std::min(imageW/std::max(1.0f,sz.width),imageH/std::max(1.0f,sz.height));
+                    const float dw=sz.width*scale;
+                    const float dh=sz.height*scale;
+                    target_->DrawBitmap(
+                        bitmap.Get(),
+                        D2D1::RectF(cx+6,mediaY+6,cx+6+dw,mediaY+6+dh),
+                        1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+                }
+
+                TextLine(item.approved?L"APPROVED":L"REVIEW",
+                    cx+82,mediaY+6,40,18,tinyFmt_.Get(),
+                    item.approved?brush_.green.Get():brush_.yellow.Get());
+
+                std::wstring filename=Widen(item.originalName);
+                if(filename.size()>16) filename=filename.substr(0,13)+L"...";
+                TextLine(filename,cx+6,mediaY+50,cardW-12,14,tinyFmt_.Get(),brush_.text.Get());
+
+                buttons_.push_back({{cx,mediaY,cx+cardW,mediaY+cardH},L"media:"+std::to_wstring(i)});
             }
         }
     }
