@@ -11,6 +11,7 @@
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
+#include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
@@ -315,6 +316,66 @@ void TestReusablePersonaProfiles()
     std::filesystem::remove_all(root);
 }
 
+
+void TestPersonaScopedConversationMemory()
+{
+    using namespace sentinel::simulation;
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-memory-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"memory-test.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    ConversationMemoryStore memory(db);
+
+    const auto samanthaOld=memory.StartConversation(
+        "Samantha old","Samantha","Samantha, age 24, playful","Neutral");
+    memory.Append(samanthaOld,ChatTurn::Speaker::Investigator,"My favorite gemstone is cobalt.");
+    memory.Append(samanthaOld,ChatTurn::Speaker::SyntheticSubject,"Got it, cobalt.");
+
+    const auto samanthaCurrent=memory.StartConversation(
+        "Samantha current","Samantha","Samantha, age 24, playful","Neutral");
+    memory.Append(samanthaCurrent,ChatTurn::Speaker::SyntheticSubject,"Current Samantha session.");
+
+    const auto nikkiOld=memory.StartConversation(
+        "Nikki old","Nikki","Nikki, age 27, confident","Neutral");
+    memory.Append(nikkiOld,ChatTurn::Speaker::Investigator,"My favorite gemstone is amber.");
+    memory.Append(nikkiOld,ChatTurn::Speaker::SyntheticSubject,"Got it, amber.");
+
+    const auto nikkiCurrent=memory.StartConversation(
+        "Nikki current","Nikki","Nikki, age 27, confident","Neutral");
+    memory.Append(nikkiCurrent,ChatTurn::Speaker::SyntheticSubject,"Current Nikki session.");
+
+    const auto samanthaList=memory.ListForPersona("Samantha",20);
+    assert(samanthaList.size()==2);
+    assert(std::all_of(samanthaList.begin(),samanthaList.end(),[](const auto& item){return item.personaName=="Samantha";}));
+
+    const auto nikkiList=memory.ListForPersona("Nikki",20);
+    assert(nikkiList.size()==2);
+    assert(std::all_of(nikkiList.begin(),nikkiList.end(),[](const auto& item){return item.personaName=="Nikki";}));
+
+    const auto samanthaRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",samanthaCurrent,"Samantha",12);
+    assert(samanthaRecall.find("cobalt")!=std::string::npos);
+    assert(samanthaRecall.find("amber")==std::string::npos);
+
+    const auto nikkiRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",nikkiCurrent,"Nikki",12);
+    assert(nikkiRecall.find("amber")!=std::string::npos);
+    assert(nikkiRecall.find("cobalt")==std::string::npos);
+
+    ModelContext loaded;
+    assert(memory.Load(samanthaOld,loaded));
+    assert(loaded.personaSummary.find("Samantha")!=std::string::npos);
+    assert(loaded.personaSummary.find("playful")!=std::string::npos);
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -440,6 +501,7 @@ int main()
     TestSaraModelLabRegistries();
     TestSaraEvaluationSuite();
     TestReusablePersonaProfiles();
+    TestPersonaScopedConversationMemory();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
