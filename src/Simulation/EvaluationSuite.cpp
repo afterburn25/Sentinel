@@ -500,6 +500,41 @@ int DimensionScore(const EvaluationRun& run,EvaluationDimension dimension) {
     return -1;
 }
 
+std::string BuildEvaluationRunReport(const EvaluationRun& run)
+{
+    std::ostringstream out;
+    out<<"SARA EVALUATION RUN REPORT\n";
+    out<<"Run: "<<run.id<<"\n";
+    out<<"Created UTC: "<<run.createdUtc<<"\n";
+    out<<"Candidate: "<<run.candidateName<<" ["<<run.candidateId<<"]\n";
+    out<<"Foundation: "<<run.foundationName<<" ["<<run.foundationId<<"]\n";
+    out<<"Adapter: "<<run.adapterName<<" ["<<run.adapterId<<"]\n";
+    out<<"Overall score: "<<run.overallScore<<"\n";
+    if(run.previousOverallScore>=0)
+        out<<"Previous score: "<<run.previousOverallScore<<"  delta="<<run.regressionDelta<<"\n";
+
+    out<<"\nDIMENSIONS\n";
+    for(const auto& d:run.dimensions) {
+        out<<ToString(d.dimension)<<": "<<d.score<<"  "<<(d.passed?"PASS":"REVIEW")<<"\n";
+        if(!d.details.empty()) out<<"  "<<d.details<<"\n";
+        for(const auto& warning:d.warnings) out<<"  WARNING: "<<warning<<"\n";
+    }
+
+    out<<"\nNAMED CASES\n";
+    for(const auto& cr:run.cases) {
+        out<<cr.caseId<<" | "<<cr.caseName<<" | "<<ToString(cr.dimension)
+           <<" | "<<cr.score<<" | "<<(cr.passed?"PASS":"REVIEW")<<"\n";
+        if(!cr.details.empty()) out<<"  "<<cr.details<<"\n";
+        if(!cr.response.empty()) out<<"  Response: "<<cr.response<<"\n";
+    }
+
+    if(!run.warnings.empty()) {
+        out<<"\nRUN WARNINGS\n";
+        for(const auto& warning:run.warnings) out<<"- "<<warning<<"\n";
+    }
+    return out.str();
+}
+
 std::string BuildCandidateComparisonReport(
     const EvaluationRun& left,
     const EvaluationRun& right)
