@@ -122,7 +122,7 @@ jobs:
           $bytes = [IO.File]::ReadAllBytes($exe)
           $wide = [Text.Encoding]::Unicode.GetString($bytes)
           $required = @(
-            "VISUAL RESTORE",
+            "PERSONA PROFILES",
             "Train Smarter. Together.",
             "Evaluation Command Center",
             "Deployment Command Center",
@@ -136,11 +136,11 @@ jobs:
 
           $exeHash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           @"
-          SARA 1.0.18.2 VISUAL RESTORE
+          SARA 1.0.18.2 PERSONA PROFILES
           Commit: ${{ github.sha }}
           SARA.exe SHA-256: $exeHash
           Required UI markers verified:
-          - VISUAL RESTORE
+          - PERSONA PROFILES
           - Train Smarter. Together.
           - Evaluation Command Center
           - Deployment Command Center
