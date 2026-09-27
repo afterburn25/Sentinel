@@ -11,6 +11,12 @@
 #include "Sentinel/Simulation/TriggerRules.hpp"
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
+#include "Sentinel/Channels/ChannelCore.hpp"
+#include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/AutomationEngine.hpp"
+#include "Sentinel/Channels/JurisdictionRules.hpp"
+#include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
+#include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
@@ -315,6 +321,148 @@ void TestReusablePersonaProfiles()
     std::filesystem::remove_all(root);
 }
 
+
+void TestUnifiedChannelCore()
+{
+    using namespace sentinel::channels;
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-channels-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"channels.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    ChannelCoreStore store(db);
+    const auto subjectId=store.CreateSubject("case-1","Synthetic subject");
+    assert(!subjectId.empty());
+
+    const auto identityId=store.AddSubjectIdentity(
+        subjectId,"username","local","test-user","test-user",
+        IdentityLinkState::Candidate,0.60);
+    assert(!identityId.empty());
+    assert(store.ConfirmSubjectIdentity(identityId,"unit-test"));
+
+    ChannelAccount account;
+    account.id="account-1";
+    account.type=ChannelType::LocalSimulation;
+    account.provider="local";
+    account.externalAccountId="local-account";
+    account.displayName="Local Simulation";
+    account.address="local";
+    account.jurisdiction="test";
+    account.complianceStatus="test-only";
+    account.capabilities.Set(Capability::ReceiveText);
+    account.capabilities.Set(Capability::SendText);
+    account.capabilities.Set(Capability::SendImage);
+    account.capabilities.Set(Capability::AutomatedSending);
+    assert(store.UpsertChannelAccount(account)=="account-1");
+
+    ChannelConversation conversation;
+    conversation.subjectId=subjectId;
+    conversation.personaName="Samantha";
+    conversation.channelAccountId=account.id;
+    conversation.type=ChannelType::LocalSimulation;
+    conversation.provider="local";
+    conversation.providerConversationId="conversation-1";
+    conversation.externalPeerId="test-peer";
+    const auto conversationId=store.OpenConversation(conversation);
+    assert(!conversationId.empty());
+
+    auto found=store.FindConversation("local",account.id,"conversation-1");
+    assert(found.has_value());
+    assert(found->personaName=="Samantha");
+
+    RawChannelEvent event;
+    event.id="event-1";
+    event.channelConversationId=conversationId;
+    event.provider="local";
+    event.type=ChannelType::LocalSimulation;
+    event.providerConversationId="conversation-1";
+    event.providerMessageId="provider-message-1";
+    event.eventType="message";
+    event.direction=Direction::Inbound;
+    event.senderExternalId="test-peer";
+    event.recipientExternalId="local-account";
+    event.providerTimestamp="2026-09-27T00:00:00Z";
+    event.rawPayload="{\"text\":\"hello\"}";
+    event.payloadSha256="test-hash";
+    store.RecordRawEvent(event);
+
+    sentinel::channels::NormalizedMessage normalized;
+    normalized.id="message-1";
+    normalized.eventId=event.id;
+    normalized.channelConversationId=conversationId;
+    normalized.subjectId=subjectId;
+    normalized.personaName="Samantha";
+    normalized.direction=Direction::Inbound;
+    normalized.senderExternalId="test-peer";
+    normalized.recipientExternalId="local-account";
+    normalized.body="hello";
+    normalized.automationMode=AutomationMode::Manual;
+    normalized.providerMessageId=event.providerMessageId;
+    store.RecordMessage(normalized);
+
+    auto recent=store.RecentMessages(conversationId,10);
+    assert(recent.size()==1);
+    assert(recent[0].body=="hello");
+
+    ChannelAdapterRegistry registry;
+    registry.Register(std::make_unique<LocalSimulationChannelAdapter>(
+        sentinel::operations::CreateInMemoryMessageAdapter()));
+    auto* adapter=registry.FindByName("SARA Local Simulation");
+    assert(adapter!=nullptr);
+    assert(adapter->Connected());
+    assert(adapter->Capabilities().Has(Capability::SendText));
+    assert(adapter->Capabilities().Has(Capability::SendImage));
+
+    auto send=adapter->SendText({conversationId,"approved reply","reply-1"});
+    assert(send.accepted);
+    auto media=adapter->SendMedia({conversationId,"approved image","C:/synthetic/test.png","image/png","abc123","media-1"});
+    assert(media.accepted);
+
+    AutomationEngine engine;
+    AutomationRequest request;
+    request.mode=AutomationMode::AuthorizedAutomatic;
+    request.action=ActionKind::OrdinaryReply;
+    request.providerSupportsAutomation=true;
+    request.policyAllowed=true;
+    request.policyRequiresSupervisor=false;
+    request.jurisdictionProfileActive=true;
+    request.jurisdictionAllowsAutomation=true;
+    request.jurisdictionRequiresReview=false;
+    auto decision=engine.Decide(request);
+    assert(decision.decision==AutomationDecisionKind::AutoSend);
+    assert(!decision.requiresHuman);
+
+    request.action=ActionKind::MeetingArrangement;
+    decision=engine.Decide(request);
+    assert(decision.decision==AutomationDecisionKind::RequireApproval);
+    assert(decision.requiresHuman);
+
+    request.action=ActionKind::OrdinaryReply;
+    request.jurisdictionProfileActive=false;
+    decision=engine.Decide(request);
+    assert(decision.decision==AutomationDecisionKind::RequireApproval);
+    assert(decision.requiresHuman);
+
+    request.jurisdictionProfileActive=true;
+    request.policyRequiresSupervisor=true;
+    decision=engine.Decide(request);
+    assert(decision.decision==AutomationDecisionKind::RequireApproval);
+    assert(decision.requiresHuman);
+
+    JurisdictionRuleStore jurisdictions(db);
+    jurisdictions.EnsureBuiltInBaselines();
+    auto federal=jurisdictions.LatestProfile(RuleLayerType::Federal,"US");
+    assert(federal.has_value());
+    assert(!federal->AutomationLegallyActive());
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -440,6 +588,7 @@ int main()
     TestSaraModelLabRegistries();
     TestSaraEvaluationSuite();
     TestReusablePersonaProfiles();
+    TestUnifiedChannelCore();
 #ifdef _WIN32
     TestWindowsCryptoAndSev();
 #endif
