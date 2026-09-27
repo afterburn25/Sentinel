@@ -206,7 +206,21 @@ jobs:
           if (-not (Test-Path "$root/assets/SARA-Splash.png")) { throw "Approved SARA splash missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Logo.png")) { throw "Approved SARA logo missing from package" }
           if (-not (Test-Path "$root/assets/SARA-Icon.png")) { throw "Approved SARA icon missing from package" }
-          python -c "import hashlib,struct; p=r'$root/assets/SARA-Splash.png'; raw=open(p,'rb').read(); assert raw[:8]==b'\\x89PNG\\r\\n\\x1a\\n'; w,h=struct.unpack('>II',raw[16:24]); assert (w,h)==(1672,941),(w,h); assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Packaged approved SARA splash verified:',(w,h))"
+          $splash = Resolve-Path "$root/assets/SARA-Splash.png"
+          $splashHash = (Get-FileHash $splash -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($splashHash -ne "dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4") {
+            throw "Packaged approved SARA splash hash mismatch: $splashHash"
+          }
+          Add-Type -AssemblyName System.Drawing
+          $img = [System.Drawing.Image]::FromFile($splash)
+          try {
+            if ($img.Width -ne 1672 -or $img.Height -ne 941) {
+              throw "Packaged SARA splash dimensions must be 1672x941, got $($img.Width)x$($img.Height)"
+            }
+          } finally {
+            $img.Dispose()
+          }
+          Write-Host "Packaged approved SARA splash verified."
 
       - name: Build SARA installer
         shell: pwsh
