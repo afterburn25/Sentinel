@@ -15,6 +15,7 @@ struct SimulationSettings {
     PersonaProfile persona;
     ScenarioProfile scenario;
     AgeKnowledgeState ageState{AgeKnowledgeState::Unknown};
+    bool learningMode{true};
 };
 
 SimulationSettings LoadSimulationSettings(const std::filesystem::path& path);
