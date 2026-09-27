@@ -1,6 +1,6 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.18.1",
   "download_url": "",
   "sha256": "",
-  "notes": "SARA 1.0.18 Evaluation Suite: persistent multidimensional evaluation runs, named test cases, long-context recall, trigger regressions, style/persona/policy checks, baseline regression detection, and candidate comparison reports."
+  "notes": "SARA 1.0.18.1 Visual Restore: restores the approved 1.0.15 splash, logo, icon, hybrid Model Lab shell, redesigned Train/Datasets/Personas/Evaluation/Deployment workspaces, and dark upgrade installer identity."
 }
