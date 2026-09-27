@@ -105,3 +105,19 @@ The UI must surface and respect the training/runtime behavior defined in:
 `SARA_MODEL_LAB_TRAINING_ARCHITECTURE_1.0.16.md`
 
 The UI is not merely visual; selectors, review states, runtime-resolution status, trigger diagnostics, candidate evaluation, deployment, and rollback must map to real underlying state.
+
+
+## Implemented hybrid workspace status
+
+The 1.0.16 branch now uses the approved hybrid pattern in code:
+
+- Overview: Executive Dashboard/control-center layout.
+- Train: Conversational Trainer with correction capture and integrated rule manager.
+- Datasets: review records and versioned snapshots.
+- Personas & LoRAs: management table, adapter lifecycle, runtime inspector, and six style-tuning dropdowns.
+- Foundation Forks: immutable base/fork lineage, comparison, activation, and rollback.
+- Jobs: persistent job queue/progress.
+- Evaluation: candidate/gate command center.
+- Deployment: production model/runtime-stack/rollback command center.
+
+The composer uses vector smiley and paperclip buttons with hover/pressed feedback and contextual help.
