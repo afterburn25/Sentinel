@@ -71,6 +71,7 @@ constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings };
+enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
@@ -1241,6 +1242,11 @@ public:
             else if (b.id==L"sim_install_ai") InstallOrRepairLocalAi();
             else if (b.id==L"sim_preserve") PreserveSimulationTranscript();
             else if (b.id==L"sim_export_persona_log") ExportPersonaConversationLog();
+            else if (b.id==L"persona_tab_profile") { personaTab_=PersonaTab::Profile; ApplyPageControls(); }
+            else if (b.id==L"persona_tab_bio") { personaTab_=PersonaTab::Bio; ApplyPageControls(); }
+            else if (b.id==L"persona_tab_behavior") { personaTab_=PersonaTab::Behavior; ApplyPageControls(); }
+            else if (b.id==L"persona_tab_scenario") { personaTab_=PersonaTab::Scenario; ApplyPageControls(); }
+            else if (b.id==L"persona_tab_gallery") { personaTab_=PersonaTab::Gallery; ApplyPageControls(); }
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
@@ -1545,6 +1551,7 @@ private:
     HWND trainerForkNameEdit_{},trainerBasePathEdit_{},trainerLoraNameEdit_{},trainerLoraPathEdit_{},trainerDatasetEdit_{},trainerOutputEdit_{},trainerInstructionEdit_{};
     std::unique_ptr<Runtime> runtime_;
     Page page_{Page::Dashboard};
+    PersonaTab personaTab_{PersonaTab::Profile};
     std::vector<sentinel::CaseRecord> cases_;
     std::vector<sentinel::EvidenceSummary> evidence_;
     size_t selectedCase_{0},selectedEvidence_{0};
