@@ -49,20 +49,19 @@ public static class SaraInstallerNative {
 "@
 
 function Find-InstallerWindow {
-    param([int]$ProcessId,[int]$TimeoutSeconds=15)
+    param([int]$TimeoutSeconds=20)
 
     $deadline=[DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while([DateTime]::UtcNow -lt $deadline) {
         $script:installerWindow=[IntPtr]::Zero
         $callback=[SaraInstallerNative+EnumWindowsProc]{
             param([IntPtr]$hwnd,[IntPtr]$lParam)
-            [uint32]$windowPid=0
-            [void][SaraInstallerNative]::GetWindowThreadProcessId($hwnd,[ref]$windowPid)
-            if($windowPid -ne $ProcessId -or -not [SaraInstallerNative]::IsWindowVisible($hwnd)) { return $true }
+            if(-not [SaraInstallerNative]::IsWindowVisible($hwnd)) { return $true }
 
             $sb=New-Object Text.StringBuilder 512
             [void][SaraInstallerNative]::GetWindowText($hwnd,$sb,$sb.Capacity)
-            if($sb.ToString().Contains("SARA")) {
+            $title=$sb.ToString()
+            if($title -like "SARA Setup*") {
                 $script:installerWindow=$hwnd
                 return $false
             }
@@ -72,7 +71,7 @@ function Find-InstallerWindow {
         if($script:installerWindow -ne [IntPtr]::Zero) { return $script:installerWindow }
         Start-Sleep -Milliseconds 100
     }
-    throw "Timed out waiting for SARA installer wizard"
+    throw "Timed out waiting for visible SARA Setup wizard"
 }
 
 function Capture-Window {
@@ -121,9 +120,9 @@ if($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
 
 $proc=Start-Process -FilePath $InstallerPath -ArgumentList "/SP-" -PassThru
 try {
-    $window=Find-InstallerWindow -ProcessId $proc.Id
+    $window=Find-InstallerWindow
     Capture-Window -Window $window -Path $OutputPath
 }
 finally {
-    if(-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+    & taskkill.exe /PID $proc.Id /T /F 2>$null | Out-Null
 }
