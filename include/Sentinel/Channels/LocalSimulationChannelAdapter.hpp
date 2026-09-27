@@ -10,7 +10,7 @@ public:
     explicit LocalSimulationChannelAdapter(std::unique_ptr<operations::IMessageAdapter> legacy)
         : legacy_(std::move(legacy)) {}
 
-    std::string AdapterName() const override { return "Sentinel Local Simulation"; }
+    std::string AdapterName() const override { return "SARA Local Simulation"; }
     ChannelType Type() const override { return ChannelType::LocalSimulation; }
     ChannelCapabilities Capabilities() const override;
     bool Connected() const override { return legacy_ && legacy_->Connected(); }
