@@ -1,6 +1,6 @@
 {
-  "version": "1.0.18.1",
+  "version": "1.0.18.2",
   "download_url": "",
   "sha256": "",
-  "notes": "SARA 1.0.18.1 Visual Restore: restores the approved 1.0.15 splash, logo, icon, hybrid Model Lab shell, redesigned Train/Datasets/Personas/Evaluation/Deployment workspaces, and dark upgrade installer identity."
+  "notes": "SARA 1.0.18.2 Persona Profiles: keeps the restored 1.0.15 visual baseline and restores multiple reusable persona profiles with save/load/delete, typing delays, automatic LoRA resolution, and persona-safe conversation reset."
 }
