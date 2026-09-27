@@ -5,7 +5,7 @@ namespace sentinel::operations {
 namespace {
 class InMemoryAdapter final : public IMessageAdapter {
 public:
-    std::string ProviderName() const override { return "Sentinel Local Test Adapter"; }
+    std::string ProviderName() const override { return "SARA Local Test Adapter"; }
     bool Connected() const override { return true; }
     std::vector<NormalizedMessage> Poll(const std::string& conversationId) override {
         std::vector<NormalizedMessage> out;
@@ -19,6 +19,25 @@ public:
         m.conversationId=conversationId;
         m.sender="operator";
         m.text=text;
+        m.timestamp=std::chrono::system_clock::now();
+        m.state=DeliveryState::Queued;
+        m.inbound=false;
+        messages_.push_back(m);
+        return m;
+    }
+    NormalizedMessage QueueOperatorApprovedMedia(
+        const std::string& conversationId,
+        const std::string& caption,
+        const std::string& mediaPath,
+        const std::string& mediaSha256) override {
+        static std::atomic<unsigned long long> mediaSeq{1};
+        NormalizedMessage m;
+        m.id="local-media-"+std::to_string(mediaSeq.fetch_add(1));
+        m.conversationId=conversationId;
+        m.sender="operator";
+        m.text=caption;
+        m.mediaPath=mediaPath;
+        m.mediaSha256=mediaSha256;
         m.timestamp=std::chrono::system_clock::now();
         m.state=DeliveryState::Queued;
         m.inbound=false;
