@@ -25,6 +25,7 @@ struct ModelContext {
     // background memory, not text that should be repeated verbatim to the user.
     std::string recalledMemory;
     bool learningMode{true};
+    unsigned int variationSeed{};
     std::vector<ChatTurn> history;
 };
 
