@@ -25,10 +25,10 @@ Last updated: 2026-09-27
 - [x] Persona LoRA Training mode.
 - [x] Foundation Fork Training mode.
 - [x] Evaluation / Test mode.
-- [ ] Keep original downloaded/base models immutable.
-- [ ] Add versioned foundation-model fork registry.
-- [ ] Track foundation parent/version lineage.
-- [ ] Add foundation comparison and rollback.
+- [x] Keep original downloaded/base models immutable.
+- [x] Add versioned foundation-model fork registry.
+- [x] Track foundation parent/version lineage.
+- [x] Add foundation rollback; side-by-side comparison UI still pending.
 - [ ] Preserve immutable original base models.
 - [ ] Add persona adapter registry.
 - [ ] Preserve adapter-to-foundation compatibility/version metadata.
@@ -54,7 +54,7 @@ Last updated: 2026-09-27
 - [ ] Review
 - [ ] Approved
 - [ ] Dataset
-- [ ] Training Job
+- [x] Training Job (persistent job records and Jobs workspace implemented; external trainer handoff pending)
 - [ ] Candidate
 - [ ] Evaluation
 - [ ] Deployment
