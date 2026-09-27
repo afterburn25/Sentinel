@@ -388,6 +388,7 @@ public:
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         foundationRegistry_.Load(runtime_->root/"foundation-registry.tsv");
+        trainingJobRegistry_.Load(runtime_->root/"training-jobs.tsv");
         if(foundationRegistry_.Models().empty()) {
             foundationRegistry_.EnsureBase(simSettings_.model.empty()?"Original Base Model":simSettings_.model,"base");
             foundationRegistry_.Save(runtime_->root/"foundation-registry.tsv");
@@ -500,6 +501,9 @@ public:
             else if (b.id==L"foundation_approve") ApproveSelectedFoundation();
             else if (b.id==L"foundation_activate") ActivateSelectedFoundation();
             else if (b.id==L"foundation_rollback") RollbackFoundation();
+            else if (b.id==L"job_new") CreateTrainingJob();
+            else if (b.id.rfind(L"job_start:",0)==0) StartTrainingJob((size_t)std::stoul(b.id.substr(10)));
+            else if (b.id.rfind(L"job_complete:",0)==0) CompleteTrainingJob((size_t)std::stoul(b.id.substr(13)));
             else if (b.id.rfind(L"foundation:",0)==0) {
                 selectedFoundation_=std::clamp((int)std::stol(b.id.substr(11)),0,std::max(0,(int)foundationRegistry_.Models().size()-1));
                 statusText_=L"Foundation selection changed";
@@ -703,6 +707,7 @@ private:
     std::vector<sentinel::operations::ApprovalRequest> approvals_;
     sentinel::simulation::ModelRegistry modelRegistry_;
     sentinel::simulation::FoundationRegistry foundationRegistry_;
+    sentinel::simulation::TrainingJobRegistry trainingJobRegistry_;
     int selectedRegistryModel_{-1};
     int selectedFoundation_{0};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
@@ -2099,6 +2104,33 @@ private:
         TextLine(policyStatus_,x+530,sy+88,contentW-760,38,tinyFmt_.Get(),brush_.cyan.Get());
     }
 
+    void CreateTrainingJob() {
+        std::string foundation="SARA Foundation";
+        if(foundationRegistry_.ActiveIndex()>=0 && foundationRegistry_.ActiveIndex()<(int)foundationRegistry_.Models().size()) {
+            const auto& f=foundationRegistry_.Models()[(size_t)foundationRegistry_.ActiveIndex()];
+            foundation=f.name+" "+f.version;
+        } else if(!foundationRegistry_.Models().empty()) {
+            const auto& f=foundationRegistry_.Models()[0];
+            foundation=f.name+" "+f.version;
+        }
+        std::string dataset="approved-captures-"+std::to_string(trainingApproved_);
+        trainingJobRegistry_.Create(foundation,dataset);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job queued";
+    }
+
+    void StartTrainingJob(size_t index) {
+        trainingJobRegistry_.SetState(index,"RUNNING",5);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job marked running";
+    }
+
+    void CompleteTrainingJob(size_t index) {
+        trainingJobRegistry_.SetState(index,"COMPLETED",100);
+        trainingJobRegistry_.Save(runtime_->root/"training-jobs.tsv");
+        statusText_=L"Training job marked completed";
+    }
+
     void CreateFoundationFork() {
         if(foundationRegistry_.Models().empty()) return;
         selectedFoundation_=std::clamp(selectedFoundation_,0,(int)foundationRegistry_.Models().size()-1);
@@ -2559,6 +2591,48 @@ private:
         }
     }
 
+    void DrawModelLabJobs(float x,float y,float contentW) {
+        Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Jobs",x+18,y+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Persistent job records ready for handoff to the isolated training service.",x+18,y+40,contentW-180,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"job_new",L"New Training Job",x+contentW-152,y+14,134,30,true);
+
+        TextLine(L"JOB",x+28,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"FOUNDATION",x+140,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"DATASET",x+372,y+80,220,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+604,y+80,110,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PROGRESS",x+726,y+80,100,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float yy=y+104;
+        if(trainingJobRegistry_.Jobs().empty()) {
+            Rounded(x+18,yy,contentW-36,60,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No training jobs yet. Queue one from the current foundation and approved capture set.",
+                x+34,yy+8,contentW-68,42,bodyFmt_.Get(),brush_.muted.Get());
+            return;
+        }
+
+        for(size_t i=0;i<trainingJobRegistry_.Jobs().size() && i<4;i++) {
+            const auto& job=trainingJobRegistry_.Jobs()[i];
+            Rounded(x+18,yy,contentW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(Widen(job.id),x+28,yy+5,100,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(job.baseModel),x+140,yy+5,220,22,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(Widen(job.dataset),x+372,yy+5,220,22,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.state),x+604,yy+5,110,22,tinyFmt_.Get(),
+                job.state=="COMPLETED"?brush_.green.Get():job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
+            TextLine(std::to_wstring(job.progress)+L"%",x+726,yy+5,80,22,tinyFmt_.Get(),brush_.text.Get());
+
+            const float barX=x+826, barW=std::max(70.0f,contentW-1020.0f);
+            Rounded(barX,yy+10,barW,8,brush_.panel2.Get(),nullptr,4);
+            if(job.progress>0) Rounded(barX,yy+10,barW*(job.progress/100.0f),8,brush_.cyan.Get(),nullptr,4);
+
+            if(job.state=="QUEUED") AddButton(L"job_start:"+std::to_wstring(i),L"Start",x+contentW-170,yy+14,68,28,false);
+            else if(job.state=="RUNNING") AddButton(L"job_complete:"+std::to_wstring(i),L"Complete",x+contentW-184,yy+14,82,28,true);
+
+            TextLine(L"Training execution remains isolated from live inference.",x+28,yy+32,contentW-240,18,tinyFmt_.Get(),brush_.muted.Get());
+            yy+=66;
+        }
+    }
+
     void DrawModelLabWorkspacePlaceholder(float x,float y,float contentW,const std::wstring& title,const std::wstring& sub) {
         Rounded(x,y,contentW,382,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(title,x+20,y+14,contentW-40,34,h1Fmt_.Get(),brush_.text.Get());
@@ -2589,7 +2663,7 @@ private:
             case ModelLabSection::FoundationForks:
                 DrawModelLabFoundationForks(x,bodyY,contentW); break;
             case ModelLabSection::Jobs:
-                DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Training Jobs",L"Monitor queued and running training work, resources, logs, and outputs."); break;
+                DrawModelLabJobs(x,bodyY,contentW); break;
             case ModelLabSection::Evaluation:
                 DrawModelLabWorkspacePlaceholder(x,bodyY,contentW,L"Evaluation",L"Compare candidates and run persona, policy, quality, and regression evaluations."); break;
             case ModelLabSection::Deployment:
