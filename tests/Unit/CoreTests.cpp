@@ -776,6 +776,9 @@ void TestWindowsCryptoAndSev()
         assert(loadedAgain.Span()[i] == loadedCaseKey.Span()[i]);
 
     sentinel::AuditService audit(db,hash);
+    auto RequireAudit=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
     const auto verificationActor=sentinel::UserId::Random();
 
     // Simulate one immutable pre-0027 audit-v1 row. Mixed v1/v2 chains must
@@ -793,21 +796,22 @@ void TestWindowsCryptoAndSev()
         const auto legacyId=sentinel::AuditId::Random().ToString();
 
         sqlite3_stmt* legacy{};
-        assert(sqlite3_prepare_v2(
+        RequireAudit(sqlite3_prepare_v2(
             db.Handle(),
             "INSERT INTO audit_records("
             "id,sequence,timestamp,actor_id,action,target_type,target_id,metadata,"
             "previous_hash,record_hash,metadata_sha256"
             ") VALUES(?1,1,?2,?3,1,'legacy','',X'6c6567616379',?4,?5,'')",
-            -1,&legacy,nullptr)==SQLITE_OK);
+            -1,&legacy,nullptr)==SQLITE_OK,
+            "audit-v1 compatibility row prepare failed");
         sqlite3_bind_text(legacy,1,legacyId.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(legacy,2,timestamp.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(legacy,3,actor.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(legacy,4,previous.c_str(),-1,SQLITE_TRANSIENT);
         sqlite3_bind_text(legacy,5,recordHash.c_str(),-1,SQLITE_TRANSIENT);
-        assert(sqlite3_step(legacy)==SQLITE_DONE);
+        RequireAudit(sqlite3_step(legacy)==SQLITE_DONE,"audit-v1 compatibility row insert failed");
         sqlite3_finalize(legacy);
-        assert(audit.VerifyChain());
+        RequireAudit(audit.VerifyChain(),"legacy audit-v1 row did not verify after migration");
     }
 
     sentinel::EvidenceService evidenceService(root/"evidence",db,random,hash,cipher,audit);
@@ -816,22 +820,22 @@ void TestWindowsCryptoAndSev()
         loadedCaseKey.Span());
 
     auto importedItems=evidenceService.ListForCase(caseId,loadedCaseKey.Span());
-    assert(importedItems.size()==1);
+    RequireAudit(importedItems.size()==1,"evidence import/list failed in audit-v2 regression");
     auto verificationStatus=evidenceService.LastVerification(importedItems.front().id);
-    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Never);
+    RequireAudit(verificationStatus.state==sentinel::EvidenceVerificationState::Never,"new evidence unexpectedly had verification state");
 
     const auto verified=evidenceService.Verify(
         importedItems.front(),
         loadedCaseKey.Span(),
         verificationActor);
-    assert(verified.valid);
-    assert(verified.structureValid);
-    assert(verified.containerHashMatches);
-    assert(verified.authenticated);
-    assert(verified.plaintextHashMatches);
+    RequireAudit(verified.valid,"valid evidence did not verify under audit-v2");
+    RequireAudit(verified.structureValid,"SEV structure validation did not pass");
+    RequireAudit(verified.containerHashMatches,"container hash comparison did not pass");
+    RequireAudit(verified.authenticated,"AES-GCM authentication did not pass");
+    RequireAudit(verified.plaintextHashMatches,"plaintext hash comparison did not pass");
     verificationStatus=evidenceService.LastVerification(importedItems.front().id);
-    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Verified);
-    assert(!verificationStatus.checkedUtc.empty());
+    RequireAudit(verificationStatus.state==sentinel::EvidenceVerificationState::Verified,"verification PASS state was not persisted in audit history");
+    RequireAudit(!verificationStatus.checkedUtc.empty(),"verification timestamp missing");
 
     {
         std::fstream io(imported.storedPath,std::ios::binary|std::ios::in|std::ios::out);
@@ -848,32 +852,34 @@ void TestWindowsCryptoAndSev()
         importedItems.front(),
         loadedCaseKey.Span(),
         verificationActor);
-    assert(!rejected.valid);
+    RequireAudit(!rejected.valid,"tampered evidence was not rejected");
     verificationStatus=evidenceService.LastVerification(importedItems.front().id);
-    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Failed);
-    assert(audit.VerifyChain());
+    RequireAudit(verificationStatus.state==sentinel::EvidenceVerificationState::Failed,"integrity-failure state was not persisted");
+    RequireAudit(audit.VerifyChain(),"mixed legacy-v1/new-v2 audit chain did not verify");
 
     // New audit-v2 records must cryptographically bind the metadata blob.
     sqlite3_stmt* latestAudit{};
-    assert(sqlite3_prepare_v2(
+    RequireAudit(sqlite3_prepare_v2(
         db.Handle(),
         "SELECT id,metadata_sha256 FROM audit_records ORDER BY sequence DESC LIMIT 1",
-        -1,&latestAudit,nullptr)==SQLITE_OK);
-    assert(sqlite3_step(latestAudit)==SQLITE_ROW);
+        -1,&latestAudit,nullptr)==SQLITE_OK,
+        "latest audit-v2 lookup prepare failed");
+    RequireAudit(sqlite3_step(latestAudit)==SQLITE_ROW,"latest audit-v2 row not found");
     const std::string latestAuditId=(const char*)sqlite3_column_text(latestAudit,0);
     const std::string metadataDigest=(const char*)sqlite3_column_text(latestAudit,1);
     sqlite3_finalize(latestAudit);
-    assert(metadataDigest.size()==64);
+    RequireAudit(metadataDigest.size()==64,"audit-v2 metadata digest was not stored");
 
     sqlite3_stmt* tamperAudit{};
-    assert(sqlite3_prepare_v2(
+    RequireAudit(sqlite3_prepare_v2(
         db.Handle(),
         "UPDATE audit_records SET metadata=X'01' WHERE id=?1",
-        -1,&tamperAudit,nullptr)==SQLITE_OK);
+        -1,&tamperAudit,nullptr)==SQLITE_OK,
+        "audit metadata tamper update prepare failed");
     sqlite3_bind_text(tamperAudit,1,latestAuditId.c_str(),-1,SQLITE_TRANSIENT);
-    assert(sqlite3_step(tamperAudit)==SQLITE_DONE);
+    RequireAudit(sqlite3_step(tamperAudit)==SQLITE_DONE,"audit metadata tamper update failed");
     sqlite3_finalize(tamperAudit);
-    assert(!audit.VerifyChain());
+    RequireAudit(!audit.VerifyChain(),"audit-v2 metadata tampering was not detected");
 
     db.Close();
     std::filesystem::remove_all(root);
