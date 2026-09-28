@@ -6645,8 +6645,9 @@ private:
             Text(Widen(item.notes),detailX+16,bodyY+298,detailW-32,64,tinyFmt_.Get(),brush_.muted.Get());
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"foundation_open_trainer",L"Train / Configure",detailX+16,actionY,126,30,true);
-            AddButton(L"foundation_new_fork",L"Create Child Fork",detailX+150,actionY,128,30,false);
+            AddButton(L"foundation_open_trainer",L"Train / Configure",detailX+16,actionY,108,30,true);
+            AddButton(L"foundation_approve_selected",L"Approve",detailX+132,actionY,76,30,false);
+            AddButton(L"foundation_new_fork",L"Child Fork",detailX+216,actionY,82,30,false);
         }
     }
 
@@ -7032,7 +7033,7 @@ private:
     void DrawDeployment(float w,float h) {
         PageTitle(
             L"Model Lab / Deployment",
-            L"Activate approved registry models and roll back safely using the trusted SARA 1.0.15 runtime registry");
+            L"Prepare, lock, activate, export, and roll back evaluated SARA runtime packages");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -7060,107 +7061,180 @@ private:
             buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
         }
 
-        auto& models=modelRegistry_.Models();
-        const int activeIndex=modelRegistry_.ActiveIndex();
-        if(!models.empty() && (selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()))
-            selectedRegistryModel_=activeIndex>=0?activeIndex:0;
-
-        const float heroY=y+48.0f;
-        Rounded(x,heroY,contentW,96,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Active Runtime",x+18,heroY+12,220,26,h1Fmt_.Get(),brush_.text.Get());
-
-        if(activeIndex>=0 && activeIndex<(int)models.size()) {
-            const auto& active=models[(size_t)activeIndex];
-            StatusDot(x+22,heroY+58,5,brush_.green.Get());
-            TextLine(Widen(active.modelName),x+38,heroY+45,280,26,smallFmt_.Get(),brush_.cyan.Get());
-            TextLine(Widen(active.endpoint),x+330,heroY+46,contentW-530,24,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Score "+std::to_wstring(active.evaluationScore),
-                x+contentW-180,heroY+46,150,24,smallFmt_.Get(),brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
-        } else {
-            TextLine(L"No registry model is currently active.",
-                x+18,heroY+50,contentW-36,24,smallFmt_.Get(),brush_.yellow.Get());
+        auto& packages=deploymentRegistry_.Packages();
+        const int activePackage=deploymentRegistry_.ActiveIndex();
+        if(!packages.empty() &&
+           (selectedDeployment_<0 || selectedDeployment_>=(int)packages.size())) {
+            selectedDeployment_=activePackage>=0?activePackage:(int)packages.size()-1;
         }
 
-        const float bodyY=heroY+108.0f;
-        const float bodyH=std::max(400.0f,h-bodyY-26.0f);
-        const float listW=contentW*0.62f-gap*0.5f;
+        // If there is no valid selected model for preparing a package, prefer
+        // the active model and otherwise the first approved candidate.
+        auto& models=modelRegistry_.Models();
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()) {
+            selectedRegistryModel_=modelRegistry_.ActiveIndex();
+            if(selectedRegistryModel_<0) {
+                for(size_t i=0;i<models.size();++i) {
+                    if(models[i].stage==sentinel::simulation::ModelStage::Approved) {
+                        selectedRegistryModel_=(int)i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        const float heroY=y+48.0f;
+        Rounded(x,heroY,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Active Deployment Package",x+18,heroY+10,300,28,h1Fmt_.Get(),brush_.text.Get());
+
+        if(activePackage>=0 && activePackage<(int)packages.size()) {
+            const auto& p=packages[(size_t)activePackage];
+            StatusDot(x+22,heroY+58,5,brush_.green.Get());
+            TextLine(Widen(p.id),x+38,heroY+45,150,24,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(p.candidateName),x+198,heroY+45,210,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Foundation: "+(p.foundationName.empty()?L"default":Widen(p.foundationName)),
+                x+418,heroY+45,260,24,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"LoRA: "+(p.adapterName.empty()?L"none":Widen(p.adapterName)),
+                x+688,heroY+45,230,24,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Score "+std::to_wstring(p.evaluationScore),
+                x+contentW-224,heroY+18,92,22,smallFmt_.Get(),brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            TextLine(p.versionLocked?L"LOCKED":L"UNLOCKED",
+                x+contentW-124,heroY+18,106,22,tinyFmt_.Get(),
+                p.versionLocked?brush_.cyan.Get():brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+            TextLine(L"Persona "+Widen(p.personaName)+L"  |  Eval "+Widen(p.evaluationRunId),
+                x+38,heroY+72,contentW-56,18,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            TextLine(L"No deployment package is active. Evaluate and approve a model, then prepare a package.",
+                x+18,heroY+50,contentW-36,30,smallFmt_.Get(),brush_.yellow.Get());
+        }
+
+        const float bodyY=heroY+114.0f;
+        const float bodyH=std::max(390.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.63f-gap*0.5f;
         const float detailW=contentW-listW-gap;
         const float detailX=x+listW+gap;
 
         Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Runtime Registry",x+16,bodyY+12,220,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Deployment Packages",x+16,bodyY+12,250,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"deployment_prepare",L"Prepare Package",x+listW-132,bodyY+12,116,28,true);
 
-        TextLine(L"MODEL",x+18,bodyY+58,170,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"STAGE",x+200,bodyY+58,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"SCORE",x+302,bodyY+58,70,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"ENDPOINT",x+384,bodyY+58,listW-402,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PACKAGE",x+18,bodyY+58,94,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"CANDIDATE",x+122,bodyY+58,150,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+284,bodyY+58,56,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STAGE",x+352,bodyY+58,96,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LOCK",x+listW-78,bodyY+58,60,18,tinyFmt_.Get(),brush_.muted.Get());
 
         float rowY=bodyY+80.0f;
-        if(models.empty()) {
-            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"No registered models are available for deployment.",
-                x+26,rowY+12,listW-52,28,smallFmt_.Get(),brush_.muted.Get());
+        if(packages.empty()) {
+            Rounded(x+14,rowY,listW-28,62,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No deployment packages yet. Prepare one from an approved model with a persisted evaluation run.",
+                x+26,rowY+10,listW-52,42,smallFmt_.Get(),brush_.muted.Get());
         } else {
-            for(size_t i=0;i<models.size();++i) {
-                const auto& model=models[i];
-                const bool selected=(int)i==selectedRegistryModel_;
+            for(size_t i=0;i<packages.size();++i) {
+                const auto& p=packages[i];
+                const bool selected=(int)i==selectedDeployment_;
                 ID2D1Brush* stageBrush=
-                    model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():
-                    model.stage==sentinel::simulation::ModelStage::Approved?brush_.cyan.Get():
-                    model.stage==sentinel::simulation::ModelStage::Retired?brush_.muted.Get():
-                    brush_.yellow.Get();
+                    p.stage==sentinel::simulation::DeploymentStage::Active?brush_.green.Get():
+                    p.stage==sentinel::simulation::DeploymentStage::RolledBack?brush_.yellow.Get():
+                    p.stage==sentinel::simulation::DeploymentStage::Retired?brush_.muted.Get():
+                    brush_.cyan.Get();
 
-                Rounded(x+14,rowY,listW-28,48,
+                Rounded(x+14,rowY,listW-28,54,
                     selected?brush_.panel2.Get():brush_.sidebar.Get(),
                     selected?brush_.cyan.Get():brush_.border.Get(),7);
-                TextLine(Widen(model.modelName),x+24,rowY+5,164,18,tinyFmt_.Get(),brush_.text.Get());
-                TextLine(Widen(sentinel::simulation::ToString(model.stage)),x+200,rowY+5,90,18,tinyFmt_.Get(),stageBrush);
-                TextLine(std::to_wstring(model.evaluationScore),x+302,rowY+5,70,18,tinyFmt_.Get(),brush_.text.Get());
-                std::wstring endpoint=Widen(model.endpoint);
-                if(endpoint.size()>46) endpoint=endpoint.substr(0,43)+L"...";
-                TextLine(endpoint,x+384,rowY+5,listW-402,18,tinyFmt_.Get(),brush_.muted.Get());
-                TextLine(L"ID "+Widen(model.id),x+24,rowY+27,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(p.id),x+24,rowY+5,88,18,tinyFmt_.Get(),brush_.cyan.Get());
+                TextLine(Widen(p.candidateName),x+122,rowY+5,150,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(p.evaluationScore),x+284,rowY+5,56,18,tinyFmt_.Get(),
+                    p.evaluationScore>=80?brush_.green.Get():brush_.yellow.Get());
+                TextLine(Widen(sentinel::simulation::ToString(p.stage)),x+352,rowY+5,96,18,tinyFmt_.Get(),stageBrush);
+                TextLine(p.versionLocked?L"YES":L"NO",
+                    x+listW-78,rowY+5,60,18,tinyFmt_.Get(),
+                    p.versionLocked?brush_.cyan.Get():brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+48},L"regmodel:"+std::to_wstring(i)});
-                rowY+=54.0f;
-                if(rowY+48>bodyY+bodyH-10) break;
+                std::wstring line=L"Foundation "+(p.foundationName.empty()?L"default":Widen(p.foundationName))+
+                    L" | LoRA "+(p.adapterName.empty()?L"none":Widen(p.adapterName))+
+                    L" | "+Widen(p.evaluationRunId);
+                if(line.size()>94) line=line.substr(0,91)+L"...";
+                TextLine(line,x+24,rowY+29,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({
+                    {x+14,rowY,x+listW-14,rowY+54},
+                    L"deployment_select:"+std::to_wstring(i)
+                });
+                rowY+=60.0f;
+                if(rowY+54>bodyY+bodyH-10) break;
             }
         }
 
         Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Deployment Control",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Package Inspector",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
 
-        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()) {
-            TextLine(L"Select a registered model to manage deployment.",
-                detailX+16,bodyY+54,detailW-32,40,smallFmt_.Get(),brush_.muted.Get());
-        } else {
-            const auto& model=models[(size_t)selectedRegistryModel_];
-            TextLine(Widen(model.modelName),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
-            TextLine(Widen(sentinel::simulation::ToString(model.stage)),
-                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
-                model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.muted.Get());
+        if(selectedDeployment_<0 || selectedDeployment_>=(int)packages.size()) {
+            TextLine(L"Select a prepared package, or prepare one from the currently selected approved model.",
+                detailX+16,bodyY+54,detailW-32,52,smallFmt_.Get(),brush_.muted.Get());
 
-            TextLine(L"Endpoint",detailX+16,bodyY+116,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            Text(Widen(model.endpoint),detailX+16,bodyY+138,detailW-32,44,tinyFmt_.Get(),brush_.text.Get());
-
-            TextLine(L"Evaluation score",detailX+16,bodyY+196,110,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(std::to_wstring(model.evaluationScore),
-                detailX+134,bodyY+193,detailW-150,24,smallFmt_.Get(),
-                model.evaluationScore>=80?brush_.green.Get():brush_.yellow.Get());
-
-            TextLine(L"Latency",detailX+16,bodyY+226,110,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(std::to_wstring(model.latencyMs)+L" ms",
-                detailX+134,bodyY+223,detailW-150,24,smallFmt_.Get(),brush_.text.Get());
-
-            Rounded(detailX+14,bodyY+268,detailW-28,100,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"Safe deployment rule",detailX+26,bodyY+280,detailW-52,22,smallFmt_.Get(),brush_.cyan.Get());
-            Text(L"Only APPROVED or ACTIVE registry models can be activated. Activation preserves the prior active model for one-step rollback.",
-                detailX+26,bodyY+310,detailW-52,50,tinyFmt_.Get(),brush_.muted.Get());
+            if(selectedRegistryModel_>=0 && selectedRegistryModel_<(int)models.size()) {
+                const auto& m=models[(size_t)selectedRegistryModel_];
+                TextLine(L"Candidate",detailX+16,bodyY+124,80,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(m.modelName),detailX+104,bodyY+121,detailW-120,22,smallFmt_.Get(),brush_.cyan.Get());
+                TextLine(L"Stage",detailX+16,bodyY+154,80,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(sentinel::simulation::ToString(m.stage)),detailX+104,bodyY+151,detailW-120,22,tinyFmt_.Get(),brush_.text.Get());
+                const int evalIndex=evaluationRuns_.LatestIndexForCandidate(m.id);
+                TextLine(L"Evaluation",detailX+16,bodyY+184,80,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(evalIndex>=0
+                    ? L"Run "+Widen(evaluationRuns_.Runs()[(size_t)evalIndex].id)+
+                      L" | "+std::to_wstring(evaluationRuns_.Runs()[(size_t)evalIndex].overallScore)
+                    : L"No persisted run",
+                    detailX+104,bodyY+181,detailW-120,22,tinyFmt_.Get(),
+                    evalIndex>=0?brush_.green.Get():brush_.yellow.Get());
+            }
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"model_activate",L"Activate",detailX+16,actionY,82,30,true);
-            AddButton(L"model_rollback",L"Rollback",detailX+106,actionY,82,30,false);
-            AddButton(L"model_retire",L"Retire",detailX+196,actionY,72,30,false);
+            AddButton(L"deployment_prepare",L"Prepare Package",detailX+16,actionY,126,30,true);
+        } else {
+            const auto& p=packages[(size_t)selectedDeployment_];
+            TextLine(Widen(p.id),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(sentinel::simulation::ToString(p.stage))+
+                L"  |  Score "+std::to_wstring(p.evaluationScore),
+                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
+                p.stage==sentinel::simulation::DeploymentStage::Active?brush_.green.Get():brush_.muted.Get());
+
+            TextLine(L"Candidate",detailX+16,bodyY+116,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.candidateName),detailX+108,bodyY+113,detailW-124,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Persona",detailX+16,bodyY+146,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.personaName),detailX+108,bodyY+143,detailW-124,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Foundation",detailX+16,bodyY+176,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.foundationName.empty()?L"default":Widen(p.foundationName),
+                detailX+108,bodyY+173,detailW-124,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Adapter",detailX+16,bodyY+206,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.adapterName.empty()?L"none":Widen(p.adapterName),
+                detailX+108,bodyY+203,detailW-124,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Evaluation",detailX+16,bodyY+236,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.evaluationRunId),detailX+108,bodyY+233,detailW-124,22,tinyFmt_.Get(),brush_.green.Get());
+
+            TextLine(L"Version lock",detailX+16,bodyY+266,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.versionLocked?L"LOCKED":L"UNLOCKED",
+                detailX+108,bodyY+263,detailW-124,22,tinyFmt_.Get(),
+                p.versionLocked?brush_.cyan.Get():brush_.yellow.Get());
+
+            TextLine(L"Previous",detailX+16,bodyY+296,84,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(p.previousDeploymentId.empty()?L"none":Widen(p.previousDeploymentId),
+                detailX+108,bodyY+293,detailW-124,22,tinyFmt_.Get(),brush_.muted.Get());
+
+            Rounded(detailX+14,bodyY+332,detailW-28,74,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"Pinned runtime stack",detailX+26,bodyY+342,detailW-52,20,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Model + foundation + persona LoRA + evaluation run are recorded together.",
+                detailX+26,bodyY+368,detailW-52,26,tinyFmt_.Get(),brush_.muted.Get());
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"deployment_activate",L"Activate",detailX+16,actionY,76,30,true);
+            AddButton(L"deployment_rollback",L"Rollback",detailX+100,actionY,76,30,false);
+            AddButton(L"deployment_lock",p.versionLocked?L"Unlock":L"Lock",detailX+184,actionY,66,30,false);
+            AddButton(L"deployment_export",L"Manifest",detailX+258,actionY,76,30,false);
         }
     }
 
