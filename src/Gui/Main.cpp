@@ -70,7 +70,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
@@ -1210,6 +1210,7 @@ public:
             case Page::ModelLab: DrawModelLab(w,h); break;
             case Page::Trainer: DrawTrainer(w,h); break;
             case Page::ModelLabDatasets: DrawDatasets(w,h); break;
+            case Page::ModelLabPersonas: DrawPersonasLoras(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -1222,7 +1223,7 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets) {
+            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas) {
                 const float startY=(float)kHeader+18.0f;
                 const float firstRowY=startY+42.0f;
                 const int idx=(int)((y-firstRowY)/44.0f);
@@ -1230,7 +1231,7 @@ public:
                     if(idx==0) page_=Page::ModelLab;
                     else if(idx==1) page_=Page::Trainer;
                     else if(idx==2) page_=Page::ModelLabDatasets;
-                    else if(idx==3) statusText_=L"Personas & LoRAs workspace will be restored from the 1.0.15 persona backend";
+                    else if(idx==3) page_=Page::ModelLabPersonas;
                     else if(idx==4) statusText_=L"Foundation Forks workspace will reuse the recovered 1.0.15 trainer backend";
                     else if(idx==5) statusText_=L"Jobs workspace will surface the recovered training job registry";
                     else if(idx==6) statusText_=L"Evaluation workspace remains quarantined until its backend is selectively restored";
@@ -1293,7 +1294,7 @@ public:
             else if (b.id==L"persona_tab_gallery") { personaTab_=PersonaTab::Gallery; ApplyPageControls(); }
             else if (b.id==L"ml_overview") { page_=Page::ModelLab; ApplyPageControls(); }
             else if (b.id==L"ml_train") { page_=Page::Trainer; ApplyPageControls(); }
-            else if (b.id==L"ml_personas") { page_=Page::Persona; ApplyPageControls(); }
+            else if (b.id==L"ml_personas") { page_=Page::ModelLabPersonas; ApplyPageControls(); }
             else if (b.id==L"ml_datasets") { page_=Page::ModelLabDatasets; ApplyPageControls(); }
             else if (b.id==L"ml_foundations") statusText_=L"Foundation Forks are available below; dedicated workspace recovery is pending";
             else if (b.id==L"ml_jobs") statusText_=L"Training Jobs are active in this Trainer workspace; dedicated view is pending";
@@ -1337,6 +1338,38 @@ public:
             else if (b.id.rfind(L"dataset_item:",0)==0) {
                 selectedTrainingReviewId_=Narrow(b.id.substr(13));
                 statusText_=L"Training review item selected";
+            }
+            else if (b.id.rfind(L"persona_row:",0)==0) {
+                selectedModelLabPersonaName_=Narrow(b.id.substr(12));
+                statusText_=L"Persona selected: "+b.id.substr(12);
+            }
+            else if (b.id==L"persona_use_selected") {
+                if(selectedModelLabPersonaName_.empty()) {
+                    statusText_=L"Select a persona first";
+                } else {
+                    const int idx=FindComboText(personaProfileCombo_,selectedModelLabPersonaName_);
+                    if(idx>=0) SendMessageW(personaProfileCombo_,CB_SETCURSEL,(WPARAM)idx,0);
+                    LoadSelectedPersonaProfile();
+                }
+            }
+            else if (b.id==L"persona_edit_selected") {
+                if(!selectedModelLabPersonaName_.empty()) {
+                    const int idx=FindComboText(personaProfileCombo_,selectedModelLabPersonaName_);
+                    if(idx>=0) SendMessageW(personaProfileCombo_,CB_SETCURSEL,(WPARAM)idx,0);
+                    LoadSelectedPersonaProfile();
+                }
+                page_=Page::Persona;
+                personaTab_=PersonaTab::Profile;
+                ApplyPageControls();
+            }
+            else if (b.id==L"persona_train_selected") {
+                if(!selectedModelLabPersonaName_.empty()) {
+                    const int idx=FindComboText(personaProfileCombo_,selectedModelLabPersonaName_);
+                    if(idx>=0) SendMessageW(personaProfileCombo_,CB_SETCURSEL,(WPARAM)idx,0);
+                    LoadSelectedPersonaProfile();
+                }
+                page_=Page::Trainer;
+                ApplyPageControls();
             }
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
@@ -1653,6 +1686,7 @@ private:
     int simPendingPersonaMediaIndex_{-1};
     std::vector<sentinel::simulation::ModelFoundation> trainerFoundations_;
     std::wstring trainerRuntimeStatus_=L"No persona LoRA active";
+    std::string selectedModelLabPersonaName_;
     bool trainerAdvancedOpen_{false};
     bool responseRuleExactWording_{false};
 
@@ -1989,7 +2023,7 @@ private:
     }
 
     void DrawSidebar() {
-        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets) {
+        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas) {
             const wchar_t* names[]={
                 L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
                 L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
@@ -2000,7 +2034,9 @@ private:
             };
             constexpr float rowH=44.0f;
             const float startY=(float)kHeader+18.0f;
-            const int active=page_==Page::ModelLab?0:page_==Page::Trainer?1:2;
+            const int active=page_==Page::ModelLab?0:
+                page_==Page::Trainer?1:
+                page_==Page::ModelLabDatasets?2:3;
 
             TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
             TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
@@ -2009,7 +2045,7 @@ private:
             for(int i=0;i<8;i++) {
                 const float y=startY+42.0f+i*rowH;
                 const bool selected=i==active;
-                const bool restored=i<3;
+                const bool restored=i<4;
                 if(selected) {
                     target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
                     target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
@@ -2055,12 +2091,13 @@ private:
     }
 
     void DrawHeader(float w) {
-        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets;
+        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas;
         if(modelLabShell) {
             Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
             Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
             const wchar_t* labSection=page_==Page::Trainer?L"TRAIN":
-                page_==Page::ModelLabDatasets?L"DATASETS":L"OVERVIEW";
+                page_==Page::ModelLabDatasets?L"DATASETS":
+                page_==Page::ModelLabPersonas?L"PERSONAS":L"OVERVIEW";
             Text(labSection,kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
             TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
                 kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -5607,6 +5644,217 @@ private:
 
         TextLine(L"Dataset export uses the existing reviewed JSONL format. Versioned snapshot/import tools remain quarantined until this recovered workspace is validated.",
             detailX+16,bodyY+bodyH-58,detailW-32,42,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
+
+    void DrawPersonasLoras(float w,float h) {
+        PageTitle(
+            L"Model Lab / Personas & LoRAs",
+            L"Manage the real saved SARA personas and their active LoRA bindings from the recovered 1.0.15 backend");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==3;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        const auto names=runtime_->personaProfiles.ListNames();
+        if(!names.empty()) {
+            const bool selectedStillExists=std::find(
+                names.begin(),names.end(),selectedModelLabPersonaName_)!=names.end();
+            if(!selectedStillExists) {
+                const auto current=std::find(names.begin(),names.end(),simSettings_.persona.name);
+                selectedModelLabPersonaName_=current!=names.end()?*current:names.front();
+            }
+        } else {
+            selectedModelLabPersonaName_.clear();
+        }
+
+        size_t loraCount=0;
+        for(const auto& name:names)
+            if(runtime_->trainer.ResolvePersonaLora(name)) ++loraCount;
+        const auto foundations=runtime_->trainer.ListFoundations();
+
+        const float summaryY=y+48.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct PersonaMetric {
+            const wchar_t* label;
+            std::wstring value;
+            std::wstring sub;
+            ID2D1Brush* accent;
+            IconKind icon;
+        };
+        PersonaMetric metrics[]={
+            {L"Saved Personas",std::to_wstring(names.size()),L"Reusable profiles",brush_.cyan.Get(),IconKind::Folder},
+            {L"Assigned LoRAs",std::to_wstring(loraCount),L"Active persona adapters",brush_.green.Get(),IconKind::Chain},
+            {L"Foundations",std::to_wstring(foundations.size()),L"Available model families",brush_.blue.Get(),IconKind::Database},
+            {L"Active Persona",Widen(simSettings_.persona.name),L"Loaded in runtime",brush_.yellow.Get(),IconKind::Chat}
+        };
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,summaryY,cardW,82,brush_.panel.Get(),brush_.border.Get(),9);
+            Rounded(cx+14,summaryY+16,38,38,brush_.panel2.Get(),nullptr,9);
+            DrawIcon(metrics[i].icon,cx+22,summaryY+24,22,metrics[i].accent);
+            TextLine(metrics[i].label,cx+62,summaryY+10,cardW-74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,cx+62,summaryY+28,cardW-74,26,smallFmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+14,summaryY+60,cardW-28,16,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=summaryY+94.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.63f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Library",x+16,bodyY+12,240,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Saved profiles and their currently assigned runtime adapters",
+            x+16,bodyY+40,listW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"persona_edit_selected",L"Open Profile Editor",x+listW-144,bodyY+12,128,28,false);
+
+        TextLine(L"NAME",x+18,bodyY+72,118,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"AGE",x+142,bodyY+72,38,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PERSONALITY / STYLE",x+190,bodyY+72,160,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ASSIGNED LORA",x+360,bodyY+72,listW-474,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",x+listW-104,bodyY+72,86,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rowY=bodyY+94.0f;
+        if(names.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No saved persona profiles yet. Open the Persona editor to create and save the first reusable profile.",
+                x+26,rowY+9,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& name:names) {
+                auto profile=runtime_->personaProfiles.Load(name);
+                if(!profile) continue;
+                auto lora=runtime_->trainer.ResolvePersonaLora(name);
+                const bool selected=name==selectedModelLabPersonaName_;
+                const bool active=name==simSettings_.persona.name;
+
+                Rounded(x+14,rowY,listW-28,52,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(name),x+24,rowY+5,112,20,smallFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(profile->age),x+142,rowY+5,38,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+                std::wstring style=Widen(profile->personality);
+                if(!profile->writingStyle.empty()) style+=L" / "+Widen(profile->writingStyle);
+                TextLine(style,x+190,rowY+5,160,20,tinyFmt_.Get(),brush_.text.Get());
+
+                TextLine(lora?Widen(lora->loraName):L"None",
+                    x+360,rowY+5,listW-474,20,tinyFmt_.Get(),
+                    lora?brush_.green.Get():brush_.muted.Get());
+
+                TextLine(active?L"ACTIVE":L"SAVED",
+                    x+listW-104,rowY+5,86,20,tinyFmt_.Get(),
+                    active?brush_.green.Get():brush_.muted.Get(),
+                    DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+                std::wstring detail=Widen(profile->location);
+                if(detail.size()>52) detail=detail.substr(0,49)+L"...";
+                TextLine(detail,x+24,rowY+28,listW-128,18,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+52},L"persona_row:"+Widen(name)});
+                rowY+=58.0f;
+                if(rowY+52>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Persona Details",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::optional<sentinel::simulation::PersonaProfile> selectedProfile;
+        if(!selectedModelLabPersonaName_.empty())
+            selectedProfile=runtime_->personaProfiles.Load(selectedModelLabPersonaName_);
+
+        if(!selectedProfile) {
+            TextLine(L"Select a saved persona to inspect its profile and LoRA assignment.",
+                detailX+16,bodyY+54,detailW-32,50,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& p=*selectedProfile;
+            auto activeLora=runtime_->trainer.ResolvePersonaLora(p.name);
+            auto loras=runtime_->trainer.ListPersonaLoras(p.name,4);
+
+            TextLine(Widen(p.name),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Age "+std::to_wstring(p.age)+L"  |  "+Widen(p.location),
+                detailX+16,bodyY+78,detailW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+
+            TextLine(L"Personality",detailX+16,bodyY+112,78,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.personality),detailX+102,bodyY+109,detailW-118,22,smallFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Social style",detailX+16,bodyY+140,78,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.socialStyle),detailX+102,bodyY+137,detailW-118,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Writing",detailX+16,bodyY+168,78,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.writingStyle)+L" / "+Widen(p.grammarQuality),
+                detailX+102,bodyY+165,detailW-118,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Communication",detailX+16,bodyY+196,78,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(p.communicationLevel),
+                detailX+102,bodyY+193,detailW-118,22,tinyFmt_.Get(),brush_.text.Get());
+
+            const float loraY=bodyY+232.0f;
+            target_->DrawLine(
+                D2D1::Point2F(detailX+16,loraY-10),
+                D2D1::Point2F(detailX+detailW-16,loraY-10),
+                brush_.border.Get(),1.0f);
+            TextLine(L"LoRA Assignment",detailX+16,loraY,detailW-32,24,smallFmt_.Get(),brush_.text.Get());
+
+            if(activeLora) {
+                TextLine(Widen(activeLora->loraName),detailX+16,loraY+30,detailW-32,22,smallFmt_.Get(),brush_.green.Get());
+                auto foundation=runtime_->trainer.GetFoundation(activeLora->foundationId);
+                TextLine(L"Foundation: "+(foundation?Widen(foundation->name):Widen(activeLora->foundationId)),
+                    detailX+16,loraY+55,detailW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(L"Weight: "+std::to_wstring(activeLora->weight),
+                    detailX+16,loraY+76,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+            } else {
+                TextLine(L"No active LoRA assigned",detailX+16,loraY+32,detailW-32,22,smallFmt_.Get(),brush_.muted.Get());
+            }
+
+            const float historyY=loraY+104.0f;
+            TextLine(L"Adapter History",detailX+16,historyY,detailW-32,22,smallFmt_.Get(),brush_.text.Get());
+            float ly=historyY+28.0f;
+            if(loras.empty()) {
+                TextLine(L"No LoRA versions recorded for this persona.",
+                    detailX+16,ly,detailW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+            } else {
+                for(const auto& lora:loras) {
+                    Rounded(detailX+14,ly,detailW-28,28,brush_.sidebar.Get(),brush_.border.Get(),6);
+                    TextLine(Widen(lora.loraName),detailX+24,ly+4,detailW-118,18,tinyFmt_.Get(),brush_.text.Get());
+                    TextLine(lora.active?L"ACTIVE":L"INACTIVE",
+                        detailX+detailW-96,ly+4,72,18,tinyFmt_.Get(),
+                        lora.active?brush_.green.Get():brush_.muted.Get(),
+                        DWRITE_TEXT_ALIGNMENT_TRAILING);
+                    ly+=34.0f;
+                    if(ly+28>bodyY+bodyH-62) break;
+                }
+            }
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"persona_use_selected",L"Use Persona",detailX+16,actionY,92,30,true);
+            AddButton(L"persona_edit_selected",L"Edit",detailX+116,actionY,66,30,false);
+            AddButton(L"persona_train_selected",L"Train LoRA",detailX+190,actionY,88,30,false);
+        }
     }
 
     void DrawMessaging(float w,float h) {
