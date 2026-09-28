@@ -9348,7 +9348,7 @@ private:
 
         const wchar_t* rows[][2]={
             {L"Evidence integrity",L"SHA-256 + AES-GCM authentication"},
-            {L"Audit integrity",L"Hash-linked audit ledger"},
+            {L"Audit integrity",L"Hash-linked ledger; new records bind metadata (audit-v2)"},
             {L"Update transport",L"HTTPS-only manifest checking"},
             {L"Outbound messaging",L"Human approval required"},
             {L"Code signing",L"Pipeline ready; trusted signing identity not configured"}

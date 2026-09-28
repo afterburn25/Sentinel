@@ -776,8 +776,41 @@ void TestWindowsCryptoAndSev()
         assert(loadedAgain.Span()[i] == loadedCaseKey.Span()[i]);
 
     sentinel::AuditService audit(db,hash);
-    sentinel::EvidenceService evidenceService(root/"evidence",db,random,hash,cipher,audit);
     const auto verificationActor=sentinel::UserId::Random();
+
+    // Simulate one immutable pre-0027 audit-v1 row. Mixed v1/v2 chains must
+    // remain verifiable after the metadata-binding migration.
+    {
+        const std::string timestamp="2026-09-28T00:00:00.000Z";
+        const std::string actor=verificationActor.ToString();
+        const std::string previous(64,'0');
+        const std::string canonical=
+            "audit-v1|1|"+timestamp+"|"+actor+"|1|legacy||"+previous;
+        const std::vector<std::byte> canonicalBytes(
+            reinterpret_cast<const std::byte*>(canonical.data()),
+            reinterpret_cast<const std::byte*>(canonical.data()+canonical.size()));
+        const auto recordHash=hash.Sha256(canonicalBytes).ToHex();
+        const auto legacyId=sentinel::AuditId::Random().ToString();
+
+        sqlite3_stmt* legacy{};
+        assert(sqlite3_prepare_v2(
+            db.Handle(),
+            "INSERT INTO audit_records("
+            "id,sequence,timestamp,actor_id,action,target_type,target_id,metadata,"
+            "previous_hash,record_hash,metadata_sha256"
+            ") VALUES(?1,1,?2,?3,1,'legacy','',X'6c6567616379',?4,?5,'')",
+            -1,&legacy,nullptr)==SQLITE_OK);
+        sqlite3_bind_text(legacy,1,legacyId.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(legacy,2,timestamp.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(legacy,3,actor.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(legacy,4,previous.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(legacy,5,recordHash.c_str(),-1,SQLITE_TRANSIENT);
+        assert(sqlite3_step(legacy)==SQLITE_DONE);
+        sqlite3_finalize(legacy);
+        assert(audit.VerifyChain());
+    }
+
+    sentinel::EvidenceService evidenceService(root/"evidence",db,random,hash,cipher,audit);
     const auto imported=evidenceService.Import(
         {caseId,source,0,verificationActor},
         loadedCaseKey.Span());
@@ -819,6 +852,28 @@ void TestWindowsCryptoAndSev()
     verificationStatus=evidenceService.LastVerification(importedItems.front().id);
     assert(verificationStatus.state==sentinel::EvidenceVerificationState::Failed);
     assert(audit.VerifyChain());
+
+    // New audit-v2 records must cryptographically bind the metadata blob.
+    sqlite3_stmt* latestAudit{};
+    assert(sqlite3_prepare_v2(
+        db.Handle(),
+        "SELECT id,metadata_sha256 FROM audit_records ORDER BY sequence DESC LIMIT 1",
+        -1,&latestAudit,nullptr)==SQLITE_OK);
+    assert(sqlite3_step(latestAudit)==SQLITE_ROW);
+    const std::string latestAuditId=(const char*)sqlite3_column_text(latestAudit,0);
+    const std::string metadataDigest=(const char*)sqlite3_column_text(latestAudit,1);
+    sqlite3_finalize(latestAudit);
+    assert(metadataDigest.size()==64);
+
+    sqlite3_stmt* tamperAudit{};
+    assert(sqlite3_prepare_v2(
+        db.Handle(),
+        "UPDATE audit_records SET metadata=X'01' WHERE id=?1",
+        -1,&tamperAudit,nullptr)==SQLITE_OK);
+    sqlite3_bind_text(tamperAudit,1,latestAuditId.c_str(),-1,SQLITE_TRANSIENT);
+    assert(sqlite3_step(tamperAudit)==SQLITE_DONE);
+    sqlite3_finalize(tamperAudit);
+    assert(!audit.VerifyChain());
 
     db.Close();
     std::filesystem::remove_all(root);
