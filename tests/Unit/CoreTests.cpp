@@ -243,10 +243,21 @@ void TestPersonaLoraHistory()
     Require(resolved.has_value(),"active persona LoRA did not resolve");
     Require(resolved->loraName=="Samantha v2","resolved persona LoRA version mismatch");
 
-    Require(trainer.ActivatePersonaLora(first.id),"prior persona LoRA could not be reactivated");
+    const auto previous=trainer.PreviousPersonaLora("Samantha");
+    Require(previous.has_value() && previous->id==first.id,
+        "persona LoRA activation history did not preserve the prior binding");
+    Require(trainer.RollbackPersonaLora("Samantha"),
+        "persona LoRA rollback failed");
     const auto rolledBack=trainer.ResolvePersonaLora("Samantha");
-    Require(rolledBack.has_value(),"reactivated persona LoRA did not resolve");
-    Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by ID");
+    Require(rolledBack.has_value(),"rolled-back persona LoRA did not resolve");
+    Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by rollback");
+
+    const auto nikki=trainer.BindPersonaLora(
+        "Nikki",foundations.front().id,"Nikki v1","nikki-v1.gguf",1.0);
+    Require(nikki.active,"Nikki persona LoRA should be active");
+    const auto samanthaStill=trainer.ResolvePersonaLora("Samantha");
+    Require(samanthaStill.has_value() && samanthaStill->id==first.id,
+        "persona LoRA activation leaked across personas");
 
     const auto manifest=trainer.BuildPersonaLoraManifest(first.id);
     Require(manifest.find("\"schema\": \"sara-persona-lora-v1\"")!=std::string::npos,

@@ -248,25 +248,73 @@ ModelFoundation TrainerStore::CreateFork(std::string_view name,std::string_view 
     return *GetFoundation(id);
 }
 
-PersonaLoraBinding TrainerStore::BindPersonaLora(std::string_view personaName,std::string_view foundationId,std::string_view loraName,std::string_view loraPath,double weight) {
-    auto* db=db_.Handle(); sqlite3_stmt* s{};
-    Check(sqlite3_prepare_v2(db,"UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP WHERE persona_name=?",-1,&s,nullptr),db,"prepare deactivate persona loras");
+PersonaLoraBinding TrainerStore::BindPersonaLora(
+    std::string_view personaName,
+    std::string_view foundationId,
+    std::string_view loraName,
+    std::string_view loraPath,
+    double weight)
+{
+    if(personaName.empty()) throw std::runtime_error("persona name is required");
+    SqliteTransaction tx(db_);
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
+    long long previousId=0;
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id FROM persona_lora_bindings "
+        "WHERE persona_name=? AND active=1 "
+        "ORDER BY updated_utc DESC,id DESC LIMIT 1",
+        -1,&s,nullptr),db,"prepare current persona lora lookup");
     sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
-    Check(sqlite3_step(s),db,"deactivate persona loras"); sqlite3_finalize(s);
+    if(sqlite3_step(s)==SQLITE_ROW) previousId=sqlite3_column_int64(s,0);
+    sqlite3_finalize(s);
 
     Check(sqlite3_prepare_v2(db,
-        "INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,?,1)",
+        "UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE persona_name=?",
+        -1,&s,nullptr),db,"prepare deactivate persona loras");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"deactivate persona loras");
+    sqlite3_finalize(s);
+
+    Check(sqlite3_prepare_v2(db,
+        "INSERT INTO persona_lora_bindings("
+        "persona_name,foundation_id,lora_name,lora_path,weight,active"
+        ") VALUES(?,?,?,?,?,1)",
         -1,&s,nullptr),db,"prepare persona lora bind");
     sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,2,std::string(foundationId).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,3,std::string(loraName).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,4,std::string(loraPath).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_double(s,5,std::clamp(weight,0.0,4.0));
-    Check(sqlite3_step(s),db,"bind persona lora"); const auto id=sqlite3_last_insert_rowid(db); sqlite3_finalize(s);
+    Check(sqlite3_step(s),db,"bind persona lora");
+    const auto id=sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(s);
 
-    Check(sqlite3_prepare_v2(db,"SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active FROM persona_lora_bindings WHERE id=?",-1,&s,nullptr),db,"prepare bound lora get");
-    sqlite3_bind_int64(s,1,id); PersonaLoraBinding out; if(sqlite3_step(s)==SQLITE_ROW) out=ReadBinding(s);
-    sqlite3_finalize(s); return out;
+    if(previousId>0 && previousId!=id) {
+        Check(sqlite3_prepare_v2(db,
+            "INSERT INTO persona_lora_activation_history("
+            "persona_name,from_binding_id,to_binding_id"
+            ") VALUES(?,?,?)",
+            -1,&s,nullptr),db,"prepare persona lora activation history");
+        sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int64(s,2,previousId);
+        sqlite3_bind_int64(s,3,id);
+        Check(sqlite3_step(s),db,"insert persona lora activation history");
+        sqlite3_finalize(s);
+    }
+
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "FROM persona_lora_bindings WHERE id=?",
+        -1,&s,nullptr),db,"prepare bound lora get");
+    sqlite3_bind_int64(s,1,id);
+    PersonaLoraBinding out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadBinding(s);
+    sqlite3_finalize(s);
+    tx.Commit();
+    return out;
 }
 
 std::optional<PersonaLoraBinding> TrainerStore::ResolvePersonaLora(std::string_view personaName) const {
@@ -298,9 +346,22 @@ std::optional<PersonaLoraBinding> TrainerStore::GetPersonaLora(long long id) con
 bool TrainerStore::ActivatePersonaLora(long long id) {
     auto target=GetPersonaLora(id);
     if(!target) return false;
+    if(target->active) return true;
 
     SqliteTransaction tx(db_);
-    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
+    long long previousId=0;
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id FROM persona_lora_bindings "
+        "WHERE persona_name=? AND active=1 "
+        "ORDER BY updated_utc DESC,id DESC LIMIT 1",
+        -1,&s,nullptr),db,"prepare current persona lora lookup");
+    sqlite3_bind_text(s,1,target->personaName.c_str(),-1,SQLITE_TRANSIENT);
+    if(sqlite3_step(s)==SQLITE_ROW) previousId=sqlite3_column_int64(s,0);
+    sqlite3_finalize(s);
+
     Check(sqlite3_prepare_v2(db,
         "UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP "
         "WHERE persona_name=?",
@@ -316,8 +377,51 @@ bool TrainerStore::ActivatePersonaLora(long long id) {
     Check(sqlite3_step(s),db,"activate persona lora");
     const bool changed=sqlite3_changes(db)>0;
     sqlite3_finalize(s);
+
+    if(changed && previousId>0 && previousId!=id) {
+        Check(sqlite3_prepare_v2(db,
+            "INSERT INTO persona_lora_activation_history("
+            "persona_name,from_binding_id,to_binding_id"
+            ") VALUES(?,?,?)",
+            -1,&s,nullptr),db,"prepare persona lora activation history");
+        sqlite3_bind_text(s,1,target->personaName.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int64(s,2,previousId);
+        sqlite3_bind_int64(s,3,id);
+        Check(sqlite3_step(s),db,"insert persona lora activation history");
+        sqlite3_finalize(s);
+    }
+
     tx.Commit();
     return changed;
+}
+
+std::optional<PersonaLoraBinding> TrainerStore::PreviousPersonaLora(
+    std::string_view personaName) const
+{
+    if(personaName.empty()) return std::nullopt;
+    auto current=ResolvePersonaLora(personaName);
+    if(!current) return std::nullopt;
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT from_binding_id FROM persona_lora_activation_history "
+        "WHERE persona_name=? AND to_binding_id=? AND from_binding_id>0 "
+        "ORDER BY id DESC LIMIT 1",
+        -1,&s,nullptr),db,"prepare previous persona lora lookup");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int64(s,2,current->id);
+    long long previousId=0;
+    if(sqlite3_step(s)==SQLITE_ROW) previousId=sqlite3_column_int64(s,0);
+    sqlite3_finalize(s);
+    if(previousId<=0) return std::nullopt;
+    return GetPersonaLora(previousId);
+}
+
+bool TrainerStore::RollbackPersonaLora(std::string_view personaName) {
+    auto previous=PreviousPersonaLora(personaName);
+    if(!previous) return false;
+    return ActivatePersonaLora(previous->id);
 }
 
 
