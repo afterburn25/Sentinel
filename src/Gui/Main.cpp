@@ -1492,6 +1492,7 @@ public:
             else if (b.id==L"rule_test") TestPersonaResponseRuleMatch();
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
             else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
+            else if (b.id==L"rule_terminal_toggle") ToggleResponseRuleTerminalMode();
             else if (b.id.rfind(L"rule_open:",0)==0)
                 LoadPersonaResponseRuleIntoEditors(std::stoll(b.id.substr(10)));
             else if (b.id.rfind(L"rule_toggle:",0)==0)
@@ -1745,15 +1746,32 @@ public:
 
             try {
                 if(simPreparedFromRule_) {
+                    std::string ruleReply=simRuleMeaning_;
                     if(simRuleResponseMode_=="persona_variation" && model_) {
-                        simPreparedReply_=model_->GeneratePersonaRuleReply(
+                        ruleReply=model_->GeneratePersonaRuleReply(
                             simRuleMeaning_,simContext_);
                         const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
-                            simSettings_.ageState,simPreparedReply_);
+                            simSettings_.ageState,ruleReply);
                         if(!policy.allowed)
-                            simPreparedReply_=simRuleMeaning_;
-                    } else if(simPreparedReply_.empty()) {
-                        simPreparedReply_=simRuleMeaning_;
+                            ruleReply=simRuleMeaning_;
+                    }
+                    simPreparedReply_=ruleReply;
+
+                    if(simMatchedRule_ && !simMatchedRule_->terminal && model_) {
+                        try {
+                            const auto generated=model_->GenerateSyntheticReply(
+                                simPendingMessage_,simContext_);
+                            if(!generated.empty()) {
+                                const auto combined=ruleReply+
+                                    (ruleReply.empty()?"":" ")+generated;
+                                const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+                                    simSettings_.ageState,combined);
+                                if(policy.allowed)
+                                    simPreparedReply_=combined;
+                            }
+                        } catch(...) {
+                            // Continue-mode failure preserves the approved rule response.
+                        }
                     }
                 } else if(model_) {
                     simPreparedReply_=model_->GenerateSyntheticReply(
@@ -1821,9 +1839,12 @@ public:
                                     simPreparedReply_);
                             } catch(...) {}
                         }
-                        statusText_=simRuleResponseMode_=="persona_variation"
-                            ? L"Response rule applied in persona voice"
-                            : L"Exact response rule applied";
+                        if(simMatchedRule_ && !simMatchedRule_->terminal)
+                            statusText_=L"Response rule applied; model continuation included";
+                        else
+                            statusText_=simRuleResponseMode_=="persona_variation"
+                                ? L"Terminal response rule applied in persona voice"
+                                : L"Terminal exact response rule applied";
                     } else {
                         const auto source=Widen(model_?model_->Name():"No model");
                         statusText_=L"Response from "+source;
@@ -1937,6 +1958,7 @@ private:
     std::string selectedModelLabJobId_;
     bool trainerAdvancedOpen_{false};
     bool responseRuleExactWording_{false};
+    bool responseRuleTerminal_{true};
 
     HFONT chatFont_{};
     HFONT uiFont_{};
@@ -4046,6 +4068,7 @@ private:
         std::string response;
         std::string responseMode{"persona_variation"};
         bool enabled{};
+        bool terminal{true};
         int priority{100};
         int matchScore{};
     };
@@ -4054,7 +4077,7 @@ private:
         std::vector<PersonaResponseRuleView> out;
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal "
             "FROM persona_response_rules WHERE persona_name=? "
             "ORDER BY priority DESC,id DESC LIMIT ?";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
@@ -4074,6 +4097,7 @@ private:
             item.responseMode=rm?rm:"persona_variation";
             item.enabled=sqlite3_column_int(s,5)!=0;
             item.priority=sqlite3_column_int(s,6);
+            item.terminal=sqlite3_column_int(s,7)!=0;
             out.push_back(std::move(item));
         }
         sqlite3_finalize(s);
@@ -4096,7 +4120,7 @@ private:
     std::optional<PersonaResponseRuleView> FindPersonaResponseRule(const std::string& input) const {
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal "
             "FROM persona_response_rules "
             "WHERE persona_name=? AND enabled=1 "
             "ORDER BY priority DESC,id DESC";
@@ -4123,6 +4147,7 @@ private:
             item.responseMode=rm?rm:"persona_variation";
             item.enabled=sqlite3_column_int(s,5)!=0;
             item.priority=sqlite3_column_int(s,6);
+            item.terminal=sqlite3_column_int(s,7)!=0;
 
             const auto quality=sentinel::simulation::EvaluateResponseRuleMatch(
                 item.matchType,input,item.trigger);
@@ -4157,13 +4182,19 @@ private:
                 L"Rule Test",MB_OK|MB_ICONINFORMATION);
             return;
         }
+        const auto variants=sentinel::simulation::SplitResponseRuleVariants(rule->response);
+        const auto selected=sentinel::simulation::SelectResponseRuleVariant(
+            rule->response,
+            "rule-test|"+sample+"|"+std::to_string(rule->id));
         const std::wstring msg=
             L"Matched Rule #"+std::to_wstring(rule->id)+
             L"\nMatch: "+Widen(rule->matchType)+
             L" ("+std::to_wstring(rule->matchScore)+L"%)"+
             L"\nPriority: "+std::to_wstring(rule->priority)+
+            L"\nFlow: "+std::wstring(rule->terminal?L"Terminal / stop":L"Continue with model")+
+            L"\nAlternates: "+std::to_wstring(variants.size())+
             L"\nTrigger: "+Widen(rule->trigger)+
-            L"\nResponse: "+Widen(rule->response);
+            L"\nSelected response: "+Widen(selected);
         statusText_=L"Rule #"+std::to_wstring(rule->id)+L" matched sample at "+
             std::to_wstring(rule->matchScore)+L"%";
         MessageBoxW(hwnd_,msg.c_str(),L"Rule Test Result",MB_OK|MB_ICONINFORMATION);
@@ -4172,7 +4203,7 @@ private:
     void LoadPersonaResponseRuleIntoEditors(long long id) {
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT trigger_text,response_text,response_mode FROM persona_response_rules "
+            "SELECT trigger_text,response_text,response_mode,terminal FROM persona_response_rules "
             "WHERE id=? AND persona_name=? LIMIT 1";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
             statusText_=L"Unable to load response rule";
@@ -4188,6 +4219,7 @@ private:
             SetWindowTextW(responseRuleTriggerEdit_,Widen(trigger?trigger:"").c_str());
             SetWindowTextW(responseRuleResponseEdit_,Widen(response?response:"").c_str());
             responseRuleExactWording_=mode && std::string(mode)=="exact";
+            responseRuleTerminal_=sqlite3_column_int(s,3)!=0;
             statusText_=L"Loaded Rule #"+std::to_wstring(id)+L" into the rule editor";
         } else {
             statusText_=L"Response rule not found";
@@ -4223,20 +4255,27 @@ private:
             return;
         }
 
-        const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
-            simSettings_.ageState,response);
-        if(!policy.allowed) {
-            statusText_=L"Response rule rejected by active safety policy";
-            MessageBoxW(hwnd_,Widen(policy.reason).c_str(),
-                L"Response Rule Blocked",MB_OK|MB_ICONWARNING);
+        const auto variants=sentinel::simulation::SplitResponseRuleVariants(response);
+        if(variants.empty()) {
+            statusText_=L"Enter at least one non-empty response";
             return;
+        }
+        for(const auto& variant:variants) {
+            const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+                simSettings_.ageState,variant);
+            if(!policy.allowed) {
+                statusText_=L"One alternate response was rejected by active safety policy";
+                MessageBoxW(hwnd_,Widen(policy.reason).c_str(),
+                    L"Response Rule Blocked",MB_OK|MB_ICONWARNING);
+                return;
+            }
         }
 
         sqlite3_stmt* s{};
         const char* sql=
             "INSERT INTO persona_response_rules("
-            "persona_name,match_type,trigger_text,response_text,response_mode,enabled,priority"
-            ") VALUES(?,?,?,?,?,1,100)";
+            "persona_name,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal"
+            ") VALUES(?,?,?,?,?,1,100,?)";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
             statusText_=L"Unable to prepare response rule";
             return;
@@ -4247,6 +4286,7 @@ private:
         sqlite3_bind_text(s,4,response.c_str(),-1,SQLITE_TRANSIENT);
         const std::string responseMode=responseRuleExactWording_?"exact":"persona_variation";
         sqlite3_bind_text(s,5,responseMode.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,6,responseRuleTerminal_?1:0);
         const int rc=sqlite3_step(s);
         sqlite3_finalize(s);
 
@@ -4267,6 +4307,13 @@ private:
         statusText_=responseRuleExactWording_
             ? L"Response rule wording set to Exact"
             : L"Response rule wording set to Persona Variation";
+    }
+
+    void ToggleResponseRuleTerminalMode() {
+        responseRuleTerminal_=!responseRuleTerminal_;
+        statusText_=responseRuleTerminal_
+            ? L"Response rule flow set to Terminal / stop"
+            : L"Response rule flow set to Continue with model";
     }
 
     void ClearPersonaResponseRules() {
@@ -5539,15 +5586,22 @@ private:
         simMatchedRule_.reset();
 
         if(auto rule=FindPersonaResponseRule(utf8)) {
+            const std::string variantBasis=
+                currentConversationId_+"|"+utf8+"|"+
+                std::to_string(rule->id)+"|"+
+                std::to_string(simContext_.history.size());
+            const auto selectedVariant=sentinel::simulation::SelectResponseRuleVariant(
+                rule->response,variantBasis);
             const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
-                simSettings_.ageState,rule->response);
+                simSettings_.ageState,selectedVariant);
             if(policy.allowed) {
                 simPreparedFromRule_=true;
                 simMatchedRule_=*rule;
-                simRuleMeaning_=rule->response;
+                simMatchedRule_->response=selectedVariant;
+                simRuleMeaning_=selectedVariant;
                 simRuleResponseMode_=rule->responseMode;
                 if(rule->responseMode=="exact")
-                    simPreparedReply_=rule->response;
+                    simPreparedReply_=selectedVariant;
                 statusText_=L"Rule #"+std::to_wstring(rule->id)+L" matched ("+
                     std::to_wstring(rule->matchScore)+L"%): "+Widen(rule->trigger);
             } else {
@@ -6592,18 +6646,22 @@ private:
                 x+contentW-126,py+48,110,28,simSettings_.learningMode);
 
             TextLine(L"Trigger",x+22,py+62,58,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(L"Response",x+contentW*0.50f+18,py+62,66,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Responses (use || for alternates)",x+contentW*0.50f+18,py+62,190,18,tinyFmt_.Get(),brush_.muted.Get());
 
             const float actionY=py+116.0f;
             AddButton(
                 L"rule_wording_toggle",
-                responseRuleExactWording_?L"Wording: Exact":L"Wording: Persona",
-                x+22,actionY,142,28,false);
-            AddButton(L"rule_add_smart",L"Add Smart",x+174,actionY,86,28,true);
-            AddButton(L"rule_add_contains",L"Add Contains",x+270,actionY,96,28,false);
-            AddButton(L"rule_add_exact",L"Add Exact",x+376,actionY,84,28,false);
-            AddButton(L"rule_test",L"Test",x+470,actionY,62,28,false);
-            AddButton(L"rule_clear",L"Clear All",x+542,actionY,76,28,false);
+                responseRuleExactWording_?L"Exact words":L"Persona voice",
+                x+22,actionY,112,28,false);
+            AddButton(
+                L"rule_terminal_toggle",
+                responseRuleTerminal_?L"Terminal":L"Continue",
+                x+142,actionY,88,28,false);
+            AddButton(L"rule_add_smart",L"Smart",x+238,actionY,68,28,true);
+            AddButton(L"rule_add_contains",L"Contains",x+314,actionY,78,28,false);
+            AddButton(L"rule_add_exact",L"Exact",x+400,actionY,64,28,false);
+            AddButton(L"rule_test",L"Test",x+472,actionY,54,28,false);
+            AddButton(L"rule_clear",L"Clear",x+534,actionY,62,28,false);
 
             TextLine(
                 std::to_wstring(enabledRules)+L" enabled / "+
@@ -6629,14 +6687,15 @@ private:
                         rule.matchType=="exact"?L"EXACT":
                         rule.matchType=="contains"?L"CONTAINS":L"SMART";
                     const std::wstring modeLabel=
-                        rule.responseMode=="exact"?L"EXACT WORDING":L"PERSONA VOICE";
+                        rule.responseMode=="exact"?L"EXACT":L"PERSONA";
+                    const std::wstring flowLabel=rule.terminal?L"STOP":L"CONTINUE";
 
                     const auto hitCount=runtime_->responseRuleMatches.CountForRule(
                         simSettings_.persona.name,rule.id);
                     TextLine(
-                        L"#"+std::to_wstring(rule.id)+L"  "+typeLabel+L"  |  "+modeLabel+
-                        L"  |  P"+std::to_wstring(rule.priority)+
-                        L"  |  "+std::to_wstring(hitCount)+L" hit"+(hitCount==1?L"":L"s"),
+                        L"#"+std::to_wstring(rule.id)+L"  "+typeLabel+L" | "+modeLabel+
+                        L" | "+flowLabel+L" | P"+std::to_wstring(rule.priority)+
+                        L" | "+std::to_wstring(hitCount)+L" hit"+(hitCount==1?L"":L"s"),
                         x+30,ry+5,contentW-260,18,tinyFmt_.Get(),
                         rule.enabled?brush_.cyan.Get():brush_.muted.Get());
 
@@ -7472,6 +7531,8 @@ private:
         for(const auto& rule:rules) {
             out<<rule.id<<" | "<<rule.matchType
                <<" | mode="<<rule.responseMode
+               <<" | flow="<<(rule.terminal?"terminal":"continue")
+               <<" | variants="<<sentinel::simulation::SplitResponseRuleVariants(rule.response).size()
                <<" | enabled="<<(rule.enabled?"yes":"no")
                <<" | trigger="<<rule.trigger
                <<" | response="<<rule.response<<"\n";
