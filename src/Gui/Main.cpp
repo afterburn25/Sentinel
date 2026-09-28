@@ -697,7 +697,7 @@ struct Runtime {
         jurisdictionRules.EnsureBuiltInBaselines();
         trainer.EnsureDefaultFoundation(
             "SARA Foundation 1",
-            "Qwen3.5-9B",
+            "Qwen/Qwen3.5-9B",
             (ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf").string());
         keys.Initialize();
     }
@@ -4383,22 +4383,65 @@ private:
         }
     }
 
+    static std::string SafeTrainerFileToken(std::string value) {
+        for(char& ch:value) {
+            const unsigned char u=(unsigned char)ch;
+            if(!std::isalnum(u) && ch!='-' && ch!='_') ch='-';
+        }
+        while(value.find("--")!=std::string::npos)
+            value.replace(value.find("--"),2,"-");
+        while(!value.empty() && value.front()=='-') value.erase(value.begin());
+        while(!value.empty() && value.back()=='-') value.pop_back();
+        return value.empty()?"training":value;
+    }
+
+    std::filesystem::path AutoExportTrainerDataset() {
+        const auto dir=runtime_->root/"trainer-datasets";
+        std::filesystem::create_directories(dir);
+        const auto path=
+            dir/(SafeTrainerFileToken(simSettings_.persona.name)+"-approved.jsonl");
+        const auto count=runtime_->trainingReviews.ExportApprovedJsonlForPersona(
+            path,simSettings_.persona.name);
+        if(count==0) {
+            std::error_code ec;
+            std::filesystem::remove(path,ec);
+            throw std::runtime_error(
+                "no approved training examples exist for the active persona");
+        }
+        SetWindowTextW(trainerDatasetEdit_,path.wstring().c_str());
+        return path;
+    }
+
+    std::filesystem::path DefaultTrainerOutputPath(
+        std::string_view target,
+        sentinel::simulation::TrainingMode mode)
+    {
+        const auto token=
+            SafeTrainerFileToken(std::string(target))+"-"+
+            SafeTrainerFileToken(sentinel::simulation::ToString(mode))+"-"+
+            sentinel::Uuid::Random().ToString().substr(0,8);
+        const auto path=runtime_->root/"trainer-runs"/token;
+        std::filesystem::create_directories(path.parent_path());
+        SetWindowTextW(trainerOutputEdit_,path.wstring().c_str());
+        return path;
+    }
+
     void QueueTrainerJobFromControls() {
         const auto mode=SelectedTrainingMode();
         auto foundation=SelectedFoundation();
-        const auto dataset=Narrow(EditText(trainerDatasetEdit_));
-        const auto output=Narrow(EditText(trainerOutputEdit_));
-        const auto basePath=Narrow(EditText(trainerBasePathEdit_));
+        auto dataset=Narrow(EditText(trainerDatasetEdit_));
+        auto output=Narrow(EditText(trainerOutputEdit_));
+        auto basePath=Narrow(EditText(trainerBasePathEdit_));
         const auto target=Narrow(EditText(trainerForkNameEdit_)).empty()
             ? simSettings_.persona.name
             : Narrow(EditText(trainerForkNameEdit_));
 
         if(mode==sentinel::simulation::TrainingMode::Behavior) {
-            statusText_=L"Behavior mode uses Send / Preview, then Apply Preview after human review";
+            statusText_=L"Behavior Tuning uses Send then Apply after human review";
             return;
         }
         if(mode==sentinel::simulation::TrainingMode::Preference) {
-            statusText_=L"Evaluation / Test mode does not queue weight training; use the Model Lab Evaluation workspace";
+            statusText_=L"Evaluation / Test does not queue weight training; use the Evaluation workspace";
             return;
         }
 
@@ -4410,18 +4453,27 @@ private:
             return;
         }
 
-        if(dataset.empty()) {
-            statusText_=L"A reviewed JSONL dataset path is required before queueing weight/correction training";
-            return;
-        }
-
         try {
+            if(dataset.empty())
+                dataset=Narrow(AutoExportTrainerDataset().wstring());
+
+            if(output.empty())
+                output=Narrow(DefaultTrainerOutputPath(target,mode).wstring());
+
+            if(basePath.empty() && foundation) {
+                basePath=!foundation->trainableSourcePath.empty()
+                    ? foundation->trainableSourcePath
+                    : foundation->sourceModel;
+                SetWindowTextW(trainerBasePathEdit_,Widen(basePath).c_str());
+            }
+
             auto session=runtime_->trainer.ActiveDialogueSession(
                 simSettings_.persona.name,mode);
             const std::string sessionId=session?session->id:"";
             const std::string config=
                 "{\"source\":\"SARA Conversational Trainer\","
-                "\"dialogue_session\":\""+sessionId+"\"}";
+                "\"dialogue_session\":\""+sessionId+"\","
+                "\"dataset_scope\":\"persona-approved-only\"}";
 
             auto job=runtime_->trainer.QueueJob(
                 mode,target,simSettings_.persona.name,
@@ -4432,7 +4484,8 @@ private:
                 runtime_->trainer.AppendDialogueTurn(
                     session->id,"SYSTEM",
                     "Queued reviewed training job "+job.id+
-                    ". Active runtime remains unchanged until training/evaluation/activation completes.");
+                    " using the approved "+simSettings_.persona.name+
+                    " dataset. Active runtime remains unchanged until training, evaluation, and activation complete.");
             }
             statusText_=L"Training job queued: "+Widen(job.id);
         } catch(const std::exception& e) {
