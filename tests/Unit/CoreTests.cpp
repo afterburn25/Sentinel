@@ -13,6 +13,7 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/DeploymentRegistry.hpp"
 
 #include <array>
 #include <cassert>
@@ -118,6 +119,11 @@ void TestPersonaLoraHistory()
     Require(resolved.has_value(),"active persona LoRA did not resolve");
     Require(resolved->loraName=="Samantha v2","resolved persona LoRA version mismatch");
 
+    Require(trainer.ActivatePersonaLora(first.id),"prior persona LoRA could not be reactivated");
+    const auto rolledBack=trainer.ResolvePersonaLora("Samantha");
+    Require(rolledBack.has_value(),"reactivated persona LoRA did not resolve");
+    Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by ID");
+
     db.Close();
     std::filesystem::remove_all(root);
 }
@@ -149,6 +155,15 @@ void TestTrainerFoundationAndJobs()
         foundations.front().sourceModel,"trainable-source","");
     Require(fork.parentId==foundations.front().id,"foundation fork parent mismatch");
     Require(fork.status=="DRAFT","new foundation fork should be draft");
+    Require(trainer.ApproveFoundation(fork.id),"foundation approval failed");
+    Require(trainer.ActivateFoundation(fork.id),"approved foundation activation failed");
+
+    const auto activeFork=trainer.GetFoundation(fork.id);
+    Require(activeFork.has_value() && activeFork->status=="ACTIVE",
+        "selected foundation did not become active");
+    const auto priorBase=trainer.GetFoundation(foundations.front().id);
+    Require(priorBase.has_value() && priorBase->status=="APPROVED",
+        "previous active foundation was not preserved as approved");
 
     const auto job=trainer.QueueJob(
         sentinel::simulation::TrainingMode::FoundationSft,
@@ -351,6 +366,76 @@ void TestPersistentEvaluationSuite()
         loaded.Runs().front(),loaded.Runs().back());
     Require(comparison.find("Overall delta")!=std::string::npos,
         "evaluation comparison report missing delta");
+
+    std::filesystem::remove_all(root);
+}
+
+
+
+void TestDeploymentRegistryLifecycle()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::simulation::DeploymentRegistry deployments;
+    auto& first=deployments.Prepare(
+        "model-1","Candidate A",
+        "foundation-1","SARA Foundation 1.0",
+        "1","Samantha v1",
+        "Samantha","eval-1",92);
+    Require(first.stage==sentinel::simulation::DeploymentStage::Staged,
+        "prepared deployment should be staged");
+    Require(first.versionLocked,"prepared deployment should start locked");
+    Require(deployments.Activate(0),"first deployment activation failed");
+    Require(deployments.ActiveIndex()==0,"first deployment active index mismatch");
+    Require(deployments.HasActiveLockedDeployment(),
+        "active locked deployment was not reported");
+
+    deployments.SetLocked(0,false);
+    Require(!deployments.HasActiveLockedDeployment(),
+        "deployment unlock did not change active lock state");
+    deployments.SetLocked(0,true);
+
+    auto& second=deployments.Prepare(
+        "model-2","Candidate \"B\"",
+        "foundation-2","SARA Foundation 2.0",
+        "2","Samantha v2",
+        "Samantha","eval-2",96);
+    Require(second.previousDeploymentId==first.id,
+        "prepared deployment did not link previous active package");
+    Require(deployments.Activate(1),"second deployment activation failed");
+    Require(deployments.ActiveIndex()==1,"second deployment active index mismatch");
+    Require(deployments.PreviousIndex()==0,"previous deployment index was not preserved");
+
+    const auto manifest=deployments.BuildManifest(1);
+    Require(manifest.find("\"schema\": \"sara-deployment-v1\"")!=std::string::npos,
+        "deployment manifest schema missing");
+    Require(manifest.find("foundation-2")!=std::string::npos,
+        "deployment manifest foundation missing");
+    Require(manifest.find("Candidate \\\"B\\\"")!=std::string::npos,
+        "deployment manifest JSON escaping failed");
+
+    Require(deployments.Rollback(),"deployment rollback failed");
+    Require(deployments.ActiveIndex()==0,"deployment rollback active index mismatch");
+    Require(deployments.Packages()[0].stage==sentinel::simulation::DeploymentStage::Active,
+        "rollback target did not become active");
+    Require(deployments.Packages()[1].stage==sentinel::simulation::DeploymentStage::RolledBack,
+        "rolled-back package stage mismatch");
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-deployment-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto path=root/"deployment-registry.tsv";
+    deployments.Save(path);
+
+    sentinel::simulation::DeploymentRegistry loaded;
+    loaded.Load(path);
+    Require(loaded.Packages().size()==2,"deployment registry persistence count mismatch");
+    Require(loaded.ActiveIndex()==0,"deployment registry active index persistence mismatch");
+    Require(loaded.Packages()[1].evaluationRunId=="eval-2",
+        "deployment registry evaluation linkage persistence mismatch");
+    Require(loaded.Packages()[0].versionLocked,
+        "deployment version lock persistence mismatch");
 
     std::filesystem::remove_all(root);
 }
@@ -603,6 +688,9 @@ int main()
         std::cout << "[core] persistent evaluation suite..." << std::endl;
         TestPersistentEvaluationSuite();
         std::cout << "[core] persistent evaluation suite PASS" << std::endl;
+        std::cout << "[core] deployment registry lifecycle..." << std::endl;
+        TestDeploymentRegistryLifecycle();
+        std::cout << "[core] deployment registry lifecycle PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
