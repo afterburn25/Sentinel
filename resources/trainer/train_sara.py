@@ -38,13 +38,66 @@ def require_training_packages():
         import transformers
         import datasets
         import peft
-        return torch, transformers, datasets, peft
+        import bitsandbytes
+        return torch, transformers, datasets, peft, bitsandbytes
     except Exception as e:
         raise RuntimeError(
-            "Missing SARA training packages. Install with: "
-            "python -m pip install torch transformers datasets peft accelerate safetensors sentencepiece "
+            "Missing SARA training packages. Use Prepare Env in Model Lab / Train. "
             f"\nOriginal import error: {e}"
         )
+
+def load_trainable_text_model(torch, transformers, peft, base):
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "SARA 9B LoRA/foundation weight training requires an NVIDIA CUDA GPU. "
+            "Behavior Tuning and Dataset Training remain available without CUDA."
+        )
+
+    props=torch.cuda.get_device_properties(0)
+    vram_gb=props.total_memory/(1024**3)
+    print(f"Training GPU: {props.name} ({vram_gb:.1f} GB VRAM)")
+    if vram_gb < 10.0:
+        raise RuntimeError(
+            f"Only {vram_gb:.1f} GB VRAM is available. "
+            "SARA's 9B QLoRA profile requires approximately 10 GB or more."
+        )
+
+    compute_dtype=(
+        torch.bfloat16
+        if getattr(torch.cuda, "is_bf16_supported", lambda: False)()
+        else torch.float16
+    )
+    quant=transformers.BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=compute_dtype,
+    )
+    config=transformers.AutoConfig.from_pretrained(base, trust_remote_code=True)
+    kwargs=dict(
+        quantization_config=quant,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+
+    if getattr(config,"model_type","")=="qwen3_5":
+        try:
+            from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5ForCausalLM
+            model=Qwen3_5ForCausalLM.from_pretrained(base, **kwargs)
+        except Exception as e:
+            raise RuntimeError(
+                "The trainer could not load the Qwen3.5 text backbone. "
+                "Run Prepare Env again to update the SARA trainer environment. "
+                f"Original error: {e}"
+            ) from e
+    else:
+        model=transformers.AutoModelForCausalLM.from_pretrained(base, **kwargs)
+
+    model=peft.prepare_model_for_kbit_training(model)
+    if hasattr(model,"gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable()
+    model.config.use_cache=False
+    return model, compute_dtype
 
 def choose_base(job, foundation):
     for value in (
@@ -73,7 +126,7 @@ def load_jsonl_text_dataset(datasets_mod, dataset_path):
     return ds.map(to_text)
 
 def train_lora(job, foundation, db):
-    torch, transformers, datasets_mod, peft = require_training_packages()
+    torch, transformers, datasets_mod, peft, _bitsandbytes = require_training_packages()
     base=choose_base(job, foundation)
     dataset=load_jsonl_text_dataset(datasets_mod, job["dataset_path"])
     output=Path(job["output_path"] or (Path(job["dataset_path"]).parent / f"{job['target_name']}-training"))
@@ -85,13 +138,7 @@ def train_lora(job, foundation, db):
     if tokenizer.pad_token is None:
         tokenizer.pad_token=tokenizer.eos_token
 
-    dtype=torch.bfloat16 if torch.cuda.is_available() and getattr(torch.cuda, "is_bf16_supported", lambda: False)() else (
-        torch.float16 if torch.cuda.is_available() else torch.float32
-    )
-    model=transformers.AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=dtype, device_map="auto" if torch.cuda.is_available() else None, trust_remote_code=True
-    )
-    model.config.use_cache=False
+    model, dtype=load_trainable_text_model(torch,transformers,peft,base)
 
     lora_cfg=peft.LoraConfig(
         r=16,
@@ -99,7 +146,7 @@ def train_lora(job, foundation, db):
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
-        target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
+        target_modules="all-linear",
     )
     model=peft.get_peft_model(model,lora_cfg)
     update_job(db, job["id"], progress=18)
@@ -119,8 +166,10 @@ def train_lora(job, foundation, db):
         logging_steps=5,
         save_strategy="epoch",
         report_to=[],
-        fp16=torch.cuda.is_available() and dtype==torch.float16,
-        bf16=torch.cuda.is_available() and dtype==torch.bfloat16,
+        fp16=dtype==torch.float16,
+        bf16=dtype==torch.bfloat16,
+        gradient_checkpointing=True,
+        optim="paged_adamw_8bit",
         remove_unused_columns=False,
     )
     collator=transformers.DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)

@@ -5,15 +5,23 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+$dataRoot=Split-Path -Parent $Database
+$venvPython=Join-Path $dataRoot 'trainer-venv\Scripts\python.exe'
 $python=$null
-foreach($candidate in @('py.exe','python.exe','python3.exe')){
-  $cmd=Get-Command $candidate -ErrorAction SilentlyContinue
-  if($cmd){$python=$cmd.Source;break}
+if(Test-Path $venvPython){
+  $python=$venvPython
+  Write-Host ('Using SARA trainer environment: ' + $venvPython)
+}
+if(-not $python){
+  foreach($candidate in @('py.exe','python.exe','python3.exe')){
+    $cmd=Get-Command $candidate -ErrorAction SilentlyContinue
+    if($cmd){$python=$cmd.Source;break}
+  }
 }
 if(-not $python){
   Write-Host ''
-  Write-Host 'SARA Trainer requires Python 3.10+ for weight training.' -ForegroundColor Yellow
-  Write-Host 'Install Python, then rerun this job from SARA Trainer.'
+  Write-Host 'SARA Trainer requires Python 3.10+.' -ForegroundColor Yellow
+  Write-Host 'Install Python, then use Prepare Env in Model Lab / Train.'
   Read-Host 'Press Enter to close'
   exit 2
 }
