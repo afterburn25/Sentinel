@@ -16,6 +16,24 @@ std::string Col(sqlite3_stmt* s,int i) {
     const auto* p=(const char*)sqlite3_column_text(s,i);
     return p?p:"";
 }
+std::string JsonEscape(std::string_view input) {
+    std::ostringstream out;
+    for(unsigned char c:input) {
+        switch(c) {
+            case '\\': out<<"\\\\"; break;
+            case '"': out<<"\\\""; break;
+            case '\n': out<<"\\n"; break;
+            case '\r': out<<"\\r"; break;
+            case '\t': out<<"\\t"; break;
+            default:
+                if(c<0x20) {
+                    static const char* hex="0123456789abcdef";
+                    out<<"\\u00"<<hex[(c>>4)&0xf]<<hex[c&0xf];
+                } else out<<(char)c;
+        }
+    }
+    return out.str();
+}
 std::string NewId(const char* prefix) {
     const auto now=std::chrono::high_resolution_clock::now().time_since_epoch().count();
     static unsigned long long seq=0;
@@ -214,6 +232,27 @@ bool TrainerStore::ActivatePersonaLora(long long id) {
     return changed;
 }
 
+
+
+std::string TrainerStore::BuildPersonaLoraManifest(long long id) const {
+    auto binding=GetPersonaLora(id);
+    if(!binding) return {};
+    auto foundation=GetFoundation(binding->foundationId);
+
+    std::ostringstream out;
+    out<<"{\n";
+    out<<"  \"schema\": \"sara-persona-lora-v1\",\n";
+    out<<"  \"binding_id\": "<<binding->id<<",\n";
+    out<<"  \"persona_name\": \""<<JsonEscape(binding->personaName)<<"\",\n";
+    out<<"  \"foundation_id\": \""<<JsonEscape(binding->foundationId)<<"\",\n";
+    out<<"  \"foundation_name\": \""<<JsonEscape(foundation?foundation->name:std::string{})<<"\",\n";
+    out<<"  \"lora_name\": \""<<JsonEscape(binding->loraName)<<"\",\n";
+    out<<"  \"lora_path\": \""<<JsonEscape(binding->loraPath)<<"\",\n";
+    out<<"  \"weight\": "<<binding->weight<<",\n";
+    out<<"  \"active\": "<<(binding->active?"true":"false")<<"\n";
+    out<<"}\n";
+    return out.str();
+}
 
 std::vector<PersonaLoraBinding> TrainerStore::ListPersonaLoras(
     std::string_view personaName,
