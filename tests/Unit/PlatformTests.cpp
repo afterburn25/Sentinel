@@ -174,7 +174,7 @@ int main() {
 
     channels::ChannelAdapterRegistry channelRegistry;
     channelRegistry.Register(std::move(localChannel));
-    Require(channelRegistry.FindByName("Sentinel Local Simulation")!=nullptr,
+    Require(channelRegistry.FindByName("SARA Local Simulation")!=nullptr,
         "channel adapter registry lookup failed");
     Require(channelRegistry.FindByType(channels::ChannelType::LocalSimulation).size()==1,
         "channel adapter registry type lookup failed");
@@ -190,6 +190,6 @@ int main() {
     queue.Enqueue({"sync-1",agency::SyncItemType::AuditRecord,"audit:1",0,false});
     Require(queue.PendingCount()==1,"agency sync queue count incorrect");
 
-    std::cout<<"Sentinel platform tests passed\n";
+    std::cout<<"SARA platform tests passed\n";
     return 0;
 }
