@@ -264,6 +264,7 @@ Every future feature restoration must follow this exact sequence:
 - Evidence verification and Audit & Compliance: RESTORED / VALIDATED (Windows Build #764)
 - Audit-v2 metadata binding: RESTORED / VALIDATED (Windows Build #768)
 - Agency Server offline persistence: RESTORED / VALIDATED (Windows Build #770)
+- Settings protected model/schema state: RESTORED / VALIDATED (Windows Build #772)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -315,6 +316,7 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] evidence current-byte verification with audited PASS/FAIL integrity state
 - [x] audit-v2 metadata digest binding while preserving legacy audit-v1 verification
 - [x] Agency Server configuration and sync queue persist locally without enabling network transport
+- [x] Settings surfaces applied schema and protected local-model verification-marker state without blocking startup
 
 ### Still genuinely later-only / not yet restored
 
@@ -393,3 +395,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Evidence/Audit checkpoint: PASS — run #764 / commit `e686dd6dc73155c40828c7c9330ac959aba61b39`
 - Audit-v2 metadata checkpoint: PASS — run #768 / commit `842ac592a1b39fba241dd5b566dd764274a2a024`
 - Agency Server offline persistence checkpoint: PASS — run #770 / commit `d25c117e531f28fd873ea163ad9e771521f03f66`
+- Settings checkpoint: PASS — run #772 / commit `4764220f9a46fd72913d6e060d05023635389fa6`

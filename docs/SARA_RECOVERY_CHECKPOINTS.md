@@ -363,3 +363,49 @@ Artifact digests from run #770:
 - UI screenshots: `sha256:f88184dad6fccd91c151e1b0ffeb128483eddfed0851fed477f35e502fbae3fc`
 
 This is the validated rollback point for the recovered investigative shell through persistent offline Agency Server staging.
+
+## Checkpoint 08 — Settings and protected local-model state validated
+
+Validated commit:
+
+`4764220f9a46fd72913d6e060d05023635389fa6`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #772
+- Run ID: `36440609343`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- real packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Settings recovery proven by this checkpoint:
+
+- Settings reports the currently applied SQLite migration version
+- local model/runtime installation state is shown separately from model-connection state
+- Settings reads the protected installer `.sha256` verification marker without re-hashing the 5.68 GB model on the UI/startup thread
+- the marker is compared against the exact protected 1.0.15 model SHA-256 contract
+- missing model, missing marker, mismatched marker, and current marker are distinct states
+- AI Diagnostics includes the installer verification-marker state
+- the previous clipped multi-sentence Local AI status line was removed from the compact Settings card
+- full model verification/download behavior remains owned by the protected 1.0.15 installer and recovery guard
+- release-security rows describe evidence integrity, audit-v2, model installer verification, HTTPS update checking, outbound approval, and code-signing state without overstating signing status
+
+Artifact digests from run #772:
+
+- Windows package: `sha256:d3e90369bb25ded92803a3c65b63e5a35215e6aaa7ac7fb3be3b7c9398059e45`
+- Setup artifact: `sha256:a0cfe5d10ec4c7eb20223da00939cd6be49bc1c722265234661b646442f52477`
+- UI screenshots: `sha256:ca86a9424a497cd7fa5cf60c5a3daeb6a2f900b555a3c0cf53036c86b9425875`
+
+This is the validated rollback point for the full recovered permanent operational shell through Settings.
