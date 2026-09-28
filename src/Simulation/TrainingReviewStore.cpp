@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
