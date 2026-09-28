@@ -48,6 +48,8 @@ struct TrainerJobRecord {
     std::string startedUtc;
     std::string completedUtc;
     std::string errorText;
+    std::string heartbeatUtc;
+    long long workerPid{};
 };
 
 struct TrainerDialogueSession {
@@ -96,6 +98,7 @@ public:
     std::vector<TrainerJobRecord> ListJobs(size_t limit=12) const;
     bool CancelQueuedJob(std::string_view id);
     bool RetryJob(std::string_view id);
+    size_t RecoverStaleRunningJobs(int staleMinutes=3);
 
     std::optional<TrainerDialogueSession> ActiveDialogueSession(
         std::string_view personaName,

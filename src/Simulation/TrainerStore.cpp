@@ -484,7 +484,8 @@ std::optional<TrainerJobRecord> TrainerStore::GetJob(std::string_view id) const 
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "SELECT id,training_mode,target_name,persona_name,foundation_id,dataset_path,base_model_path,output_path,"
-        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text "
+        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text,"
+        "COALESCE(heartbeat_utc,''),COALESCE(worker_pid,0) "
         "FROM trainer_jobs WHERE id=? LIMIT 1",
         -1,&s,nullptr),db,"prepare trainer job get");
     sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
@@ -497,6 +498,7 @@ std::optional<TrainerJobRecord> TrainerStore::GetJob(std::string_view id) const 
         j.baseModelPath=Col(s,6); j.outputPath=Col(s,7); j.state=Col(s,8);
         j.progress=sqlite3_column_int(s,9); j.createdUtc=Col(s,10);
         j.startedUtc=Col(s,11); j.completedUtc=Col(s,12); j.errorText=Col(s,13);
+        j.heartbeatUtc=Col(s,14); j.workerPid=sqlite3_column_int64(s,15);
         out=std::move(j);
     }
     sqlite3_finalize(s);
@@ -510,7 +512,7 @@ bool TrainerStore::CancelQueuedJob(std::string_view id) {
     Check(sqlite3_prepare_v2(db,
         "UPDATE trainer_jobs "
         "SET state='CANCELLED',completed_utc=CURRENT_TIMESTAMP,"
-        "error_text='Cancelled before worker launch' "
+        "error_text='Cancelled before worker launch',heartbeat_utc=NULL,worker_pid=0 "
         "WHERE id=? AND state='QUEUED'",
         -1,&s,nullptr),db,"prepare trainer job cancel");
     sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
@@ -526,7 +528,8 @@ bool TrainerStore::RetryJob(std::string_view id) {
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "UPDATE trainer_jobs "
-        "SET state='QUEUED',progress=0,started_utc=NULL,completed_utc=NULL,error_text='' "
+        "SET state='QUEUED',progress=0,started_utc=NULL,completed_utc=NULL,error_text='',"
+        "heartbeat_utc=NULL,worker_pid=0 "
         "WHERE id=? AND state IN ('FAILED','CANCELLED')",
         -1,&s,nullptr),db,"prepare trainer job retry");
     sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
@@ -540,7 +543,8 @@ std::vector<TrainerJobRecord> TrainerStore::ListJobs(size_t limit) const {
     std::vector<TrainerJobRecord> out; auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "SELECT id,training_mode,target_name,persona_name,foundation_id,dataset_path,base_model_path,output_path,"
-        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text "
+        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text,"
+        "COALESCE(heartbeat_utc,''),COALESCE(worker_pid,0) "
         "FROM trainer_jobs ORDER BY created_utc DESC LIMIT ?",-1,&s,nullptr),db,"prepare trainer jobs list");
     sqlite3_bind_int(s,1,(int)std::min<size_t>(limit,100));
     while(sqlite3_step(s)==SQLITE_ROW) {
@@ -548,9 +552,30 @@ std::vector<TrainerJobRecord> TrainerStore::ListJobs(size_t limit) const {
         j.personaName=Col(s,3); j.foundationId=Col(s,4); j.datasetPath=Col(s,5); j.baseModelPath=Col(s,6);
         j.outputPath=Col(s,7); j.state=Col(s,8); j.progress=sqlite3_column_int(s,9);
         j.createdUtc=Col(s,10); j.startedUtc=Col(s,11); j.completedUtc=Col(s,12); j.errorText=Col(s,13);
+        j.heartbeatUtc=Col(s,14); j.workerPid=sqlite3_column_int64(s,15);
         out.push_back(std::move(j));
     }
     sqlite3_finalize(s); return out;
+}
+
+size_t TrainerStore::RecoverStaleRunningJobs(int staleMinutes) {
+    staleMinutes=std::clamp(staleMinutes,1,1440);
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_jobs "
+        "SET state='FAILED',completed_utc=CURRENT_TIMESTAMP,"
+        "error_text='Trainer worker heartbeat expired; job may be retried',worker_pid=0 "
+        "WHERE state='RUNNING' "
+        "AND COALESCE(NULLIF(heartbeat_utc,''),NULLIF(started_utc,''),'')<>'' "
+        "AND datetime(COALESCE(NULLIF(heartbeat_utc,''),started_utc)) < datetime('now',?)",
+        -1,&s,nullptr),db,"prepare stale trainer job recovery");
+    const std::string modifier="-"+std::to_string(staleMinutes)+" minutes";
+    sqlite3_bind_text(s,1,modifier.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"recover stale trainer jobs");
+    const auto changed=(size_t)std::max(0,sqlite3_changes(db));
+    sqlite3_finalize(s);
+    return changed;
 }
 
 std::optional<TrainerDialogueSession> TrainerStore::ActiveDialogueSession(

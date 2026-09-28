@@ -367,6 +367,28 @@ void TestTrainerFoundationAndJobs()
     Require(!trainer.RetryJob(job.id),
         "queued trainer job should not be retryable");
 
+    db.Execute(
+        "UPDATE trainer_jobs SET state='RUNNING',progress=31,"
+        "started_utc=datetime('now','-10 minutes'),"
+        "heartbeat_utc=datetime('now','-10 minutes'),worker_pid=4242 "
+        "WHERE id='"+job.id+"';");
+    Require(trainer.RecoverStaleRunningJobs(3)==1,
+        "stale running trainer job was not recovered");
+    auto staleJob=trainer.GetJob(job.id);
+    Require(staleJob.has_value() && staleJob->state=="FAILED" &&
+            staleJob->workerPid==0 &&
+            staleJob->errorText.find("heartbeat expired")!=std::string::npos,
+        "stale trainer job recovery state mismatch");
+    Require(trainer.RetryJob(job.id),
+        "recovered stale trainer job could not be retried");
+
+    db.Execute(
+        "UPDATE trainer_jobs SET state='RUNNING',progress=32,"
+        "started_utc=CURRENT_TIMESTAMP,heartbeat_utc=CURRENT_TIMESTAMP,worker_pid=4343 "
+        "WHERE id='"+job.id+"';");
+    Require(trainer.RecoverStaleRunningJobs(3)==0,
+        "healthy running trainer job was incorrectly marked stale");
+
     const auto dialogue=trainer.EnsureDialogueSession(
         "Samantha",sentinel::simulation::TrainingMode::Behavior);
     Require(!dialogue.id.empty(),"trainer dialogue session id missing");
