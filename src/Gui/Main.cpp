@@ -1365,7 +1365,9 @@ public:
             else if (b.id==L"ml_evaluation") { page_=Page::ModelLabEvaluation; ApplyPageControls(); }
             else if (b.id==L"ml_deployment") { page_=Page::ModelLabDeployment; ApplyPageControls(); }
             else if (b.id==L"ml_diagnostics_export") ExportModelLabDiagnostics();
-            else if (b.id==L"persona_save") SaveProfileEditors();
+            // Deliberately break this dispatch chain into independent groups so MSVC
+            // does not treat the full button table as >128 nested else/if blocks.
+            if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
             else if (b.id==L"persona_generate_behavior") GenerateBehaviorFromBackground();
@@ -1395,7 +1397,7 @@ public:
                 selectedDeployment_=(int)std::stol(b.id.substr(18));
                 statusText_=L"Deployment package selected";
             }
-            else if (b.id==L"training_stage") StageLatestTrainingExample();
+            if (b.id==L"training_stage") StageLatestTrainingExample();
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
             else if (b.id==L"training_export") ExportApprovedTrainingDataset();
@@ -1421,7 +1423,7 @@ public:
             else if (b.id==L"trainer_run_latest") RunLatestQueuedTrainerJob();
             else if (b.id==L"trainer_apply_instruction") ApplyTrainerBehaviorInstruction();
             else if (b.id==L"trainer_advanced_toggle") trainerAdvancedOpen_=!trainerAdvancedOpen_;
-            else if (b.id.rfind(L"dataset_item:",0)==0) {
+            if (b.id.rfind(L"dataset_item:",0)==0) {
                 selectedTrainingReviewId_=Narrow(b.id.substr(13));
                 statusText_=L"Training review item selected";
             }
@@ -1488,7 +1490,7 @@ public:
                 page_=Page::Trainer;
                 ApplyPageControls();
             }
-            else if (b.id.rfind(L"job_row:",0)==0) {
+            if (b.id.rfind(L"job_row:",0)==0) {
                 selectedModelLabJobId_=Narrow(b.id.substr(8));
                 statusText_=L"Training job selected";
             }
