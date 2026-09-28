@@ -59,6 +59,7 @@ public:
     std::optional<PersonaLoraBinding> ResolvePersonaLora(std::string_view personaName) const;
     std::optional<PersonaLoraBinding> GetPersonaLora(long long id) const;
     bool ActivatePersonaLora(long long id);
+    std::string BuildPersonaLoraManifest(long long id) const;
     std::vector<PersonaLoraBinding> ListPersonaLoras(std::string_view personaName,size_t limit=12) const;
     TrainerJobRecord QueueJob(TrainingMode mode,std::string_view targetName,std::string_view personaName,std::string_view foundationId,std::string_view datasetPath,std::string_view baseModelPath,std::string_view outputPath,std::string_view configJson = "{}");
     std::vector<TrainerJobRecord> ListJobs(size_t limit=12) const;
