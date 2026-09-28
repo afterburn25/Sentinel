@@ -73,7 +73,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs, ModelLabEvaluation, ModelLabDeployment };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs, ModelLabEvaluation, ModelLabDeployment, Subjects };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
@@ -1222,6 +1222,7 @@ public:
         switch(page_) {
             case Page::Dashboard: DrawDashboard(w,h); break;
             case Page::Cases: DrawCases(w,h); break;
+            case Page::Subjects: DrawSubjects(w,h); break;
             case Page::Evidence: DrawEvidence(w,h); break;
             case Page::Audit: DrawAudit(w,h); break;
             case Page::Verification: DrawVerification(w,h); break;
@@ -1246,49 +1247,19 @@ public:
     }
 
     void Click(float x,float y) {
-        if (x<kSidebar && y>kHeader) {
-            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment) {
-                const float startY=(float)kHeader+18.0f;
-                const float firstRowY=startY+42.0f;
-                const int idx=(int)((y-firstRowY)/44.0f);
-                if(y>=firstRowY && idx>=0 && idx<8) {
-                    if(idx==0) page_=Page::ModelLab;
-                    else if(idx==1) page_=Page::Trainer;
-                    else if(idx==2) page_=Page::ModelLabDatasets;
-                    else if(idx==3) page_=Page::ModelLabPersonas;
-                    else if(idx==4) page_=Page::ModelLabFoundations;
-                    else if(idx==5) page_=Page::ModelLabJobs;
-                    else if(idx==6) page_=Page::ModelLabEvaluation;
-                    else if(idx==7) page_=Page::ModelLabDeployment;
-                    ApplyPageControls();
-                    InvalidateRect(hwnd_,nullptr,FALSE);
-                    return;
-                }
-
-                const float utilityY=startY+42.0f+8*44.0f+22.0f;
-                if(y>=utilityY && y<utilityY+40.0f) {
-                    page_=Page::Dashboard;
-                    ApplyPageControls();
-                    InvalidateRect(hwnd_,nullptr,FALSE);
-                    return;
-                }
-                if(y>=utilityY+44.0f && y<utilityY+84.0f) {
-                    page_=Page::Settings;
-                    ApplyPageControls();
-                    InvalidateRect(hwnd_,nullptr,FALSE);
-                    return;
-                }
-                return;
-            }
-
-            int idx=(int)((y-kHeader-16)/44);
-            if (idx>=0&&idx<13) {
-                page_=(Page)idx;
+        if(x<kSidebar && y>kHeader) {
+            constexpr float rowH=44.0f;
+            const float startY=(float)kHeader+16.0f;
+            const int idx=(int)((y-startY)/rowH);
+            if(idx>=0 && idx<12) {
+                page_=MainNavPage(idx);
                 ApplyPageControls();
+
                 if(page_==Page::Simulation && chatEdit_) {
                     SetFocus(chatEdit_);
                     SendMessageW(chatEdit_,EM_SETSEL,0,0);
                 }
+
                 InvalidateRect(hwnd_,nullptr,FALSE);
                 return;
             }
@@ -1299,6 +1270,11 @@ public:
             else if (b.id==L"import") ImportEvidence();
             else if (b.id==L"verify") VerifySelected();
             else if (b.id==L"integrity") VerifyAudit();
+            else if (b.id==L"verification_center") {
+                page_=Page::Verification;
+                ApplyPageControls();
+                statusText_=L"Evidence verification center";
+            }
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_emoji") OpenEmojiPicker();
@@ -2087,6 +2063,87 @@ private:
         return icons[std::clamp(i,0,12)];
     }
 
+
+    int MainNavIndex(Page page) const {
+        switch(page) {
+            case Page::Dashboard: return 0;
+            case Page::Cases: return 1;
+            case Page::Subjects: return 2;
+            case Page::Simulation: return 3;
+            case Page::Persona: return 4;
+            case Page::Messaging: return 5;
+            case Page::Supervisor: return 6;
+            case Page::Evidence: return 7;
+            case Page::Audit:
+            case Page::Verification: return 8;
+            case Page::ModelLab:
+            case Page::Trainer:
+            case Page::ModelLabDatasets:
+            case Page::ModelLabPersonas:
+            case Page::ModelLabFoundations:
+            case Page::ModelLabJobs:
+            case Page::ModelLabEvaluation:
+            case Page::ModelLabDeployment: return 9;
+            case Page::Agency: return 10;
+            case Page::Settings: return 11;
+        }
+        return 0;
+    }
+
+    Page MainNavPage(int index) const {
+        static const Page pages[]={
+            Page::Dashboard,
+            Page::Cases,
+            Page::Subjects,
+            Page::Simulation,
+            Page::Persona,
+            Page::Messaging,
+            Page::Supervisor,
+            Page::Evidence,
+            Page::Audit,
+            Page::ModelLab,
+            Page::Agency,
+            Page::Settings
+        };
+        return pages[std::clamp(index,0,11)];
+    }
+
+    const wchar_t* MainNavLabel(int index) const {
+        static const wchar_t* labels[]={
+            L"Dashboard",
+            L"Cases",
+            L"Subjects & Identity",
+            L"Simulation Chat",
+            L"Personas",
+            L"Channels & Messaging",
+            L"Supervisor & Approvals",
+            L"Evidence",
+            L"Audit & Compliance",
+            L"Model Lab",
+            L"Agency Server",
+            L"Settings"
+        };
+        return labels[std::clamp(index,0,11)];
+    }
+
+    IconKind MainNavIcon(int index) const {
+        static const IconKind icons[]={
+            IconKind::Home,
+            IconKind::Folder,
+            IconKind::Search,
+            IconKind::Chat,
+            IconKind::Document,
+            IconKind::Chat,
+            IconKind::Shield,
+            IconKind::Database,
+            IconKind::Chain,
+            IconKind::Gear,
+            IconKind::Database,
+            IconKind::Gear
+        };
+        return icons[std::clamp(index,0,11)];
+    }
+
     void DrawBrand() {
         // The approved SARA 1.0.15 PNG already contains transparency.
         // Render it directly on the dark shell; never add a white/light plate.
@@ -2112,120 +2169,66 @@ private:
     }
 
     void DrawSidebar() {
-        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment) {
-            const wchar_t* names[]={
-                L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
-                L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
-            };
-            const IconKind icons[]={
-                IconKind::Home,IconKind::Chat,IconKind::Database,IconKind::Folder,
-                IconKind::Chain,IconKind::Document,IconKind::Check,IconKind::Shield
-            };
-            constexpr float rowH=44.0f;
-            const float startY=(float)kHeader+18.0f;
-            const int active=page_==Page::ModelLab?0:
-                page_==Page::Trainer?1:
-                page_==Page::ModelLabDatasets?2:
-                page_==Page::ModelLabPersonas?3:
-                page_==Page::ModelLabFoundations?4:
-                page_==Page::ModelLabJobs?5:
-                page_==Page::ModelLabEvaluation?6:7;
-
-            TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
-            TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
-                22,startY+15,176,18,tinyFmt_.Get(),brush_.muted.Get());
-
-            for(int i=0;i<8;i++) {
-                const float y=startY+42.0f+i*rowH;
-                const bool selected=i==active;
-                const bool restored=true;
-                if(selected) {
-                    target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
-                    target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
-                }
-                DrawIcon(icons[i],26,y+3,22,
-                    selected?brush_.cyan.Get():(restored?brush_.text.Get():brush_.muted.Get()));
-                TextLine(names[i],66,y+3,145,26,smallFmt_.Get(),
-                    selected?brush_.cyan.Get():(restored?brush_.text.Get():brush_.muted.Get()));
-            }
-
-            const float utilityY=startY+42.0f+8*rowH+22.0f;
-            target_->DrawLine(
-                D2D1::Point2F(20,utilityY-10),
-                D2D1::Point2F((float)kSidebar-20,utilityY-10),
-                brush_.border.Get(),1.0f);
-            DrawIcon(IconKind::Home,26,utilityY+3,22,brush_.muted.Get());
-            TextLine(L"Back to SARA",66,utilityY+3,145,26,smallFmt_.Get(),brush_.text.Get());
-            DrawIcon(IconKind::Gear,26,utilityY+47,22,brush_.muted.Get());
-            TextLine(L"Settings",66,utilityY+47,145,26,smallFmt_.Get(),brush_.text.Get());
-
-            Text(std::wstring(L"SARA v")+Widen(SARA_VERSION_STR),24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
-            Text(L"Model Lab Recovery",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
-            return;
-        }
-
-        static const wchar_t* names[]={
-            L"Dashboard",L"Cases",L"Evidence",L"Audit Log",L"Verification",L"Simulation Lab",
-            L"Persona & Policy",L"Model Lab",L"Trainer",L"Messaging",L"Supervisor",L"Agency Server",L"Settings"
-        };
+        // SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN
+        // This is the permanent application shell. Model Lab never replaces it.
+        constexpr int kMainNavCount=12;
         constexpr float rowH=44.0f;
-        for (int i=0;i<13;i++) {
-            float y=(float)kHeader+16+i*rowH;
-            if ((int)page_==i) {
-                target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
-                target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
-                Rounded(20,y,36,30,brush_.sidebar.Get(),brush_.border.Get(),8);
+        const int active=MainNavIndex(page_);
+
+        for(int i=0;i<kMainNavCount;i++) {
+            const float y=(float)kHeader+16.0f+i*rowH;
+            const bool selected=i==active;
+            if(selected) {
+                target_->FillRectangle(
+                    D2D1::RectF(0,y-4,(float)kSidebar,y+36),
+                    brush_.panel2.Get());
+                target_->FillRectangle(
+                    D2D1::RectF(0,y-4,4,y+36),
+                    brush_.cyan.Get());
+                Rounded(18,y,34,30,brush_.sidebar.Get(),brush_.border.Get(),8);
             }
-            DrawIcon(NavIcon(i),26,y+3,22,((int)page_==i)?brush_.cyan.Get():brush_.muted.Get());
-            TextLine(names[i],66,y+3,145,26,smallFmt_.Get(),((int)page_==i)?brush_.cyan.Get():brush_.text.Get());
+
+            DrawIcon(
+                MainNavIcon(i),24,y+4,21,
+                selected?brush_.cyan.Get():brush_.muted.Get());
+            TextLine(
+                MainNavLabel(i),58,y+3,(float)kSidebar-66,26,
+                smallFmt_.Get(),
+                selected?brush_.cyan.Get():brush_.text.Get());
         }
-        Text(std::wstring(L"SARA v")+Widen(SARA_VERSION_STR),24,674,170,20,smallFmt_.Get(),brush_.muted.Get());
-        Text(L"Secure Local Mode",24,696,170,20,smallFmt_.Get(),brush_.green.Get());
+        // SARA_PRODUCT_CONTRACT_MAIN_NAV_END
+
+        const float footerY=(float)kHeader+16.0f+kMainNavCount*rowH+16.0f;
+        target_->DrawLine(
+            D2D1::Point2F(18,footerY-8),
+            D2D1::Point2F((float)kSidebar-18,footerY-8),
+            brush_.border.Get(),1.0f);
+        Text(std::wstring(L"SARA v")+Widen(SARA_VERSION_STR),
+            24,footerY+2,170,20,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Secure Investigator Mode",
+            24,footerY+24,176,20,smallFmt_.Get(),brush_.green.Get());
     }
 
     void DrawHeader(float w) {
-        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment;
-        if(modelLabShell) {
-            Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
-            Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
-            const wchar_t* labSection=page_==Page::Trainer?L"TRAIN":
-                page_==Page::ModelLabDatasets?L"DATASETS":
-                page_==Page::ModelLabPersonas?L"PERSONAS":
-                page_==Page::ModelLabFoundations?L"FOUNDATIONS":
-                page_==Page::ModelLabJobs?L"JOBS":
-                page_==Page::ModelLabEvaluation?L"EVALUATION":
-                page_==Page::ModelLabDeployment?L"DEPLOYMENT":L"OVERVIEW";
-            Text(labSection,kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
-            TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
-                kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
+        const int section=MainNavIndex(page_);
 
-            Rounded(w-405,16,255,42,brush_.sidebar.Get(),brush_.border.Get(),8);
-            DrawIcon(IconKind::Search,w-390,27,18,brush_.muted.Get());
-            Text(L"Search Model Lab...",w-366,27,190,22,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"SARA",kSidebar+28,17,62,20,tinyFmt_.Get(),brush_.cyan.Get());
+        Text(L"|",kSidebar+92,16,12,20,tinyFmt_.Get(),brush_.border.Get());
+        TextLine(
+            MainNavLabel(section),
+            kSidebar+108,15,240,24,smallFmt_.Get(),brush_.text.Get());
 
-            Rounded(w-132,18,36,36,brush_.panel2.Get(),brush_.border.Get(),18);
-            Text(L"JD",w-122,26,22,20,smallFmt_.Get(),brush_.text.Get());
-            Text(L"SARA",w-84,20,58,18,smallFmt_.Get(),brush_.text.Get());
-            Text(L"Local Model Lab",w-84,36,88,18,tinyFmt_.Get(),brush_.muted.Get());
-
-            StatusDot(w-174,67,4,brush_.green.Get());
-            Text(L"Recovery baseline protected",w-163,58,153,18,tinyFmt_.Get(),brush_.green.Get());
-            return;
-        }
-
-        Text(L"EVIDENCE",kSidebar+28,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"|",kSidebar+104,24,12,20,tinyFmt_.Get(),brush_.border.Get());
-        Text(L"INTEGRITY",kSidebar+118,25,80,20,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"|",kSidebar+195,24,12,20,tinyFmt_.Get(),brush_.border.Get());
-        Text(L"JUSTICE",kSidebar+208,25,70,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            L"INVESTIGATIONS  |  SIMULATION  |  EVIDENCE  |  AI SUPPORT",
+            kSidebar+28,39,410,20,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(w-405,16,255,42,brush_.sidebar.Get(),brush_.border.Get(),8);
         DrawIcon(IconKind::Search,w-390,27,18,brush_.muted.Get());
-        Text(L"Search cases, evidence, hashes...",w-366,27,190,22,smallFmt_.Get(),brush_.muted.Get());
+        Text(L"Search SARA...",w-366,27,190,22,smallFmt_.Get(),brush_.muted.Get());
 
         Rounded(w-132,18,36,36,brush_.panel2.Get(),brush_.border.Get(),18);
-        Text(L"JD",w-122,26,22,20,smallFmt_.Get(),brush_.text.Get());
-        Text(L"Local",w-84,20,58,18,smallFmt_.Get(),brush_.text.Get());
+        DrawIcon(IconKind::Shield,w-122,27,18,brush_.cyan.Get());
+        Text(L"SARA",w-84,20,58,18,smallFmt_.Get(),brush_.text.Get());
         Text(L"Investigator",w-84,36,76,18,tinyFmt_.Get(),brush_.muted.Get());
 
         StatusDot(w-174,67,4,brush_.green.Get());
@@ -2252,7 +2255,7 @@ private:
     }
 
     void DrawDashboard(float w,float h) {
-        PageTitle(L"Dashboard",L"Overview of cases, evidence, and system integrity");
+        PageTitle(L"Dashboard",L"Operational overview of investigations, simulation activity, evidence, and integrity");
         float x=kSidebar+28,y=kHeader+96,g=14;
         float card=(w-x-28-g*3)/4;
         Metric(x,y,card,L"Open Cases",std::to_wstring(runtime_->OpenCaseCount()),L"Active investigations",brush_.cyan.Get(),IconKind::Folder);
@@ -2447,7 +2450,7 @@ private:
     }
 
     void DrawAudit(float w,float h) {
-        PageTitle(L"Audit Log",L"Immutable activity records for system and evidence operations");
+        PageTitle(L"Audit & Compliance",L"Audit integrity, evidence verification, jurisdiction controls, and operational accountability");
         float x=kSidebar+28,y=kHeader+100,g=14;
         float card=(w-x-28-g*3)/4;
         Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",L"Tamper-evident ledger",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get(),IconKind::Chain);
@@ -2484,6 +2487,7 @@ private:
         Rounded(x,by,w-x-28,120,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Audit Chain Integrity",x+18,by+14,260,28,h1Fmt_.Get(),brush_.text.Get());
         Text(runtime_->audit.VerifyChain()?L"Chain verified - no tampering detected":L"WARNING  Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        AddButton(L"verification_center",L"Verification Center",w-398,by+38,164,42,false);
         AddButton(L"integrity",L"Verify Audit Chain",w-220,by+38,165,42,true);
     }
 
@@ -2516,8 +2520,94 @@ private:
     }
 
 
+
+    void DrawSubjects(float w,float h) {
+        PageTitle(
+            L"Subjects & Identity",
+            L"Investigator-controlled subject profiles, aliases, identity-resolution leads, provenance, and confirmation");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+102.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=14.0f;
+
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        const std::wstring caseValue=cases_.empty()
+            ? L"No case selected"
+            : Widen(cases_[selectedCase_].caseNumber);
+        struct SubjectMetric {
+            const wchar_t* label;
+            std::wstring value;
+            const wchar_t* sub;
+            ID2D1Brush* accent;
+            IconKind icon;
+        };
+        SubjectMetric metrics[]={
+            {L"Case Context",caseValue,L"Identity work is case-scoped",brush_.cyan.Get(),IconKind::Folder},
+            {L"Identity Leads",L"0",L"Leads, not automatic conclusions",brush_.yellow.Get(),IconKind::Search},
+            {L"Confirmed IDs",L"0",L"Requires investigator confirmation",brush_.green.Get(),IconKind::Check},
+            {L"Source Policy",L"Human Review",L"Provenance retained",brush_.blue.Get(),IconKind::Shield}
+        };
+
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,y,cardW,96,brush_.panel.Get(),brush_.border.Get(),10);
+            Rounded(cx+14,y+18,38,38,brush_.panel2.Get(),nullptr,9);
+            DrawIcon(metrics[i].icon,cx+22,y+26,22,metrics[i].accent);
+            TextLine(metrics[i].label,cx+62,y+10,cardW-74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,cx+62,y+30,cardW-74,26,smallFmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+14,y+70,cardW-28,18,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=y+112.0f;
+        const float leftW=(contentW-gap)*0.60f;
+        const float rightW=contentW-gap-leftW;
+        const float rightX=x+leftW+gap;
+
+        Rounded(x,bodyY,leftW,360,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Identity Resolution Workspace",x+18,bodyY+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        Text(
+            L"This module is reserved for case-scoped subject records and lawful identity-resolution leads. "
+            L"Planned records include aliases, usernames, public-profile references, contact identifiers where permitted, "
+            L"court/arrest-record references, and reverse-image/visual-match leads.",
+            x+20,bodyY+58,leftW-40,104,bodyFmt_.Get(),brush_.text.Get());
+
+        Rounded(x+20,bodyY+180,leftW-40,132,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Recovery status",x+34,bodyY+192,leftW-68,22,smallFmt_.Get(),brush_.cyan.Get());
+        Text(
+            L"The recovered 1.0.15 application does not yet contain a finished subject-record UI/storage layer. "
+            L"This page intentionally does not fabricate identities or pretend external sources are connected. "
+            L"The module is now restored to the correct first-class location so its backend can be added without distorting SARA.",
+            x+34,bodyY+222,leftW-68,78,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(rightX,bodyY,rightW,360,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Identity Handling Rules",rightX+18,bodyY+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const wchar_t* rules[]={
+            L"Treat every search result as a lead until a human confirms it.",
+            L"Preserve source provenance and retrieval context.",
+            L"Do not merge identities solely from a visual or username similarity.",
+            L"Keep subject records scoped to the authorized case.",
+            L"Log confirmation and investigator-authored changes.",
+            L"Do not expose connected-source data outside authorized workflows."
+        };
+        float ry=bodyY+58.0f;
+        for(const auto* rule:rules) {
+            StatusDot(rightX+26,ry+10,3,brush_.cyan.Get());
+            Text(rule,rightX+40,ry,rightW-58,38,smallFmt_.Get(),brush_.text.Get());
+            ry+=48.0f;
+        }
+
+        Rounded(x,bodyY+376,contentW,116,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Architecture boundary",x+18,bodyY+388,contentW-36,22,smallFmt_.Get(),brush_.cyan.Get());
+        Text(
+            L"Subjects & Identity supports investigations. Model Lab may improve matching or extraction models later, "
+            L"but identity records, provenance, and investigator confirmation remain part of the operational SARA application.",
+            x+18,bodyY+418,contentW-36,58,smallFmt_.Get(),brush_.muted.Get());
+    }
+
     void DrawSimulation(float w,float h) {
-        PageTitle(L"Simulation Lab",L"Synthetic conversation testing, model selection, and evidence capture");
+        PageTitle(L"Simulation Chat",L"Investigator-controlled synthetic conversation, persona memory, media, and transcript capture");
         const float x=kSidebar+28.0f;
         const float y=kHeader+102.0f;
         const float gap=14.0f;
@@ -4967,7 +5057,7 @@ private:
     }
 
     void DrawPersona(float w,float h) {
-        PageTitle(L"Persona Profile",L"Identity, background, age-banded behavior, scenario, gallery, and policy");
+        PageTitle(L"Personas",L"Reusable synthetic identities, behavior, communication style, scenarios, media, and policy");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
@@ -7672,7 +7762,7 @@ private:
     }
 
     void DrawMessaging(float w,float h) {
-        PageTitle(L"Messaging",L"Operator-approved messaging core and local conversation queue");
+        PageTitle(L"Channels & Messaging",L"Provider-neutral conversations, attachments, operator approval, and channel handoff");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
@@ -7743,7 +7833,7 @@ private:
     }
 
     void DrawSupervisor(float w,float h) {
-        PageTitle(L"Supervisor",L"Human approval ledger with SHA-256 action hashes");
+        PageTitle(L"Supervisor & Approvals",L"Human review, operational approvals, takeover controls, and SHA-256 action hashes");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
@@ -7863,13 +7953,13 @@ private:
         try {
             sentinel::update::UpdateService service;
             const std::string url="https://raw.githubusercontent.com/afterburn25/Sentinel/main/release/update-manifest.json";
-            auto info=service.Check(url,"1.0.7");
+            auto info=service.Check(url,SARA_VERSION_STR);
             if(info.newer) {
                 updateStatus_=L"Update available: "+Widen(info.version);
-                statusText_=L"Sentinel update available";
+                statusText_=L"SARA update available";
             } else {
-                updateStatus_=L"Current version 1.0.7 is up to date";
-                statusText_=L"No Sentinel update available";
+                updateStatus_=std::wstring(L"Current version ")+Widen(SARA_VERSION_STR)+L" is up to date";
+                statusText_=L"No SARA update available";
             }
         } catch(const std::exception& e) {
             updateStatus_=L"Update check failed: "+Widen(e.what());
@@ -7980,7 +8070,7 @@ private:
         TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Sentinel 1.0.7",rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        TextLine(std::wstring(L"SARA ")+Widen(SARA_VERSION_STR),rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
 
         TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
