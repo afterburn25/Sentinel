@@ -1276,6 +1276,12 @@ public:
                 statusText_=L"Evidence verification center";
             }
             else if (b.id==L"dashboard") { page_=Page::Dashboard; ShowCaseEditors(false); ShowChatEditor(false); }
+            else if (b.id==L"dashboard_cases") { page_=Page::Cases; ApplyPageControls(); }
+            else if (b.id==L"dashboard_subjects") { page_=Page::Subjects; ApplyPageControls(); }
+            else if (b.id==L"dashboard_simulation") { page_=Page::Simulation; ApplyPageControls(); }
+            else if (b.id==L"dashboard_channels") { page_=Page::Messaging; ApplyPageControls(); }
+            else if (b.id==L"dashboard_supervisor") { page_=Page::Supervisor; ApplyPageControls(); }
+            else if (b.id==L"dashboard_evidence") { page_=Page::Evidence; ApplyPageControls(); }
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_emoji") OpenEmojiPicker();
             else if (b.id==L"sim_attach") AttachImageToConversation();
@@ -2331,108 +2337,194 @@ private:
     }
 
     void DrawDashboard(float w,float h) {
-        PageTitle(L"Dashboard",L"Operational overview of investigations, simulation activity, evidence, and integrity");
-        float x=kSidebar+28,y=kHeader+96,g=14;
-        float card=(w-x-28-g*3)/4;
-        Metric(x,y,card,L"Open Cases",std::to_wstring(runtime_->OpenCaseCount()),L"Active investigations",brush_.cyan.Get(),IconKind::Folder);
-        Metric(x+(card+g),y,card,L"Evidence Items",std::to_wstring(runtime_->EvidenceCount()),L"Encrypted local objects",brush_.blue.Get(),IconKind::Database);
-        Metric(x+2*(card+g),y,card,L"Audit Records",std::to_wstring(runtime_->AuditCount()),L"Hash-linked events",brush_.cyan.Get(),IconKind::Chain);
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",L"DPAPI protected",brush_.green.Get(),IconKind::Lock);
+        PageTitle(
+            L"Dashboard",
+            L"Operational command view for cases, Simulation Chat, approvals, evidence, channels, and compliance");
 
-        float panelY=y+130;
-        float left=(w-x-42)*0.58f;
-        Rounded(x,panelY,left,310,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Evidence Activity",x+18,panelY+15,260,28,h1Fmt_.Get(),brush_.text.Get());
-        const float chartLeft=x+54, chartRight=x+left-22, chartTop=panelY+58, chartBottom=panelY+254;
-        for(int gy=0;gy<5;gy++) {
-            float yy=chartTop+(chartBottom-chartTop)*gy/4.0f;
-            target_->DrawLine(D2D1::Point2F(chartLeft,yy),D2D1::Point2F(chartRight,yy),brush_.border.Get(),0.7f);
-        }
-        if (evidence_.empty()) {
-            DrawIcon(IconKind::Database,x+left*0.50f-22,panelY+112,44,brush_.muted.Get());
-            Text(L"No evidence activity yet",x+left*0.50f-90,panelY+166,180,24,bodyFmt_.Get(),brush_.muted.Get());
-            Text(L"Imported evidence will appear here.",x+left*0.50f-110,panelY+192,220,20,smallFmt_.Get(),brush_.muted.Get());
-        } else {
-            const int bars=std::min<int>(8,(int)evidence_.size());
-            for(int i=0;i<bars;i++) {
-                float bh=48.0f+22.0f*(i%5);
-                float bx=chartLeft+24+i*((chartRight-chartLeft-60)/8.0f);
-                target_->FillRectangle(D2D1::RectF(bx,chartBottom-bh,bx+28,chartBottom),brush_.blue.Get());
-            }
-        }
-        static const wchar_t* labels[]={L"Mon",L"Tue",L"Wed",L"Thu",L"Fri",L"Sat",L"Sun",L"Now"};
-        for(int i=0;i<8;i++) {
-            float bx=chartLeft+12+i*((chartRight-chartLeft-28)/8.0f);
-            Text(labels[i],bx,chartBottom+12,42,18,tinyFmt_.Get(),brush_.muted.Get());
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+96.0f;
+        const float gap=14.0f;
+        const float contentW=w-x-28.0f;
+
+        size_t pendingApprovals=0;
+        for(const auto& approval:approvals_)
+            if(approval.status==sentinel::operations::ApprovalStatus::Pending)
+                ++pendingApprovals;
+
+        const float metricW=(contentW-gap*3.0f)/4.0f;
+        Metric(
+            x,y,metricW,
+            L"Open Cases",
+            std::to_wstring(runtime_->OpenCaseCount()),
+            L"Active investigations",
+            brush_.cyan.Get(),IconKind::Folder);
+        Metric(
+            x+(metricW+gap),y,metricW,
+            L"Chat Turns",
+            std::to_wstring(simContext_.history.size()),
+            L"Current Simulation Chat",
+            brush_.blue.Get(),IconKind::Chat);
+        Metric(
+            x+2*(metricW+gap),y,metricW,
+            L"Pending Approvals",
+            std::to_wstring(pendingApprovals),
+            L"Human review queue",
+            pendingApprovals?brush_.yellow.Get():brush_.green.Get(),
+            IconKind::Shield);
+        Metric(
+            x+3*(metricW+gap),y,metricW,
+            L"Evidence Items",
+            std::to_wstring(runtime_->EvidenceCount()),
+            L"Encrypted case objects",
+            brush_.green.Get(),IconKind::Database);
+
+        const float mainY=y+130.0f;
+        const float leftW=(contentW-gap)*0.59f;
+        const float rightW=contentW-gap-leftW;
+        const float rightX=x+leftW+gap;
+
+        // Current operational context.
+        Rounded(x,mainY,leftW,282,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Current Operational Context",x+18,mainY+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const std::wstring caseName=cases_.empty()
+            ? L"No case selected"
+            : Widen(cases_[selectedCase_].caseNumber)+L" - "+Widen(cases_[selectedCase_].title);
+        const std::wstring conversation=currentConversationTitle_.empty()
+            ? L"No active conversation"
+            : currentConversationTitle_;
+
+        struct ContextRow {
+            const wchar_t* label;
+            std::wstring value;
+            ID2D1Brush* valueBrush;
+        };
+        ContextRow rows[]={
+            {L"Case",caseName,cases_.empty()?brush_.yellow.Get():brush_.text.Get()},
+            {L"Persona",Widen(simSettings_.persona.name),brush_.cyan.Get()},
+            {L"Conversation",conversation,brush_.text.Get()},
+            {L"Model",modelStatus_,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get()},
+            {L"Jurisdiction",jurisdictionStatus_,jurisdictionStatus_.find(L"No operating")!=std::wstring::npos?brush_.yellow.Get():brush_.cyan.Get()}
+        };
+
+        float rowY=mainY+58.0f;
+        for(const auto& row:rows) {
+            TextLine(row.label,x+20,rowY,92,24,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(row.value,x+120,rowY-2,leftW-140,28,smallFmt_.Get(),row.valueBrush);
+            target_->DrawLine(
+                D2D1::Point2F(x+20,rowY+30),
+                D2D1::Point2F(x+leftW-20,rowY+30),
+                brush_.border.Get(),0.8f);
+            rowY+=39.0f;
         }
 
-        float rx=x+left+14,rw=w-rx-28;
-        Rounded(rx,panelY,rw,310,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Recent Activity",rx+18,panelY+15,rw-36,28,h1Fmt_.Get(),brush_.text.Get());
-        std::vector<std::wstring> rows;
+        AddButton(L"dashboard_simulation",L"Open Simulation Chat",x+20,mainY+242,164,30,true);
+        AddButton(L"dashboard_subjects",L"Subjects & Identity",x+194,mainY+242,154,30,false);
+        AddButton(L"dashboard_channels",L"Channels & Messaging",x+358,mainY+242,168,30,false);
+
+        // Readiness/status board.
+        Rounded(rightX,mainY,rightW,282,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Operational Readiness",rightX+18,mainY+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        const bool auditOk=runtime_->audit.VerifyChain();
+        const bool channelOk=messagingAdapter_ && messagingAdapter_->Connected();
+        const bool aiOk=modelStatus_.find(L"Connected")!=std::wstring::npos;
+        const bool caseReady=!cases_.empty();
+        const bool agencyOn=agencyConfig_.enabled;
+
+        struct ReadyRow {
+            const wchar_t* label;
+            bool ok;
+            const wchar_t* readyText;
+            const wchar_t* notReadyText;
+        };
+        ReadyRow ready[]={
+            {L"Case context",caseReady,L"Selected",L"Select/create case"},
+            {L"Audit chain",auditOk,L"Verified",L"Integrity warning"},
+            {L"Local AI",aiOk,L"Connected",L"Needs attention"},
+            {L"Messaging adapter",channelOk,L"Connected",L"Local/offline"},
+            {L"Agency sync",agencyOn,L"Enabled",L"Local-only mode"}
+        };
+
+        float readyY=mainY+58.0f;
+        for(const auto& item:ready) {
+            StatusDot(
+                rightX+26,readyY+11,4,
+                item.ok?brush_.green.Get():brush_.yellow.Get());
+            TextLine(item.label,rightX+40,readyY,rightW*0.48f,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(
+                item.ok?item.readyText:item.notReadyText,
+                rightX+rightW*0.52f,readyY,rightW*0.42f,24,tinyFmt_.Get(),
+                item.ok?brush_.green.Get():brush_.yellow.Get(),
+                DWRITE_TEXT_ALIGNMENT_TRAILING);
+            readyY+=39.0f;
+        }
+
+        Rounded(
+            rightX+18,mainY+232,rightW-36,34,
+            brush_.sidebar.Get(),brush_.border.Get(),7);
+        TextLine(
+            pendingApprovals
+                ? std::to_wstring(pendingApprovals)+L" action(s) waiting for human approval"
+                : L"No pending supervisor approvals",
+            rightX+30,mainY+235,rightW-60,28,tinyFmt_.Get(),
+            pendingApprovals?brush_.yellow.Get():brush_.green.Get());
+
+        // Recent auditable activity.
+        const float bottomY=mainY+296.0f;
+        Rounded(x,bottomY,leftW,196,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Recent Auditable Activity",x+18,bottomY+12,leftW-36,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::vector<std::wstring> activity;
         sqlite3_stmt* recent{};
-        if(sqlite3_prepare_v2(runtime_->db.Handle(),"SELECT action,target_type,target_id FROM audit_records ORDER BY sequence DESC LIMIT 4",-1,&recent,nullptr)==SQLITE_OK) {
+        if(sqlite3_prepare_v2(
+            runtime_->db.Handle(),
+            "SELECT action,target_type,target_id FROM audit_records ORDER BY sequence DESC LIMIT 4",
+            -1,&recent,nullptr)==SQLITE_OK)
+        {
             while(sqlite3_step(recent)==SQLITE_ROW) {
-                int action=sqlite3_column_int(recent,0);
+                const int action=sqlite3_column_int(recent,0);
                 const char* type=(const char*)sqlite3_column_text(recent,1);
                 const char* id=(const char*)sqlite3_column_text(recent,2);
-                std::wstring row=AuditActionName(action)+L" | "+Widen(type?type:"");
-                if(id && *id) row+=L" | "+Widen(id);
-                rows.push_back(row);
+                std::wstring line=AuditActionName(action)+L" | "+Widen(type?type:"");
+                if(id && *id) line+=L" | "+Widen(id);
+                activity.push_back(std::move(line));
             }
         }
         sqlite3_finalize(recent);
-        if(rows.empty()) rows.push_back(L"Secure local store initialized");
-        for (size_t i=0;i<rows.size();++i) {
-            float yy=panelY+58+(float)i*52;
-            DrawIcon(i==0?IconKind::Document:IconKind::Check,rx+18,yy-1,20,i==0?brush_.cyan.Get():brush_.green.Get());
-            Text(rows[i],rx+50,yy,rw-66,22,bodyFmt_.Get(),brush_.text.Get());
-            target_->DrawLine(D2D1::Point2F(rx+18,yy+34),D2D1::Point2F(rx+rw-18,yy+34),brush_.border.Get(),1);
+
+        if(activity.empty())
+            activity.push_back(L"Secure local investigator workspace initialized");
+
+        float activityY=bottomY+52.0f;
+        for(size_t i=0;i<activity.size() && i<4;i++) {
+            DrawIcon(
+                i==0?IconKind::Document:IconKind::Check,
+                x+20,activityY+1,18,
+                i==0?brush_.cyan.Get():brush_.green.Get());
+            TextLine(activity[i],x+48,activityY,leftW-68,22,smallFmt_.Get(),brush_.text.Get());
+            activityY+=34.0f;
         }
 
-        float bottom=panelY+326;
-        Rounded(x,bottom,left,150,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"System Integrity",x+18,bottom+15,240,26,h1Fmt_.Get(),brush_.text.Get());
-        StatusDot(x+29,bottom+69,5,brush_.green.Get());
-        Text(L"Secure Store",x+43,bottom+58,160,22,bodyFmt_.Get(),brush_.green.Get());
-        StatusDot(x+227,bottom+69,5,runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
-        Text(L"Audit Chain",x+241,bottom+58,160,22,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
-        StatusDot(x+29,bottom+103,5,brush_.green.Get());
-        Text(L"AES-256-GCM",x+43,bottom+92,160,22,bodyFmt_.Get(),brush_.green.Get());
-        StatusDot(x+227,bottom+103,5,brush_.green.Get());
-        Text(L"DPAPI Master Key",x+241,bottom+92,180,22,bodyFmt_.Get(),brush_.green.Get());
+        // Operational quick actions.
+        Rounded(rightX,bottomY,rightW,196,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Operational Quick Actions",rightX+18,bottomY+12,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
 
-        Rounded(rx,bottom,rw,150,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Quick Actions",rx+18,bottom+15,200,26,h1Fmt_.Get(),brush_.text.Get());
-        float gap=10.0f;
-        float bw=(rw-42-gap*3)/4.0f;
-        const float by=bottom+54, bh=72;
-        Rounded(rx+12,by,bw,bh,brush_.blue.Get(),brush_.cyan.Get(),8);
-        DrawIcon(IconKind::Folder,rx+24,by+14,26,brush_.text.Get());
-        Text(L"New Case",rx+56,by+16,bw-64,22,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Create investigation",rx+56,by+40,bw-64,18,tinyFmt_.Get(),brush_.text.Get());
-        buttons_.push_back({{rx+12,by,rx+12+bw,by+bh},L"new_case"});
+        const float actionGap=10.0f;
+        const float actionW=(rightW-46.0f-actionGap)/2.0f;
+        const float actionH=36.0f;
+        const float ax=rightX+18.0f;
+        const float bx=ax+actionW+actionGap;
+        const float ay=bottomY+54.0f;
 
-        float q2=rx+12+bw+gap;
-        Rounded(q2,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
-        DrawIcon(IconKind::Database,q2+12,by+14,26,brush_.cyan.Get());
-        Text(L"Import",q2+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Add evidence",q2+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
-        buttons_.push_back({{q2,by,q2+bw,by+bh},L"import"});
+        AddButton(L"dashboard_cases",L"Cases",ax,ay,actionW,actionH,true);
+        AddButton(L"dashboard_subjects",L"Subjects",bx,ay,actionW,actionH,false);
 
-        float q3=q2+bw+gap;
-        Rounded(q3,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
-        DrawIcon(IconKind::Shield,q3+12,by+14,26,brush_.green.Get());
-        Text(L"Verify",q3+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Authenticate file",q3+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
-        buttons_.push_back({{q3,by,q3+bw,by+bh},L"verify"});
+        AddButton(L"dashboard_simulation",L"Simulation Chat",ax,ay+46,actionW,actionH,false);
+        AddButton(L"dashboard_channels",L"Messaging",bx,ay+46,actionW,actionH,false);
 
-        float q4=q3+bw+gap;
-        Rounded(q4,by,bw,bh,brush_.panel2.Get(),brush_.border.Get(),8);
-        DrawIcon(IconKind::Check,q4+12,by+14,26,brush_.green.Get());
-        Text(L"Integrity",q4+44,by+16,bw-52,22,bodyFmt_.Get(),brush_.text.Get());
-        Text(L"Verify audit chain",q4+44,by+40,bw-52,18,tinyFmt_.Get(),brush_.muted.Get());
-        buttons_.push_back({{q4,by,q4+bw,by+bh},L"integrity"});
+        AddButton(L"dashboard_evidence",L"Evidence",ax,ay+92,actionW,actionH,false);
+        AddButton(L"dashboard_supervisor",L"Approvals",bx,ay+92,actionW,actionH,false);
     }
 
     void DrawCases(float w,float h) {
