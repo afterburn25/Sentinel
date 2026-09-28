@@ -132,6 +132,25 @@ std::optional<PersonaLoraBinding> TrainerStore::ResolvePersonaLora(std::string_v
     sqlite3_finalize(s); return out;
 }
 
+std::vector<PersonaLoraBinding> TrainerStore::ListPersonaLoras(
+    std::string_view personaName,
+    size_t limit) const
+{
+    std::vector<PersonaLoraBinding> out;
+    if(personaName.empty()) return out;
+    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "FROM persona_lora_bindings WHERE persona_name=? "
+        "ORDER BY active DESC,updated_utc DESC,id DESC LIMIT ?",
+        -1,&s,nullptr),db,"prepare persona lora list");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,100));
+    while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadBinding(s));
+    sqlite3_finalize(s);
+    return out;
+}
+
 TrainerJobRecord TrainerStore::QueueJob(TrainingMode mode,std::string_view targetName,std::string_view personaName,std::string_view foundationId,std::string_view datasetPath,std::string_view baseModelPath,std::string_view outputPath,std::string_view configJson) {
     TrainerJobRecord out; out.id=NewId("job"); out.mode=mode; out.targetName=std::string(targetName);
     out.personaName=std::string(personaName); out.foundationId=std::string(foundationId); out.datasetPath=std::string(datasetPath);
