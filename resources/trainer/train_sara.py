@@ -222,21 +222,68 @@ def complete_persona_lora(db, job, foundation):
     update_job(db,job["id"],state="COMPLETED",progress=100,error="")
     print(f"Persona LoRA complete: {gguf}")
 
-def complete_foundation(db, job, foundation):
+def find_llama_quantizer(app_root: Path):
+    for root in (app_root/"ai"/"runtime", app_root/"ai"/"runtime_cpu"):
+        if not root.exists():
+            continue
+        for name in ("llama-quantize.exe","quantize.exe"):
+            matches=list(root.rglob(name))
+            if matches:
+                return matches[0]
+    raise RuntimeError(
+        "llama.cpp quantizer was not found in the installed SARA AI runtime. "
+        "Use Repair Local AI, then rerun the foundation job."
+    )
+
+def build_foundation_runtime(job, merged_dir: Path, output: Path, app_root: Path):
+    tools=ensure_llama_tools(output/"trainer-tools")
+    converter=tools/"convert_hf_to_gguf.py"
+    if not converter.exists():
+        raise RuntimeError("Pinned llama.cpp HF-to-GGUF converter is missing.")
+
+    f16=output/(job["target_name"].replace(" ","-")+"-F16.gguf")
+    q4=output/(job["target_name"].replace(" ","-")+"-Q4_K_M.gguf")
+
+    print("Converting merged foundation checkpoint to GGUF...")
+    subprocess.run(
+        [sys.executable,str(converter),str(merged_dir),"--outfile",str(f16),"--outtype","f16"],
+        check=True,cwd=str(tools)
+    )
+
+    quantizer=find_llama_quantizer(app_root)
+    print(f"Quantizing foundation runtime with {quantizer.name}...")
+    subprocess.run([str(quantizer),str(f16),str(q4),"Q4_K_M"],check=True)
+    try:
+        f16.unlink()
+    except OSError:
+        pass
+    if not q4.exists():
+        raise RuntimeError("Foundation GGUF quantization completed without producing the expected runtime file.")
+    return q4
+
+def complete_foundation(db, job, foundation, app_root):
     model, tokenizer, base, output, adapter_dir=train_lora(job,foundation,db)
-    update_job(db,job["id"],progress=80)
+    update_job(db,job["id"],progress=78)
     print("Merging trained adapter into forked foundation checkpoint...")
     merged=model.merge_and_unload()
     merged_dir=output/"merged-foundation"
     merged.save_pretrained(merged_dir,safe_serialization=True)
     tokenizer.save_pretrained(merged_dir)
+
+    update_job(db,job["id"],progress=84)
+    runtime_gguf=build_foundation_runtime(job,merged_dir,output,app_root)
+    update_job(db,job["id"],progress=96)
+
     db.execute(
-        "UPDATE model_foundations SET trainable_source_path=?,status='CANDIDATE',updated_utc=CURRENT_TIMESTAMP WHERE id=?",
-        (str(merged_dir),job["foundation_id"])
+        "UPDATE model_foundations "
+        "SET trainable_source_path=?,runtime_gguf_path=?,status='CANDIDATE',updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=?",
+        (str(merged_dir),str(runtime_gguf),job["foundation_id"])
     )
     db.commit()
     update_job(db,job["id"],state="COMPLETED",progress=100,error="")
     print(f"Foundation fork checkpoint complete: {merged_dir}")
+    print(f"Foundation runtime GGUF: {runtime_gguf}")
 
 def complete_correction(db, job):
     src=Path(job["dataset_path"])
@@ -252,6 +299,7 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--db",required=True)
     ap.add_argument("--job",required=True)
+    ap.add_argument("--app-root",required=True)
     args=ap.parse_args()
     db=connect(args.db)
     job=load_job(db,args.job)
@@ -263,7 +311,7 @@ def main():
         if mode=="PERSONA_LORA":
             complete_persona_lora(db,job,foundation)
         elif mode=="FOUNDATION_SFT":
-            complete_foundation(db,job,foundation)
+            complete_foundation(db,job,foundation,Path(args.app_root))
         elif mode=="CORRECTION":
             complete_correction(db,job)
         elif mode=="PREFERENCE":

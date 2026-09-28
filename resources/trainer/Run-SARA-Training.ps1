@@ -29,7 +29,8 @@ Write-Host 'SARA Model Trainer' -ForegroundColor Cyan
 Write-Host ('Job: ' + $JobId)
 Write-Host ('Database: ' + $Database)
 Write-Host ''
-& $python (Join-Path $root 'train_sara.py') --db $Database --job $JobId
+$appRoot=Split-Path -Parent $PSScriptRoot
+& $python (Join-Path $root 'train_sara.py') --db $Database --job $JobId --app-root $appRoot
 $code=$LASTEXITCODE
 if($code -ne 0){
   Write-Host ''
