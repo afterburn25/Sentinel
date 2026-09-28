@@ -9,6 +9,7 @@
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
+#include "Sentinel/Simulation/TrainerStore.hpp"
 
 #include <array>
 #include <cassert>
@@ -70,6 +71,49 @@ void TestTrainingReviewRecentList()
         10,sentinel::simulation::TrainingReviewStatus::Approved);
     Require(approved.size()==1,"approved training review filter count mismatch");
     Require(approved.front().id=="review-old","approved training review filter returned wrong item");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+
+
+void TestPersonaLoraHistory()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-lora-history-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"trainer.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::simulation::TrainerStore trainer(db);
+    trainer.EnsureDefaultFoundation("SARA Foundation","base-model","runtime.gguf");
+    const auto foundations=trainer.ListFoundations();
+    Require(!foundations.empty(),"default foundation missing");
+
+    const auto first=trainer.BindPersonaLora(
+        "Samantha",foundations.front().id,"Samantha v1","samantha-v1.gguf",1.0);
+    Require(first.active,"first persona LoRA should be active");
+
+    const auto second=trainer.BindPersonaLora(
+        "Samantha",foundations.front().id,"Samantha v2","samantha-v2.gguf",0.9);
+    Require(second.active,"second persona LoRA should be active");
+
+    const auto history=trainer.ListPersonaLoras("Samantha",10);
+    Require(history.size()==2,"persona LoRA history count mismatch");
+    Require(history.front().loraName=="Samantha v2","active persona LoRA was not listed first");
+    Require(history.front().active,"active persona LoRA history flag missing");
+    Require(!history.back().active,"prior persona LoRA should have been deactivated");
+
+    const auto resolved=trainer.ResolvePersonaLora("Samantha");
+    Require(resolved.has_value(),"active persona LoRA did not resolve");
+    Require(resolved->loraName=="Samantha v2","resolved persona LoRA version mismatch");
 
     db.Close();
     std::filesystem::remove_all(root);
@@ -308,6 +352,9 @@ int main()
         std::cout << "[core] training review recent list..." << std::endl;
         TestTrainingReviewRecentList();
         std::cout << "[core] training review recent list PASS" << std::endl;
+        std::cout << "[core] persona LoRA history..." << std::endl;
+        TestPersonaLoraHistory();
+        std::cout << "[core] persona LoRA history PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
