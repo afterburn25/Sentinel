@@ -572,6 +572,18 @@ std::wstring AuditActionName(int action) {
         case 500: return L"Recovery started";
         case 501: return L"Recovery completed";
         case 502: return L"Recovery failed";
+        case 600: return L"Deployment prepared";
+        case 601: return L"Deployment activated";
+        case 602: return L"Deployment rolled back";
+        case 603: return L"Deployment lock changed";
+        case 604: return L"Deployment manifest exported";
+        case 700: return L"Subject created";
+        case 701: return L"Subject updated";
+        case 702: return L"Subject deleted";
+        case 710: return L"Identity lead added";
+        case 711: return L"Identity lead verified";
+        case 712: return L"Identity lead rejected";
+        case 713: return L"Subject identity confirmed";
         case 900: return L"Application shutdown";
         default: return L"System event";
     }
