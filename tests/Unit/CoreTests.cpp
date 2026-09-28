@@ -125,6 +125,14 @@ void TestPersonaLoraHistory()
     Require(rolledBack.has_value(),"reactivated persona LoRA did not resolve");
     Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by ID");
 
+    const auto manifest=trainer.BuildPersonaLoraManifest(first.id);
+    Require(manifest.find(""schema": "sara-persona-lora-v1"")!=std::string::npos,
+        "persona LoRA manifest schema missing");
+    Require(manifest.find("Samantha v1")!=std::string::npos,
+        "persona LoRA manifest name missing");
+    Require(manifest.find(foundations.front().id)!=std::string::npos,
+        "persona LoRA manifest foundation linkage missing");
+
     db.Close();
     std::filesystem::remove_all(root);
 }
@@ -385,6 +393,7 @@ void TestDeploymentRegistryLifecycle()
         "foundation-1","SARA Foundation 1.0",
         "1","Samantha v1",
         "Samantha","eval-1",92);
+    const std::string firstDeploymentId=first.id;
     Require(first.stage==sentinel::simulation::DeploymentStage::Staged,
         "prepared deployment should be staged");
     Require(first.versionLocked,"prepared deployment should start locked");
@@ -403,7 +412,7 @@ void TestDeploymentRegistryLifecycle()
         "foundation-2","SARA Foundation 2.0",
         "2","Samantha v2",
         "Samantha","eval-2",96);
-    Require(second.previousDeploymentId==first.id,
+    Require(second.previousDeploymentId==firstDeploymentId,
         "prepared deployment did not link previous active package");
     Require(deployments.Activate(1),"second deployment activation failed");
     Require(deployments.ActiveIndex()==1,"second deployment active index mismatch");
