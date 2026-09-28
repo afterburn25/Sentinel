@@ -18,6 +18,7 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/PersonaProfileStore.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
+#include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
@@ -1174,6 +1175,9 @@ public:
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
+        trainingData_.Load(runtime_->root/"training-data.tsv");
+        if(!trainingData_.Snapshots().empty())
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
         evaluationRuns_.Load(runtime_->root/"evaluation-runs.tsv");
         if(!evaluationRuns_.Runs().empty())
             selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
@@ -1354,6 +1358,13 @@ public:
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
             else if (b.id==L"training_export") ExportApprovedTrainingDataset();
+            else if (b.id==L"dataset_snapshot") CreateReviewedDatasetSnapshot();
+            else if (b.id==L"dataset_import_snapshot") ImportDatasetSnapshotFile();
+            else if (b.id==L"dataset_export_snapshot") ExportSelectedDatasetSnapshot();
+            else if (b.id.rfind(L"dataset_snapshot_row:",0)==0) {
+                selectedDatasetSnapshot_=(int)std::stol(b.id.substr(21));
+                statusText_=L"Dataset snapshot selected";
+            }
             else if (b.id==L"rule_add_smart") AddPersonaResponseRule("smart");
             else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
             else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
@@ -1740,6 +1751,8 @@ private:
     sentinel::simulation::ModelRegistry modelRegistry_;
     int selectedRegistryModel_{-1};
     std::string selectedTrainingReviewId_;
+    sentinel::simulation::TrainingDataRegistry trainingData_;
+    int selectedDatasetSnapshot_{-1};
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
     sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
     int selectedEvaluationRun_{-1};
