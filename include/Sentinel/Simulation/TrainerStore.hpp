@@ -55,6 +55,7 @@ public:
     ModelFoundation CreateFork(std::string_view name,std::string_view parentId,std::string_view sourceModel,std::string_view trainableSourcePath,std::string_view runtimeGgufPath = {});
     PersonaLoraBinding BindPersonaLora(std::string_view personaName,std::string_view foundationId,std::string_view loraName,std::string_view loraPath,double weight = 1.0);
     std::optional<PersonaLoraBinding> ResolvePersonaLora(std::string_view personaName) const;
+    std::vector<PersonaLoraBinding> ListPersonaLoras(std::string_view personaName,size_t limit=12) const;
     TrainerJobRecord QueueJob(TrainingMode mode,std::string_view targetName,std::string_view personaName,std::string_view foundationId,std::string_view datasetPath,std::string_view baseModelPath,std::string_view outputPath,std::string_view configJson = "{}");
     std::vector<TrainerJobRecord> ListJobs(size_t limit=12) const;
 private:
