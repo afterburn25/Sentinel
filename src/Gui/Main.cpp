@@ -70,7 +70,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
@@ -1209,6 +1209,7 @@ public:
             case Page::Persona: DrawPersona(w,h); break;
             case Page::ModelLab: DrawModelLab(w,h); break;
             case Page::Trainer: DrawTrainer(w,h); break;
+            case Page::ModelLabDatasets: DrawDatasets(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -1221,14 +1222,14 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            if(page_==Page::ModelLab || page_==Page::Trainer) {
+            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets) {
                 const float startY=(float)kHeader+18.0f;
                 const float firstRowY=startY+42.0f;
                 const int idx=(int)((y-firstRowY)/44.0f);
                 if(y>=firstRowY && idx>=0 && idx<8) {
                     if(idx==0) page_=Page::ModelLab;
                     else if(idx==1) page_=Page::Trainer;
-                    else if(idx==2) statusText_=L"Datasets workspace is next in the controlled hybrid-UI recovery";
+                    else if(idx==2) page_=Page::ModelLabDatasets;
                     else if(idx==3) statusText_=L"Personas & LoRAs workspace will be restored from the 1.0.15 persona backend";
                     else if(idx==4) statusText_=L"Foundation Forks workspace will reuse the recovered 1.0.15 trainer backend";
                     else if(idx==5) statusText_=L"Jobs workspace will surface the recovered training job registry";
@@ -1293,7 +1294,7 @@ public:
             else if (b.id==L"ml_overview") { page_=Page::ModelLab; ApplyPageControls(); }
             else if (b.id==L"ml_train") { page_=Page::Trainer; ApplyPageControls(); }
             else if (b.id==L"ml_personas") { page_=Page::Persona; ApplyPageControls(); }
-            else if (b.id==L"ml_datasets") statusText_=L"Datasets workspace is next in the controlled hybrid-UI recovery";
+            else if (b.id==L"ml_datasets") { page_=Page::ModelLabDatasets; ApplyPageControls(); }
             else if (b.id==L"ml_foundations") statusText_=L"Foundation Forks are available below; dedicated workspace recovery is pending";
             else if (b.id==L"ml_jobs") statusText_=L"Training Jobs are active in this Trainer workspace; dedicated view is pending";
             else if (b.id==L"ml_evaluation") statusText_=L"Evaluation workspace will be restored after the Trainer passes visual regression";
@@ -1333,6 +1334,10 @@ public:
             else if (b.id==L"trainer_run_latest") RunLatestQueuedTrainerJob();
             else if (b.id==L"trainer_apply_instruction") ApplyTrainerBehaviorInstruction();
             else if (b.id==L"trainer_advanced_toggle") trainerAdvancedOpen_=!trainerAdvancedOpen_;
+            else if (b.id.rfind(L"dataset_item:",0)==0) {
+                selectedTrainingReviewId_=Narrow(b.id.substr(13));
+                statusText_=L"Training review item selected";
+            }
             else if (b.id.rfind(L"regmodel:",0)==0) selectedRegistryModel_=(int)std::stol(b.id.substr(9));
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
@@ -1984,7 +1989,7 @@ private:
     }
 
     void DrawSidebar() {
-        if(page_==Page::ModelLab || page_==Page::Trainer) {
+        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets) {
             const wchar_t* names[]={
                 L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
                 L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
@@ -1995,7 +2000,7 @@ private:
             };
             constexpr float rowH=44.0f;
             const float startY=(float)kHeader+18.0f;
-            const int active=page_==Page::ModelLab?0:1;
+            const int active=page_==Page::ModelLab?0:page_==Page::Trainer?1:2;
 
             TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
             TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
@@ -2004,7 +2009,7 @@ private:
             for(int i=0;i<8;i++) {
                 const float y=startY+42.0f+i*rowH;
                 const bool selected=i==active;
-                const bool restored=i<2;
+                const bool restored=i<3;
                 if(selected) {
                     target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
                     target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
@@ -2050,11 +2055,13 @@ private:
     }
 
     void DrawHeader(float w) {
-        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer;
+        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets;
         if(modelLabShell) {
             Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
             Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
-            Text(page_==Page::Trainer?L"TRAIN":L"OVERVIEW",kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
+            const wchar_t* labSection=page_==Page::Trainer?L"TRAIN":
+                page_==Page::ModelLabDatasets?L"DATASETS":L"OVERVIEW";
+            Text(labSection,kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
             TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
                 kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
 
@@ -5040,7 +5047,7 @@ private:
 
     void ReviewStagedTrainingExample(bool approve) {
         if(selectedTrainingReviewId_.empty()) {
-            statusText_=L"Stage a persona reply before reviewing it";
+            statusText_=L"Stage or select a training example before reviewing it";
             return;
         }
         try {
@@ -5437,6 +5444,169 @@ private:
 
         TextLine(L"Runtime",rightX+16,jobsY+jobsH-28,58,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(trainerRuntimeStatus_,rightX+76,jobsY+jobsH-30,rightW-92,20,tinyFmt_.Get(),brush_.cyan.Get());
+    }
+
+
+    void DrawDatasets(float w,float h) {
+        PageTitle(
+            L"Model Lab / Datasets",
+            L"Review, approve, reject, and export the real training examples captured by SARA 1.0.15");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        // Shared Model Lab navigation.
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==2;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        const auto counts=runtime_->trainingReviews.Counts();
+        const auto recent=runtime_->trainingReviews.ListRecent(8);
+        const int total=counts.pending+counts.approved+counts.rejected;
+
+        const float summaryY=y+48.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct DatasetMetric {
+            const wchar_t* label;
+            int value;
+            const wchar_t* sub;
+            ID2D1Brush* accent;
+        };
+        DatasetMetric metrics[]={
+            {L"Captured",total,L"Review records",brush_.cyan.Get()},
+            {L"Needs Review",counts.pending,L"Pending approval",brush_.yellow.Get()},
+            {L"Approved",counts.approved,L"Export-ready",brush_.green.Get()},
+            {L"Rejected",counts.rejected,L"Excluded",brush_.red.Get()}
+        };
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,summaryY,cardW,78,brush_.panel.Get(),brush_.border.Get(),9);
+            target_->FillRectangle(D2D1::RectF(cx+14,summaryY+16,cx+18,summaryY+58),metrics[i].accent);
+            TextLine(metrics[i].label,cx+30,summaryY+10,cardW-44,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(metrics[i].value),cx+30,summaryY+28,cardW-44,28,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+30,summaryY+56,cardW-44,16,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=summaryY+90.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.64f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Review Queue",x+16,bodyY+12,230,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Newest captured examples from the 1.0.15 review store",
+            x+16,bodyY+40,listW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+
+        AddButton(L"training_stage",L"Stage Latest Reply",x+listW-292,bodyY+12,132,28,true);
+        AddButton(L"training_export",L"Export Approved",x+listW-152,bodyY+12,136,28,false);
+
+        TextLine(L"STATUS",x+18,bodyY+72,66,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PERSONA",x+94,bodyY+72,96,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"INPUT / CAPTURE",x+202,bodyY+72,listW-324,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"CREATED",x+listW-112,bodyY+72,94,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        auto shorten=[](std::string value,size_t maxLen) {
+            for(char& ch:value) if(ch=='\n' || ch=='\r' || ch=='\t') ch=' ';
+            if(value.size()>maxLen) value=value.substr(0,maxLen-3)+"...";
+            return value;
+        };
+
+        float rowY=bodyY+94.0f;
+        if(recent.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No captured training examples yet. Open Train or Simulation, create a reply, then choose Stage Latest Reply.",
+                x+26,rowY+9,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& item:recent) {
+                const bool selected=item.id==selectedTrainingReviewId_;
+                ID2D1Brush* statusBrush=
+                    item.status==sentinel::simulation::TrainingReviewStatus::Approved?brush_.green.Get():
+                    item.status==sentinel::simulation::TrainingReviewStatus::Rejected?brush_.red.Get():
+                    brush_.yellow.Get();
+
+                Rounded(x+14,rowY,listW-28,52,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(sentinel::simulation::ToString(item.status)),
+                    x+24,rowY+6,66,18,tinyFmt_.Get(),statusBrush);
+                TextLine(Widen(shorten(item.personaName,14)),
+                    x+94,rowY+6,96,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(shorten(item.inputText.empty()?item.outputText:item.inputText,72)),
+                    x+202,rowY+5,listW-324,34,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(shorten(item.createdUtc,16)),
+                    x+listW-112,rowY+6,94,18,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+52},L"dataset_item:"+Widen(item.id)});
+                rowY+=58.0f;
+                if(rowY+52>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Example Inspector",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::optional<sentinel::simulation::TrainingReviewItem> selectedItem;
+        if(!selectedTrainingReviewId_.empty())
+            selectedItem=runtime_->trainingReviews.Get(selectedTrainingReviewId_);
+        if(!selectedItem && !recent.empty()) selectedItem=recent.front();
+
+        if(!selectedItem) {
+            TextLine(L"Select or stage a training example to inspect its input, output, persona, and review status.",
+                detailX+16,bodyY+54,detailW-32,66,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& item=*selectedItem;
+            ID2D1Brush* statusBrush=
+                item.status==sentinel::simulation::TrainingReviewStatus::Approved?brush_.green.Get():
+                item.status==sentinel::simulation::TrainingReviewStatus::Rejected?brush_.red.Get():
+                brush_.yellow.Get();
+
+            TextLine(L"Status",detailX+16,bodyY+52,64,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(sentinel::simulation::ToString(item.status)),
+                detailX+86,bodyY+49,detailW-102,22,smallFmt_.Get(),statusBrush);
+
+            TextLine(L"Persona",detailX+16,bodyY+82,64,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(item.personaName),detailX+86,bodyY+79,detailW-102,22,smallFmt_.Get(),brush_.cyan.Get());
+
+            TextLine(L"Model",detailX+16,bodyY+112,64,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(item.modelName),detailX+86,bodyY+109,detailW-102,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Input",detailX+16,bodyY+148,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+168,detailW-28,92,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Text(Widen(item.inputText.empty()?L"(no input text)":Widen(item.inputText)),
+                detailX+26,bodyY+178,detailW-52,72,smallFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Output",detailX+16,bodyY+274,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+294,detailW-28,112,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Text(Widen(item.outputText),
+                detailX+26,bodyY+304,detailW-52,92,smallFmt_.Get(),brush_.text.Get());
+
+            const float actionY=std::min(bodyY+bodyH-42.0f,bodyY+422.0f);
+            AddButton(L"training_approve",L"Approve",detailX+16,actionY,92,30,true);
+            AddButton(L"training_reject",L"Reject",detailX+116,actionY,86,30,false);
+            AddButton(L"training_export",L"Export",detailX+210,actionY,82,30,false);
+        }
+
+        TextLine(L"Dataset export uses the existing reviewed JSONL format. Versioned snapshot/import tools remain quarantined until this recovered workspace is validated.",
+            detailX+16,bodyY+bodyH-58,detailW-32,42,tinyFmt_.Get(),brush_.muted.Get());
     }
 
     void DrawMessaging(float w,float h) {
