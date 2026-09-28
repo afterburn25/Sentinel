@@ -265,6 +265,7 @@ Every future feature restoration must follow this exact sequence:
 - Audit-v2 metadata binding: RESTORED / VALIDATED (Windows Build #768)
 - Agency Server offline persistence: RESTORED / VALIDATED (Windows Build #770)
 - Settings protected model/schema state: RESTORED / VALIDATED (Windows Build #772)
+- Persona Rules & Learning visibility and deterministic trigger precedence: RESTORED / VALIDATED (Windows Build #774)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -317,6 +318,8 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] audit-v2 metadata digest binding while preserving legacy audit-v1 verification
 - [x] Agency Server configuration and sync queue persist locally without enabling network transport
 - [x] Settings surfaces applied schema and protected local-model verification-marker state without blocking startup
+- [x] saved persona response rules visible and manageable inside Personas / Rules & Learning
+- [x] deterministic response-rule precedence with Exact > Contains > Smart and newest-rule true-tie behavior
 
 ### Still genuinely later-only / not yet restored
 
@@ -396,3 +399,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Audit-v2 metadata checkpoint: PASS — run #768 / commit `842ac592a1b39fba241dd5b566dd764274a2a024`
 - Agency Server offline persistence checkpoint: PASS — run #770 / commit `d25c117e531f28fd873ea163ad9e771521f03f66`
 - Settings checkpoint: PASS — run #772 / commit `4764220f9a46fd72913d6e060d05023635389fa6`
+- Persona Rules & Learning checkpoint: PASS — run #774 / commit `dec2a20ab770572e82e5a2bdc882e07c4b1b6f6c`

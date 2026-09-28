@@ -409,3 +409,53 @@ Artifact digests from run #772:
 - UI screenshots: `sha256:ca86a9424a497cd7fa5cf60c5a3daeb6a2f900b555a3c0cf53036c86b9425875`
 
 This is the validated rollback point for the full recovered permanent operational shell through Settings.
+
+## Checkpoint 09 — Persona Rules & Learning and deterministic trigger precedence validated
+
+Validated commit:
+
+`dec2a20ab770572e82e5a2bdc882e07c4b1b6f6c`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #774
+- Run ID: `36442718859`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Persona Rules & Learning architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- response-rule matcher unit tests: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- dedicated packaged Persona Rules & Learning UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Persona response-rule recovery proven by this checkpoint:
+
+- Personas now contains a first-class internal `Rules & Learning` tab
+- saved rules are visible with rule ID, match type, wording mode, priority, trigger and response preview
+- rules can be opened back into the editor, enabled/disabled, or deleted
+- Smart, Contains and Exact rule creation are all visible in the normal workflow
+- exact wording vs persona-voice variation is visible and operator-controlled
+- Learning Mode is visible in the same persona-scoped workspace
+- Model Lab Overview links into the dedicated Persona rules workspace instead of hiding rules behind a count
+- matching precedence is deterministic: explicit priority first, then Exact > Contains > Smart, then score, specificity, and newest-rule tie break
+- a newly added equal-priority rule wins a true tie instead of being silently shadowed by the oldest rule
+- a 100% Smart match no longer short-circuits a same-priority Exact rule
+- unit tests cover punctuation normalization, typo/contraction smart matching, unrelated-input rejection, match-type precedence, rule priority and newest-rule tie behavior
+- CI captures `06b-persona-rules-learning.png` from the packaged executable
+
+Artifact digests from run #774:
+
+- Windows package: `sha256:877ce53aacf6eb7d01ae81fa335fca95087697918bf9b5b3507e2755542e26a7`
+- Setup artifact: `sha256:1579355ec19dd2119ea6224ebd9be0f22ec8ba1395632161be5bd390730ec2c5`
+- UI screenshots: `sha256:3c542edcfa9bf6c744d6f8486ba0a08488ab349e2b947e6b73b8dd4e9f5f0a63`
+
+This is the validated rollback point through visible, deterministic persona response rules.
