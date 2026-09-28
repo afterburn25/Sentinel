@@ -459,3 +459,53 @@ Artifact digests from run #774:
 - UI screenshots: `sha256:3c542edcfa9bf6c744d6f8486ba0a08488ab349e2b947e6b73b8dd4e9f5f0a63`
 
 This is the validated rollback point through visible, deterministic persona response rules.
+
+## Checkpoint 10 — Conversational Trainer persistence and review-before-apply workflow validated
+
+Validated commit:
+
+`c8d0fb6ba902e01880b0ec460c748b79635abc80`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #781
+- Run ID: `36448925218`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- conversational Trainer architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- Trainer dialogue persistence/unit tests: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged Trainer UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Conversational Trainer recovery proven by this checkpoint:
+
+- Trainer conversations persist in SQLite by persona and training mode
+- investigator/trainer and SARA Trainer turns are retained as an actual conversation history
+- starting a new session archives the prior active session instead of deleting it
+- Behavior Tuning produces a preview payload rather than silently changing the persona
+- Behavior previews require an explicit Apply action before profile parameters are saved
+- applied preview state persists and is visible in Trainer history
+- Dataset/Correction instructions can stage the most recent reviewed Simulation reply
+- Persona LoRA and Foundation Fork goals are captured in Trainer conversation before queueing jobs
+- Evaluation/Test intent is captured without pretending unsupported Preference/DPO weight training is active
+- queued jobs can carry the originating Trainer dialogue session ID
+- the existing active model/foundation/LoRA runtime is not modified merely by chatting with the Trainer
+- the packaged window keeps the permanent SARA sidebar and Model Lab tab structure intact
+
+Artifact digests from run #781:
+
+- Windows package: `sha256:49d65a58015d72897578229c6890a894a925aefa4b4b39e953ab6e7bf4c73378`
+- unsigned-development Setup artifact: `sha256:e38d47fc659b19144f5585b2118069ca7ced2b6a42852665ca547ee7470feb56`
+- UI screenshots: `sha256:faae882b11195601706004d75d01cda580f0f88b6d23300c65905661cc6bf977`
+
+This is the validated rollback point through the persistent conversational Trainer workflow.
