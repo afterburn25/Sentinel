@@ -1324,6 +1324,7 @@ public:
             else if (b.id==L"ml_jobs") { page_=Page::ModelLabJobs; ApplyPageControls(); }
             else if (b.id==L"ml_evaluation") { page_=Page::ModelLabEvaluation; ApplyPageControls(); }
             else if (b.id==L"ml_deployment") { page_=Page::ModelLabDeployment; ApplyPageControls(); }
+            else if (b.id==L"ml_diagnostics_export") ExportModelLabDiagnostics();
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
@@ -5764,6 +5765,180 @@ private:
         }
     }
 
+
+    static std::string CurrentUtcText() {
+        SYSTEMTIME st{};
+        GetSystemTime(&st);
+        char buffer[40]{};
+        sprintf_s(
+            buffer,sizeof(buffer),
+            "%04u-%02u-%02uT%02u:%02u:%02uZ",
+            st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond);
+        return buffer;
+    }
+
+    void ExportModelLabDiagnostics() {
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-Recovery-Model-Lab-Diagnostics.txt");
+
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        if(!out) {
+            statusText_=L"Could not create diagnostics file";
+            return;
+        }
+
+        const auto reviewCounts=runtime_->trainingReviews.Counts();
+        const auto jobs=runtime_->trainer.ListJobs(50);
+        const auto foundations=runtime_->trainer.ListFoundations();
+        const auto loras=runtime_->trainer.ListPersonaLoras(simSettings_.persona.name,50);
+        const auto rules=PersonaResponseRules(50);
+
+        out<<"SARA MODEL LAB RECOVERY DIAGNOSTICS\n";
+        out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
+        out<<"Compiled version: "<<SARA_VERSION_STR<<"\n";
+        out<<"Recovery branch contract: sara-recovery-from-1.0.15\n\n";
+
+        out<<"RUNTIME\n";
+        out<<"Model status: "<<Narrow(modelStatus_)<<"\n";
+        out<<"Trainer runtime: "<<Narrow(trainerRuntimeStatus_)<<"\n";
+        out<<"Endpoint: "<<simSettings_.endpoint<<"\n";
+        out<<"Model: "<<simSettings_.model<<"\n";
+        out<<"Current conversation: "<<currentConversationId_<<"\n";
+        out<<"Current title: "<<Narrow(currentConversationTitle_)<<"\n";
+        out<<"Jurisdiction status: "<<Narrow(jurisdictionStatus_)<<"\n\n";
+
+        out<<"PERSONA\n";
+        out<<"Name: "<<simSettings_.persona.name<<"\n";
+        out<<"Age: "<<simSettings_.persona.age<<"\n";
+        out<<"Location: "<<simSettings_.persona.location<<"\n";
+        out<<"Personality: "<<simSettings_.persona.personality<<"\n";
+        out<<"Social style: "<<simSettings_.persona.socialStyle<<"\n";
+        out<<"Confidence: "<<simSettings_.persona.confidenceLevel<<"\n";
+        out<<"Writing style: "<<simSettings_.persona.writingStyle<<"\n";
+        out<<"Communication: "<<simSettings_.persona.communicationLevel<<"\n";
+        out<<"Cognitive level: "<<simSettings_.persona.cognitiveLevel<<"\n";
+        out<<"Slang: "<<simSettings_.persona.slangLevel<<"\n";
+        out<<"Grammar: "<<simSettings_.persona.grammarQuality<<"\n";
+        out<<"Typos: "<<simSettings_.persona.typoFrequency<<"\n";
+        out<<"Emoji: "<<simSettings_.persona.emojiLevel<<"\n";
+        out<<"Response delay: "<<simSettings_.persona.responseStartMinMs
+           <<"-"<<simSettings_.persona.responseStartMaxMs<<" ms\n";
+        out<<"Learning mode: "<<(simSettings_.learningMode?"on":"off")<<"\n\n";
+
+        out<<"MODEL LAB COUNTS\n";
+        out<<"Saved personas: "<<runtime_->personaProfiles.ListNames().size()<<"\n";
+        out<<"Foundations: "<<foundations.size()<<"\n";
+        out<<"Persona LoRA versions: "<<loras.size()<<"\n";
+        out<<"Review pending: "<<reviewCounts.pending<<"\n";
+        out<<"Review approved: "<<reviewCounts.approved<<"\n";
+        out<<"Review rejected: "<<reviewCounts.rejected<<"\n";
+        out<<"Versioned training examples: "<<trainingData_.Examples().size()<<"\n";
+        out<<"Dataset snapshots: "<<trainingData_.Snapshots().size()<<"\n";
+        out<<"Training jobs: "<<jobs.size()<<"\n";
+        out<<"Registered models: "<<modelRegistry_.Models().size()<<"\n";
+        out<<"Evaluation runs: "<<evaluationRuns_.Runs().size()<<"\n";
+        out<<"Deployment packages: "<<deploymentRegistry_.Packages().size()<<"\n";
+        out<<"Enabled response rules: "<<PersonaResponseRuleCount()<<"\n\n";
+
+        out<<"FOUNDATIONS\n";
+        for(const auto& foundation:foundations) {
+            out<<foundation.id<<" | "<<foundation.name<<" v"<<foundation.version
+               <<" | "<<foundation.status
+               <<" | parent="<<foundation.parentId
+               <<" | source="<<foundation.sourceModel
+               <<" | trainable="<<foundation.trainableSourcePath
+               <<" | runtime="<<foundation.runtimeGgufPath<<"\n";
+        }
+
+        out<<"\nPERSONA LORA VERSIONS\n";
+        for(const auto& lora:loras) {
+            out<<lora.id<<" | "<<lora.loraName
+               <<" | foundation="<<lora.foundationId
+               <<" | active="<<(lora.active?"yes":"no")
+               <<" | weight="<<lora.weight
+               <<" | path="<<lora.loraPath<<"\n";
+        }
+
+        out<<"\nRESPONSE RULES\n";
+        for(const auto& rule:rules) {
+            out<<rule.id<<" | "<<rule.matchType
+               <<" | mode="<<rule.responseMode
+               <<" | enabled="<<(rule.enabled?"yes":"no")
+               <<" | trigger="<<rule.trigger
+               <<" | response="<<rule.response<<"\n";
+        }
+
+        out<<"\nDATASET SNAPSHOTS\n";
+        for(const auto& snapshot:trainingData_.Snapshots()) {
+            out<<snapshot.id<<" | "<<snapshot.name
+               <<" | parent="<<snapshot.parentId
+               <<" | created="<<snapshot.createdUtc
+               <<" | examples="<<snapshot.exampleIds.size()<<"\n";
+        }
+
+        out<<"\nTRAINING JOBS\n";
+        for(const auto& job:jobs) {
+            out<<job.id<<" | "<<sentinel::simulation::ToString(job.mode)
+               <<" | "<<job.targetName
+               <<" | persona="<<job.personaName
+               <<" | state="<<job.state
+               <<" | progress="<<job.progress
+               <<" | created="<<job.createdUtc
+               <<" | started="<<job.startedUtc
+               <<" | completed="<<job.completedUtc;
+            if(!job.errorText.empty()) out<<" | error="<<job.errorText;
+            out<<"\n";
+        }
+
+        out<<"\nEVALUATION RUNS\n";
+        for(const auto& run:evaluationRuns_.Runs()) {
+            out<<run.id<<" | candidate="<<run.candidateName
+               <<" | foundation="<<run.foundationName
+               <<" | adapter="<<run.adapterName
+               <<" | score="<<run.overallScore
+               <<" | previous="<<run.previousOverallScore
+               <<" | delta="<<run.regressionDelta
+               <<" | warnings="<<run.warnings.size()<<"\n";
+        }
+
+        out<<"\nDEPLOYMENT PACKAGES\n";
+        for(const auto& package:deploymentRegistry_.Packages()) {
+            out<<package.id<<" | "<<sentinel::simulation::ToString(package.stage)
+               <<" | candidate="<<package.candidateName
+               <<" | foundation="<<package.foundationName
+               <<" | adapter="<<package.adapterName
+               <<" | persona="<<package.personaName
+               <<" | evaluation="<<package.evaluationRunId
+               <<" | score="<<package.evaluationScore
+               <<" | locked="<<(package.versionLocked?"yes":"no")
+               <<" | previous="<<package.previousDeploymentId<<"\n";
+        }
+
+        out<<"\nRECENT CONVERSATION\n";
+        const size_t historyStart=simContext_.history.size()>20?simContext_.history.size()-20:0;
+        for(size_t i=historyStart;i<simContext_.history.size();++i) {
+            const auto& turn=simContext_.history[i];
+            const char* speaker=
+                turn.speaker==sentinel::simulation::ChatTurn::Speaker::Investigator?"Investigator":
+                turn.speaker==sentinel::simulation::ChatTurn::Speaker::SyntheticSubject?"SARA":
+                "Model Suggestion";
+            out<<speaker<<": "<<turn.text<<"\n";
+        }
+
+        out.close();
+        statusText_=L"Model Lab diagnostics exported";
+    }
+
     void DrawModelLab(float w,float h) {
         PageTitle(
             L"Model Lab - Executive Dashboard",
@@ -5801,7 +5976,7 @@ private:
         const auto jobs=runtime_->trainer.ListJobs(8);
         size_t runningJobs=0;
         for(const auto& job:jobs) {
-            if(job.state=="running" || job.state=="queued") ++runningJobs;
+            if(job.state=="RUNNING" || job.state=="QUEUED") ++runningJobs;
         }
 
         // Hero / current context.
@@ -5874,14 +6049,14 @@ private:
                 const auto& job=jobs[i];
                 Rounded(x+14,jy,leftW-28,32,brush_.sidebar.Get(),brush_.border.Get(),6);
                 StatusDot(x+28,jy+16,4,
-                    job.state=="completed"?brush_.green.Get():
-                    job.state=="running"?brush_.cyan.Get():brush_.yellow.Get());
+                    job.state=="COMPLETED"?brush_.green.Get():
+                    job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get());
                 TextLine(Widen(job.targetName),x+40,jy+5,leftW*0.43f,20,tinyFmt_.Get(),brush_.text.Get());
                 TextLine(Widen(sentinel::simulation::ToString(job.mode)),
                     x+leftW*0.47f,jy+5,leftW*0.25f,20,tinyFmt_.Get(),brush_.muted.Get());
                 TextLine(Widen(job.state)+L"  "+std::to_wstring(job.progress)+L"%",
                     x+leftW-132,jy+5,104,20,tinyFmt_.Get(),
-                    job.state=="completed"?brush_.green.Get():brush_.cyan.Get(),
+                    job.state=="COMPLETED"?brush_.green.Get():brush_.cyan.Get(),
                     DWRITE_TEXT_ALIGNMENT_TRAILING);
                 jy+=38.0f;
             }
@@ -5947,6 +6122,7 @@ private:
         AddButton(L"model_register",L"Register Model",x+372,quickY+14,112,32,false);
         AddButton(L"model_eval",L"Evaluate",x+494,quickY+14,92,32,false);
         AddButton(L"training_export",L"Export Reviewed",x+596,quickY+14,122,32,false);
+        AddButton(L"ml_diagnostics_export",L"Diagnostics",x+728,quickY+14,102,32,false);
     }
 
     void DrawTrainer(float w,float h) {
@@ -6115,7 +6291,7 @@ private:
                 TextLine(Widen(job.targetName),rightX+24,jy+4,rightW-116,18,tinyFmt_.Get(),brush_.text.Get());
                 TextLine(Widen(job.state)+L"  "+std::to_wstring(job.progress)+L"%",
                     rightX+24,jy+21,rightW-116,16,tinyFmt_.Get(),
-                    job.state=="completed"?brush_.green.Get():brush_.cyan.Get());
+                    job.state=="COMPLETED"?brush_.green.Get():brush_.cyan.Get());
                 TextLine(Widen(sentinel::simulation::ToString(job.mode)),
                     rightX+rightW-100,jy+12,76,18,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
                 jy+=48.0f;
