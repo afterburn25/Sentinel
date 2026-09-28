@@ -44,6 +44,10 @@ struct TrainerJobRecord {
     std::string outputPath;
     std::string state{"DRAFT"};
     int progress{};
+    std::string createdUtc;
+    std::string startedUtc;
+    std::string completedUtc;
+    std::string errorText;
 };
 
 class TrainerStore {
