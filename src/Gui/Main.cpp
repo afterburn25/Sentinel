@@ -6294,11 +6294,12 @@ private:
             const wchar_t* sub;
             ID2D1Brush* accent;
         };
+        const std::wstring snapshotSub=L"Rejected "+std::to_wstring(counts.rejected);
         DatasetMetric metrics[]={
             {L"Captured",total,L"Review records",brush_.cyan.Get()},
             {L"Needs Review",counts.pending,L"Pending approval",brush_.yellow.Get()},
             {L"Approved",counts.approved,L"Export-ready",brush_.green.Get()},
-            {L"Rejected",counts.rejected,L"Excluded",brush_.red.Get()}
+            {L"Snapshots",(int)trainingData_.Snapshots().size(),snapshotSub.c_str(),brush_.blue.Get()}
         };
         for(int i=0;i<4;i++) {
             const float cx=x+i*(cardW+gap);
@@ -6320,8 +6321,10 @@ private:
         TextLine(L"Newest captured examples from the 1.0.15 review store",
             x+16,bodyY+40,listW-32,20,tinyFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"training_stage",L"Stage Latest Reply",x+listW-292,bodyY+12,132,28,true);
-        AddButton(L"training_export",L"Export Approved",x+listW-152,bodyY+12,136,28,false);
+        AddButton(L"training_stage",L"Stage Latest",x+listW-360,bodyY+12,102,28,true);
+        AddButton(L"dataset_snapshot",L"Snapshot",x+listW-250,bodyY+12,74,28,false);
+        AddButton(L"dataset_import_snapshot",L"Import",x+listW-168,bodyY+12,66,28,false);
+        AddButton(L"training_export",L"JSONL",x+listW-94,bodyY+12,78,28,false);
 
         TextLine(L"STATUS",x+18,bodyY+72,66,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"PERSONA",x+94,bodyY+72,96,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -6403,13 +6406,24 @@ private:
                 detailX+26,bodyY+304,detailW-52,92,smallFmt_.Get(),brush_.text.Get());
 
             const float actionY=std::min(bodyY+bodyH-42.0f,bodyY+422.0f);
-            AddButton(L"training_approve",L"Approve",detailX+16,actionY,92,30,true);
-            AddButton(L"training_reject",L"Reject",detailX+116,actionY,86,30,false);
-            AddButton(L"training_export",L"Export",detailX+210,actionY,82,30,false);
+            AddButton(L"training_approve",L"Approve",detailX+16,actionY,76,30,true);
+            AddButton(L"training_reject",L"Reject",detailX+100,actionY,70,30,false);
+            AddButton(L"dataset_export_snapshot",L"Snapshot File",detailX+178,actionY,104,30,false);
         }
 
-        TextLine(L"Dataset export uses the existing reviewed JSONL format. Versioned snapshot/import tools remain quarantined until this recovered workspace is validated.",
-            detailX+16,bodyY+bodyH-58,detailW-32,42,tinyFmt_.Get(),brush_.muted.Get());
+        if(selectedDatasetSnapshot_>=0 &&
+           selectedDatasetSnapshot_<(int)trainingData_.Snapshots().size()) {
+            const auto& snapshot=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+            std::wstring line=L"Snapshot: "+Widen(snapshot.name)+
+                L" | "+std::to_wstring(snapshot.exampleIds.size())+L" examples";
+            if(!snapshot.parentId.empty()) line+=L" | parent "+Widen(snapshot.parentId);
+            TextLine(line,detailX+16,bodyY+bodyH-58,detailW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Portable .sara-dataset import/export enabled; IDs are de-duplicated on repeated import.",
+                detailX+16,bodyY+bodyH-36,detailW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            TextLine(L"No versioned snapshot yet. Approve examples, then choose Snapshot.",
+                detailX+16,bodyY+bodyH-50,detailW-32,24,tinyFmt_.Get(),brush_.muted.Get());
+        }
     }
 
 
