@@ -1386,8 +1386,15 @@ public:
             }
             else if (b.id.rfind(L"persona_row:",0)==0) {
                 selectedModelLabPersonaName_=Narrow(b.id.substr(12));
+                selectedModelLabLoraId_=0;
                 statusText_=L"Persona selected: "+b.id.substr(12);
             }
+            else if (b.id.rfind(L"persona_lora_row:",0)==0) {
+                selectedModelLabLoraId_=std::stoll(b.id.substr(17));
+                statusText_=L"Persona LoRA version selected";
+            }
+            else if (b.id==L"persona_lora_activate") ActivateSelectedPersonaLoraVersion();
+            else if (b.id==L"persona_lora_export") ExportSelectedPersonaLoraManifest();
             else if (b.id==L"persona_use_selected") {
                 if(selectedModelLabPersonaName_.empty()) {
                     statusText_=L"Select a persona first";
@@ -1772,6 +1779,7 @@ private:
     std::vector<sentinel::simulation::ModelFoundation> trainerFoundations_;
     std::wstring trainerRuntimeStatus_=L"No persona LoRA active";
     std::string selectedModelLabPersonaName_;
+    long long selectedModelLabLoraId_{0};
     std::string selectedModelLabFoundationId_;
     std::string selectedModelLabJobId_;
     bool trainerAdvancedOpen_{false};
@@ -6427,6 +6435,68 @@ private:
     }
 
 
+
+    void ActivateSelectedPersonaLoraVersion() {
+        if(selectedModelLabLoraId_<=0) {
+            statusText_=L"Select a LoRA version first";
+            return;
+        }
+        auto binding=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+        if(!binding) {
+            statusText_=L"Selected LoRA version no longer exists";
+            return;
+        }
+        if(!runtime_->trainer.ActivatePersonaLora(selectedModelLabLoraId_)) {
+            statusText_=L"Could not activate selected LoRA version";
+            return;
+        }
+
+        if(binding->personaName==simSettings_.persona.name)
+            ApplyPersonaRuntimeBinding();
+
+        statusText_=L"Activated LoRA version: "+Widen(binding->loraName);
+    }
+
+    void ExportSelectedPersonaLoraManifest() {
+        if(selectedModelLabLoraId_<=0) {
+            statusText_=L"Select a LoRA version first";
+            return;
+        }
+        auto binding=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+        if(!binding) {
+            statusText_=L"Selected LoRA version no longer exists";
+            return;
+        }
+
+        const auto manifest=runtime_->trainer.BuildPersonaLoraManifest(selectedModelLabLoraId_);
+        if(manifest.empty()) {
+            statusText_=L"Could not build LoRA metadata manifest";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(binding->personaName+"-"+binding->loraName+".sara-lora.json");
+        for(auto& ch:defaultName) {
+            if(ch==L'\\' || ch==L'/' || ch==L':' || ch==L'*' || ch==L'?' ||
+               ch==L'"' || ch==L'<' || ch==L'>' || ch==L'|') ch=L'-';
+        }
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA LoRA Metadata\0*.json\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"json";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<manifest;
+        statusText_=L"LoRA metadata exported";
+    }
+
     void DrawPersonasLoras(float w,float h) {
         PageTitle(
             L"Model Lab / Personas & LoRAs",
@@ -6574,6 +6644,15 @@ private:
             const auto& p=*selectedProfile;
             auto activeLora=runtime_->trainer.ResolvePersonaLora(p.name);
             auto loras=runtime_->trainer.ListPersonaLoras(p.name,4);
+            if(!loras.empty()) {
+                const bool selectedExists=std::any_of(loras.begin(),loras.end(),[&](const auto& item){
+                    return item.id==selectedModelLabLoraId_;
+                });
+                if(!selectedExists)
+                    selectedModelLabLoraId_=activeLora?activeLora->id:loras.front().id;
+            } else {
+                selectedModelLabLoraId_=0;
+            }
 
             TextLine(Widen(p.name),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
             TextLine(L"Age "+std::to_wstring(p.age)+L"  |  "+Widen(p.location),
@@ -6619,18 +6698,29 @@ private:
                     detailX+16,ly,detailW-32,20,tinyFmt_.Get(),brush_.muted.Get());
             } else {
                 for(const auto& lora:loras) {
-                    Rounded(detailX+14,ly,detailW-28,28,brush_.sidebar.Get(),brush_.border.Get(),6);
+                    const bool selectedLora=lora.id==selectedModelLabLoraId_;
+                    Rounded(detailX+14,ly,detailW-28,28,
+                        selectedLora?brush_.panel2.Get():brush_.sidebar.Get(),
+                        selectedLora?brush_.cyan.Get():brush_.border.Get(),6);
                     TextLine(Widen(lora.loraName),detailX+24,ly+4,detailW-118,18,tinyFmt_.Get(),brush_.text.Get());
                     TextLine(lora.active?L"ACTIVE":L"INACTIVE",
                         detailX+detailW-96,ly+4,72,18,tinyFmt_.Get(),
                         lora.active?brush_.green.Get():brush_.muted.Get(),
                         DWRITE_TEXT_ALIGNMENT_TRAILING);
+                    buttons_.push_back({
+                        {detailX+14,ly,detailX+detailW-14,ly+28},
+                        L"persona_lora_row:"+std::to_wstring(lora.id)
+                    });
                     ly+=34.0f;
-                    if(ly+28>bodyY+bodyH-62) break;
+                    if(ly+28>bodyY+bodyH-94) break;
                 }
             }
 
             const float actionY=bodyY+bodyH-42.0f;
+            if(selectedModelLabLoraId_>0) {
+                AddButton(L"persona_lora_activate",L"Activate Version",detailX+16,actionY-36,118,28,false);
+                AddButton(L"persona_lora_export",L"Export Metadata",detailX+142,actionY-36,118,28,false);
+            }
             AddButton(L"persona_use_selected",L"Use Persona",detailX+16,actionY,92,30,true);
             AddButton(L"persona_edit_selected",L"Edit",detailX+116,actionY,66,30,false);
             AddButton(L"persona_train_selected",L"Train LoRA",detailX+190,actionY,88,30,false);
