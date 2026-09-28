@@ -1500,6 +1500,7 @@ public:
             else if (b.id==L"trainer_bind_lora") BindCurrentPersonaLoraFromTrainer();
             else if (b.id==L"trainer_queue") QueueTrainerJobFromControls();
             else if (b.id==L"trainer_run_latest") RunLatestQueuedTrainerJob();
+            else if (b.id==L"trainer_setup_env") PrepareTrainerEnvironment();
             else if (b.id==L"trainer_apply_instruction") SendTrainerConversationMessage();
             else if (b.id==L"trainer_apply_preview") ApplyLatestTrainerBehaviorPreview();
             else if (b.id==L"trainer_new_session") StartNewTrainerConversation();
@@ -4395,6 +4396,32 @@ private:
         return value.empty()?"training":value;
     }
 
+    bool TrainerEnvironmentReady() const {
+        return
+            std::filesystem::exists(runtime_->root/"trainer-venv"/"Scripts"/"python.exe") &&
+            std::filesystem::exists(runtime_->root/"trainer-env.version");
+    }
+
+    void PrepareTrainerEnvironment() {
+        const auto script=ExeDir()/L"trainer"/L"Setup-SARA-Trainer.ps1";
+        if(!std::filesystem::exists(script)) {
+            statusText_=L"Trainer environment setup script is missing";
+            return;
+        }
+
+        const std::wstring params=
+            L"-NoProfile -ExecutionPolicy Bypass -File \""+script.wstring()+
+            L"\" -DataRoot \""+runtime_->root.wstring()+L"\"";
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",L"powershell.exe",params.c_str(),
+            (ExeDir()/L"trainer").c_str(),SW_SHOWNORMAL);
+        if(rc<=32) {
+            statusText_=L"Unable to launch SARA Trainer environment setup";
+            return;
+        }
+        statusText_=L"Trainer environment setup launched; return here after it completes";
+    }
+
     std::filesystem::path AutoExportTrainerDataset() {
         const auto dir=runtime_->root/"trainer-datasets";
         std::filesystem::create_directories(dir);
@@ -4487,7 +4514,14 @@ private:
                     " using the approved "+simSettings_.persona.name+
                     " dataset. Active runtime remains unchanged until training, evaluation, and activation complete.");
             }
-            statusText_=L"Training job queued: "+Widen(job.id);
+            if((mode==sentinel::simulation::TrainingMode::PersonaLora ||
+                mode==sentinel::simulation::TrainingMode::FoundationSft) &&
+               !TrainerEnvironmentReady())
+            {
+                statusText_=L"Training job queued; select Prepare Env before running weight training";
+            } else {
+                statusText_=L"Training job queued: "+Widen(job.id);
+            }
         } catch(const std::exception& e) {
             statusText_=L"Training job could not be queued: "+Widen(e.what());
         }
@@ -4500,6 +4534,14 @@ private:
         });
         if(it==jobs.end()) {
             statusText_=L"No queued trainer job is waiting to run";
+            return;
+        }
+
+        if((it->mode==sentinel::simulation::TrainingMode::PersonaLora ||
+            it->mode==sentinel::simulation::TrainingMode::FoundationSft) &&
+           !TrainerEnvironmentReady())
+        {
+            statusText_=L"Trainer environment is not ready; select Prepare Env before running this weight-training job";
             return;
         }
 
@@ -7791,8 +7833,12 @@ private:
         const float jobsY=pipelineY+pipelineH+12.0f;
         const float jobsH=std::max(132.0f,bodyH-(jobsY-bodyY));
         Rounded(rightX,jobsY,rightW,jobsH,brush_.panel.Get(),brush_.border.Get(),11);
-        TextLine(L"Training Jobs",rightX+16,jobsY+10,rightW-132,26,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"trainer_run_latest",L"Run Latest",rightX+rightW-104,jobsY+10,88,26,false);
+        TextLine(L"Training Jobs",rightX+16,jobsY+10,rightW-190,26,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(
+            L"trainer_setup_env",
+            TrainerEnvironmentReady()?L"Env Ready":L"Prepare Env",
+            rightX+rightW-186,jobsY+10,88,26,TrainerEnvironmentReady());
+        AddButton(L"trainer_run_latest",L"Run",rightX+rightW-92,jobsY+10,76,26,false);
 
         auto jobs=runtime_->trainer.ListJobs(4);
         float jy=jobsY+44.0f;
@@ -7813,7 +7859,12 @@ private:
         }
 
         TextLine(L"Runtime",rightX+16,jobsY+jobsH-28,58,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(trainerRuntimeStatus_,rightX+76,jobsY+jobsH-30,rightW-92,20,tinyFmt_.Get(),brush_.cyan.Get());
+        const std::wstring runtimeSummary=
+            trainerRuntimeStatus_+
+            (TrainerEnvironmentReady()?L" | env ready":L" | env setup needed");
+        TextLine(
+            runtimeSummary,rightX+76,jobsY+jobsH-30,rightW-92,20,tinyFmt_.Get(),
+            TrainerEnvironmentReady()?brush_.cyan.Get():brush_.yellow.Get());
     }
 
 

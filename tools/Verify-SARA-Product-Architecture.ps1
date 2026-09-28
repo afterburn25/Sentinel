@@ -129,6 +129,8 @@ $trainerWorkflowTokens = @(
     'trainer_apply_instruction',
     'trainer_apply_preview',
     'trainer_new_session',
+    'trainer_setup_env',
+    'ExportApprovedJsonlForPersona',
     'L"Behavior Tuning"',
     'L"Evaluation / Test"',
     'EnsureDialogueSession('
