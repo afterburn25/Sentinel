@@ -26,6 +26,7 @@
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/AutomationEngine.hpp"
 #include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
+#include "Sentinel/Channels/LocalSimulationChannelAdapter.hpp"
 #include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 #include "Sentinel/Update/UpdateService.hpp"
@@ -1217,6 +1218,8 @@ public:
         LoadPersonaMedia();
 
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
+        runtime_->channelAdapters.Register(
+            std::make_unique<sentinel::channels::LocalSimulationChannelAdapter>(*messagingAdapter_));
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         trainingData_.Load(runtime_->root/"training-data.tsv");
@@ -8519,74 +8522,230 @@ private:
     }
 
     void DrawMessaging(float w,float h) {
-        PageTitle(L"Channels & Messaging",L"Provider-neutral conversations, attachments, operator approval, and channel handoff");
+        PageTitle(
+            L"Channels & Messaging",
+            L"Provider-neutral adapter readiness, human-approved routing, attachments, and channel handoff");
+
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
-        const float contentW=w-x-28.0f;
         const float gap=14.0f;
-        const float infoW=(contentW-gap)*0.42f;
-        const float queueW=contentW-gap-infoW;
+        const float contentW=w-x-28.0f;
 
-        Rounded(x,y,infoW,238,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Adapter Status",x+18,y+12,infoW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        const auto adapters=runtime_->channelAdapters.All();
+        size_t connectedAdapters=0;
+        for(const auto* adapter:adapters)
+            if(adapter && adapter->Connected()) ++connectedAdapters;
 
-        TextLine(L"Provider",x+20,y+56,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(messagingAdapter_?messagingAdapter_->ProviderName():"Not configured"),
-            x+122,y+54,infoW-142,28,smallFmt_.Get(),brush_.text.Get());
+        auto msgs=messagingAdapter_
+            ? messagingAdapter_->Poll("local-sim")
+            : std::vector<sentinel::operations::NormalizedMessage>{};
 
-        TextLine(L"Connection",x+20,y+94,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        StatusDot(x+130,y+107,4,messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
-        TextLine(messagingAdapter_&&messagingAdapter_->Connected()?L"Local test adapter online":L"Offline",
-            x+142,y+92,infoW-162,28,smallFmt_.Get(),messagingAdapter_&&messagingAdapter_->Connected()?brush_.green.Get():brush_.red.Get());
+        size_t pendingApprovals=0;
+        for(const auto& approval:approvals_)
+            if(approval.status==sentinel::operations::ApprovalStatus::Pending)
+                ++pendingApprovals;
 
-        TextLine(L"Outbound control",x+20,y+132,96,26,tinyFmt_.Get(),brush_.muted.Get());
-        Text(L"Messages must pass the operator / supervisor approval path before they are queued.",
-            x+122,y+132,infoW-142,48,smallFmt_.Get(),brush_.cyan.Get());
+        const float metricW=(contentW-gap*3.0f)/4.0f;
+        Metric(
+            x,y,metricW,
+            L"Registered Adapters",
+            std::to_wstring(adapters.size()),
+            L"Provider-neutral registry",
+            brush_.cyan.Get(),IconKind::Chat);
+        Metric(
+            x+metricW+gap,y,metricW,
+            L"Connected",
+            std::to_wstring(connectedAdapters),
+            L"Available transports",
+            connectedAdapters?brush_.green.Get():brush_.yellow.Get(),
+            IconKind::Check);
+        Metric(
+            x+2.0f*(metricW+gap),y,metricW,
+            L"Pending Approvals",
+            std::to_wstring(pendingApprovals),
+            L"Human review queue",
+            pendingApprovals?brush_.yellow.Get():brush_.green.Get(),
+            IconKind::Shield);
+        Metric(
+            x+3.0f*(metricW+gap),y,metricW,
+            L"Approved Queue",
+            std::to_wstring(msgs.size()),
+            L"Local simulation",
+            brush_.blue.Get(),IconKind::Document);
 
-        Text(L"This development build has no live third-party messaging transport connected.",
-            x+20,y+190,infoW-40,34,tinyFmt_.Get(),brush_.muted.Get());
+        const float mainY=y+92.0f;
+        const float mainH=214.0f;
+        const float leftW=(contentW-gap)*0.53f;
+        const float rightW=contentW-gap-leftW;
+        const float rightX=x+leftW+gap;
 
-        auto msgs=messagingAdapter_?messagingAdapter_->Poll("local-sim"):std::vector<sentinel::operations::NormalizedMessage>{};
-        const float qx=x+infoW+gap;
-        Rounded(qx,y,queueW,238,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Conversation Queue",qx+18,y+12,queueW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"local-sim",qx+18,y+50,150,24,tinyFmt_.Get(),brush_.cyan.Get());
-        TextLine(std::to_wstring(msgs.size())+L" approved / queued",qx+180,y+50,queueW-198,24,tinyFmt_.Get(),brush_.muted.Get());
+        Rounded(x,mainY,leftW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Adapter Registry",x+18,mainY+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        float yy=y+82;
-        if(msgs.empty()) {
-            Rounded(qx+18,yy,queueW-36,50,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No approved messages queued.",qx+32,yy+6,queueW-64,38,bodyFmt_.Get(),brush_.muted.Get());
+        auto capabilityText=[](sentinel::channels::ChannelCapabilities caps) {
+            std::wstring text;
+            auto add=[&](const wchar_t* value) {
+                if(!text.empty()) text+=L" | ";
+                text+=value;
+            };
+            if(caps.Has(sentinel::channels::Capability::ReceiveText) ||
+               caps.Has(sentinel::channels::Capability::SendText)) add(L"TEXT");
+            if(caps.Has(sentinel::channels::Capability::ReceiveImage) ||
+               caps.Has(sentinel::channels::Capability::SendImage) ||
+               caps.Has(sentinel::channels::Capability::ReceiveVideo) ||
+               caps.Has(sentinel::channels::Capability::SendVideo)) add(L"MEDIA");
+            if(caps.Has(sentinel::channels::Capability::TypingIndicator)) add(L"TYPING");
+            if(caps.Has(sentinel::channels::Capability::AutomatedSending)) add(L"AUTO-GATED");
+            if(text.empty()) text=L"NO DECLARED CAPABILITIES";
+            return text;
+        };
+
+        float adapterY=mainY+50.0f;
+        if(adapters.empty()) {
+            Rounded(x+16,adapterY,leftW-32,52,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No channel adapters registered.",x+30,adapterY+7,leftW-60,36,smallFmt_.Get(),brush_.muted.Get());
         } else {
-            for(size_t i=0;i<msgs.size() && i<3;i++) {
-                Rounded(qx+18,yy,queueW-36,46,brush_.sidebar.Get(),brush_.border.Get(),8);
-                std::wstring rowText=Widen(msgs[i].text);
-                if(!msgs[i].mediaPath.empty()) rowText=L"[IMAGE] "+rowText+L" | "+std::filesystem::path(Widen(msgs[i].mediaPath)).filename().wstring();
-                TextLine(rowText,qx+30,yy+4,queueW-60,38,smallFmt_.Get(),brush_.text.Get());
-                yy+=54;
+            for(size_t i=0;i<adapters.size() && i<3;i++) {
+                auto* adapter=adapters[i];
+                if(!adapter) continue;
+                const bool online=adapter->Connected();
+                Rounded(x+14,adapterY,leftW-28,54,brush_.sidebar.Get(),brush_.border.Get(),8);
+                StatusDot(x+28,adapterY+18,4,online?brush_.green.Get():brush_.yellow.Get());
+                TextLine(Widen(adapter->AdapterName()),x+40,adapterY+5,leftW-58,22,smallFmt_.Get(),brush_.text.Get());
+                TextLine(
+                    capabilityText(adapter->Capabilities()),
+                    x+40,adapterY+27,leftW-58,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(
+                    online?L"ONLINE":L"OFFLINE",
+                    x+leftW-86,adapterY+5,58,18,tinyFmt_.Get(),
+                    online?brush_.green.Get():brush_.yellow.Get(),
+                    DWRITE_TEXT_ALIGNMENT_TRAILING);
+                adapterY+=62.0f;
             }
         }
 
-        Rounded(x,y+254,contentW,286,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Operator Workflow",x+18,y+266,contentW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Third-party transports remain disabled until an agency installs and configures an authorized adapter.",
+            x+18,mainY+184,leftW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        const float cardY=y+310;
-        const float stepW=(contentW-76)/3.0f;
-        const wchar_t* stepTitles[]={L"1. Generate",L"2. Approve",L"3. Preserve"};
-        const wchar_t* stepText[]={
-            L"Create a candidate reply in Simulation Lab.",
-            L"Send it through Supervisor for human approval.",
-            L"Preserve the simulation transcript into encrypted case evidence."
-        };
-        for(int i=0;i<3;i++) {
-            float sx=x+20+i*(stepW+18);
-            Rounded(sx,cardY,stepW,112,brush_.sidebar.Get(),brush_.border.Get(),9);
-            TextLine(stepTitles[i],sx+14,cardY+10,stepW-28,24,bodyFmt_.Get(),brush_.cyan.Get());
-            Text(stepText[i],sx+14,cardY+42,stepW-28,54,smallFmt_.Get(),brush_.text.Get());
+        Rounded(rightX,mainY,rightW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Routing Gate",rightX+18,mainY+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+
+        std::wstring caseLabel=L"No case selected";
+        std::wstring subjectLabel=L"No subject selected";
+        if(!cases_.empty()) {
+            caseLabel=Widen(cases_[selectedCase_].caseNumber);
+            const auto caseSubjects=runtime_->subjectIdentity.ListForCase(cases_[selectedCase_].id,1);
+            if(!caseSubjects.empty()) subjectLabel=Widen(caseSubjects.front().displayName);
         }
 
-        AddButton(L"msg_queue",L"Request Approval",x+20,y+442,180,38,true);
-        AddButton(L"sim_preserve",L"Preserve Transcript",x+214,y+442,190,38,false);
+        struct GateRow {
+            const wchar_t* label;
+            std::wstring value;
+            bool ready;
+        };
+        GateRow gates[]={
+            {L"Case",caseLabel,!cases_.empty()},
+            {L"Subject",subjectLabel,subjectLabel!=L"No subject selected"},
+            {L"Jurisdiction",jurisdictionStatus_,jurisdictionStatus_.find(L"No operating")==std::wstring::npos},
+            {L"Outbound",L"Human approval required",true}
+        };
+
+        float gateY=mainY+50.0f;
+        for(const auto& gate:gates) {
+            StatusDot(rightX+24,gateY+10,3,gate.ready?brush_.green.Get():brush_.yellow.Get());
+            TextLine(gate.label,rightX+36,gateY,rightW*0.31f,20,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(
+                gate.value,rightX+rightW*0.36f,gateY-1,rightW*0.58f,22,tinyFmt_.Get(),
+                gate.ready?brush_.text.Get():brush_.yellow.Get(),
+                DWRITE_TEXT_ALIGNMENT_TRAILING);
+            gateY+=30.0f;
+        }
+
+        const float routeButtonGap=8.0f;
+        const float routeButtonW=(rightW-44.0f-routeButtonGap)/2.0f;
+        AddButton(L"dashboard_simulation",L"Simulation Chat",rightX+18,mainY+164,routeButtonW,30,true);
+        AddButton(L"dashboard_supervisor",L"Approvals",rightX+26+routeButtonW,mainY+164,routeButtonW,30,false);
+
+        const float bottomY=mainY+mainH+gap;
+        const float bottomH=std::max(188.0f,h-bottomY-24.0f);
+        const float readinessW=(contentW-gap)*0.53f;
+        const float queueX=x+readinessW+gap;
+        const float queueW=contentW-readinessW-gap;
+
+        Rounded(x,bottomY,readinessW,bottomH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Channel Readiness",x+18,bottomY+12,readinessW-36,28,h1Fmt_.Get(),brush_.text.Get());
+
+        auto connectedType=[&](sentinel::channels::ChannelType type) {
+            const auto found=runtime_->channelAdapters.FindByType(type);
+            return std::any_of(found.begin(),found.end(),[](auto* adapter) {
+                return adapter && adapter->Connected();
+            });
+        };
+
+        struct ReadyChannel {
+            const wchar_t* label;
+            bool ready;
+        };
+        ReadyChannel channels[]={
+            {L"Local Simulation",connectedType(sentinel::channels::ChannelType::LocalSimulation)},
+            {L"SMS / MMS / RCS",
+                connectedType(sentinel::channels::ChannelType::Sms) ||
+                connectedType(sentinel::channels::ChannelType::Mms) ||
+                connectedType(sentinel::channels::ChannelType::Rcs)},
+            {L"Telegram / Discord",
+                connectedType(sentinel::channels::ChannelType::Telegram) ||
+                connectedType(sentinel::channels::ChannelType::Discord)},
+            {L"Messenger / WhatsApp",
+                connectedType(sentinel::channels::ChannelType::Messenger) ||
+                connectedType(sentinel::channels::ChannelType::WhatsApp)},
+            {L"Snapchat Assist / Email",
+                connectedType(sentinel::channels::ChannelType::SnapchatAssist) ||
+                connectedType(sentinel::channels::ChannelType::Email)}
+        };
+
+        float readyY=bottomY+48.0f;
+        for(const auto& channel:channels) {
+            StatusDot(x+26,readyY+10,4,channel.ready?brush_.green.Get():brush_.muted.Get());
+            TextLine(channel.label,x+40,readyY,readinessW*0.52f,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(
+                channel.ready?L"Connected":L"Adapter not configured",
+                x+readinessW*0.57f,readyY,readinessW*0.38f,22,tinyFmt_.Get(),
+                channel.ready?brush_.green.Get():brush_.muted.Get(),
+                DWRITE_TEXT_ALIGNMENT_TRAILING);
+            readyY+=29.0f;
+        }
+
+        TextLine(
+            L"Provider support is capability-driven; adding a transport does not bypass jurisdiction or supervisor gates.",
+            x+18,bottomY+bottomH-30,readinessW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        Rounded(queueX,bottomY,queueW,bottomH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Approved Local Queue",queueX+18,bottomY+12,queueW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            std::to_wstring(msgs.size())+L" approved / queued",
+            queueX+18,bottomY+42,queueW-36,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+        float queueY=bottomY+70.0f;
+        if(msgs.empty()) {
+            Rounded(queueX+16,queueY,queueW-32,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No approved messages queued.",queueX+28,queueY+5,queueW-56,36,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<msgs.size() && i<2;i++) {
+                Rounded(queueX+16,queueY,queueW-32,44,brush_.sidebar.Get(),brush_.border.Get(),8);
+                std::wstring rowText=Widen(msgs[i].text);
+                if(!msgs[i].mediaPath.empty())
+                    rowText=L"[IMAGE] "+rowText+L" | "+std::filesystem::path(Widen(msgs[i].mediaPath)).filename().wstring();
+                TextLine(rowText,queueX+28,queueY+3,queueW-56,36,tinyFmt_.Get(),brush_.text.Get());
+                queueY+=50.0f;
+            }
+        }
+
+        const float actionY=bottomY+bottomH-42.0f;
+        const float actionGap=8.0f;
+        const float actionW=(queueW-44.0f-actionGap)/2.0f;
+        AddButton(L"msg_queue",L"Request Approval",queueX+18,actionY,actionW,30,true);
+        AddButton(L"sim_preserve",L"Preserve",queueX+26+actionW,actionY,actionW,30,false);
     }
 
     void DrawSupervisor(float w,float h) {
