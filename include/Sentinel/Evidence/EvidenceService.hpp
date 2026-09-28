@@ -35,6 +35,28 @@ struct EvidenceSummary {
     Timestamp importedAt{};
 };
 
+enum class EvidenceVerificationState : int {
+    Never = 0,
+    Verified = 1,
+    Failed = 2
+};
+
+struct EvidenceVerificationStatus {
+    EvidenceVerificationState state{EvidenceVerificationState::Never};
+    std::string checkedUtc;
+};
+
+struct EvidenceVerificationResult {
+    bool valid{};
+    bool structureValid{};
+    bool containerHashMatches{};
+    bool authenticated{};
+    bool plaintextHashMatches{};
+    Hash256 observedContainerHash{};
+    Hash256 observedPlaintextHash{};
+    std::string detail;
+};
+
 class EvidenceService {
 public:
     EvidenceService(
@@ -58,6 +80,14 @@ public:
     std::vector<EvidenceSummary> ListForCase(
         const CaseId&,
         std::span<const std::byte> caseKey);
+
+    EvidenceVerificationResult Verify(
+        const EvidenceSummary&,
+        std::span<const std::byte> caseKey,
+        UserId actor);
+
+    [[nodiscard]] EvidenceVerificationStatus LastVerification(
+        const EvidenceId&) const;
 
 private:
     std::filesystem::path root_;

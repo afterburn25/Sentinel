@@ -63,6 +63,14 @@ std::string DecryptFilename(
         plain.size());
 }
 
+std::vector<std::byte> VerificationMetadata(std::string_view text)
+{
+    return {
+        reinterpret_cast<const std::byte*>(text.data()),
+        reinterpret_cast<const std::byte*>(text.data() + text.size())
+    };
+}
+
 }
 
 EvidenceImportResult EvidenceService::Import(
@@ -265,6 +273,100 @@ std::vector<EvidenceSummary> EvidenceService::ListForCase(
 
     sqlite3_finalize(stmt);
     return result;
+}
+
+EvidenceVerificationResult EvidenceService::Verify(
+    const EvidenceSummary& evidence,
+    std::span<const std::byte> caseKey,
+    UserId actor)
+{
+    EvidenceVerificationResult result;
+
+    auto recordFailure=[&](std::string detail) {
+        result.valid=false;
+        result.detail=std::move(detail);
+        audit_.Append({
+            actor,
+            AuditAction::EvidenceIntegrityFailure,
+            "evidence",
+            evidence.id.ToString(),
+            VerificationMetadata(result.detail)
+        });
+        return result;
+    };
+
+    try {
+        result.structureValid=SevContainer::BasicValidate(evidence.storedPath);
+        if(!result.structureValid)
+            return recordFailure("SEV container structure validation failed");
+
+        result.observedContainerHash=hash_.Sha256File(evidence.storedPath);
+        result.containerHashMatches=
+            result.observedContainerHash==evidence.containerHash;
+        if(!result.containerHashMatches)
+            return recordFailure("container SHA-256 does not match the imported evidence record");
+
+        Hash256 plaintextHash{};
+        (void)SevContainer::DecryptFile(
+            evidence.storedPath,
+            caseKey,
+            cipher_,
+            hash_,
+            &plaintextHash);
+        result.authenticated=true;
+        result.observedPlaintextHash=plaintextHash;
+        result.plaintextHashMatches=
+            plaintextHash==evidence.originalHash;
+        if(!result.plaintextHashMatches)
+            return recordFailure("decrypted plaintext SHA-256 does not match the imported evidence record");
+
+        result.valid=true;
+        result.detail="container structure, AES-GCM authentication, container SHA-256 and plaintext SHA-256 verified";
+        const std::string metadata=
+            result.detail+
+            "; container_sha256="+result.observedContainerHash.ToHex()+
+            "; plaintext_sha256="+result.observedPlaintextHash.ToHex();
+        audit_.Append({
+            actor,
+            AuditAction::EvidenceVerified,
+            "evidence",
+            evidence.id.ToString(),
+            VerificationMetadata(metadata)
+        });
+        return result;
+    }
+    catch(const std::exception& e) {
+        return recordFailure(e.what());
+    }
+}
+
+EvidenceVerificationStatus EvidenceService::LastVerification(
+    const EvidenceId& evidenceId) const
+{
+    EvidenceVerificationStatus status;
+    sqlite3_stmt* stmt{};
+    const char* sql=
+        "SELECT action,timestamp FROM audit_records "
+        "WHERE target_type='evidence' AND target_id=?1 AND action IN (?2,?3) "
+        "ORDER BY sequence DESC LIMIT 1";
+    if(sqlite3_prepare_v2(db_.Handle(),sql,-1,&stmt,nullptr)!=SQLITE_OK)
+        return status;
+
+    const auto id=evidenceId.ToString();
+    sqlite3_bind_text(stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt,2,(int)AuditAction::EvidenceVerified);
+    sqlite3_bind_int(stmt,3,(int)AuditAction::EvidenceIntegrityFailure);
+
+    if(sqlite3_step(stmt)==SQLITE_ROW) {
+        const auto action=(AuditAction)sqlite3_column_int(stmt,0);
+        const auto* checked=(const char*)sqlite3_column_text(stmt,1);
+        status.state=action==AuditAction::EvidenceVerified
+            ? EvidenceVerificationState::Verified
+            : EvidenceVerificationState::Failed;
+        status.checkedUtc=checked?checked:"";
+    }
+    sqlite3_finalize(stmt);
+    return status;
 }
 
 }

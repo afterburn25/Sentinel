@@ -1,5 +1,6 @@
 #include "Sentinel/Core/Types.hpp"
 #include "Sentinel/Evidence/SevContainer.hpp"
+#include "Sentinel/Evidence/EvidenceService.hpp"
 #include "Sentinel/Security/Crypto.hpp"
 #include "Sentinel/Security/SecretProtector.hpp"
 #include "Sentinel/Security/KeyManager.hpp"
@@ -773,6 +774,51 @@ void TestWindowsCryptoAndSev()
     assert(loadedAgain.Span().size() == loadedCaseKey.Span().size());
     for (size_t i = 0; i < loadedCaseKey.Span().size(); ++i)
         assert(loadedAgain.Span()[i] == loadedCaseKey.Span()[i]);
+
+    sentinel::AuditService audit(db,hash);
+    sentinel::EvidenceService evidenceService(root/"evidence",db,random,hash,cipher,audit);
+    const auto verificationActor=sentinel::UserId::Random();
+    const auto imported=evidenceService.Import(
+        {caseId,source,0,verificationActor},
+        loadedCaseKey.Span());
+
+    auto importedItems=evidenceService.ListForCase(caseId,loadedCaseKey.Span());
+    assert(importedItems.size()==1);
+    auto verificationStatus=evidenceService.LastVerification(importedItems.front().id);
+    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Never);
+
+    const auto verified=evidenceService.Verify(
+        importedItems.front(),
+        loadedCaseKey.Span(),
+        verificationActor);
+    assert(verified.valid);
+    assert(verified.structureValid);
+    assert(verified.containerHashMatches);
+    assert(verified.authenticated);
+    assert(verified.plaintextHashMatches);
+    verificationStatus=evidenceService.LastVerification(importedItems.front().id);
+    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Verified);
+    assert(!verificationStatus.checkedUtc.empty());
+
+    {
+        std::fstream io(imported.storedPath,std::ios::binary|std::ios::in|std::ios::out);
+        const auto offset=static_cast<std::streamoff>(sizeof(sentinel::SevHeaderV1)+12);
+        io.seekg(offset);
+        char byte{};
+        io.read(&byte,1);
+        byte^=0x01;
+        io.seekp(offset);
+        io.write(&byte,1);
+    }
+
+    const auto rejected=evidenceService.Verify(
+        importedItems.front(),
+        loadedCaseKey.Span(),
+        verificationActor);
+    assert(!rejected.valid);
+    verificationStatus=evidenceService.LastVerification(importedItems.front().id);
+    assert(verificationStatus.state==sentinel::EvidenceVerificationState::Failed);
+    assert(audit.VerifyChain());
 
     db.Close();
     std::filesystem::remove_all(root);
