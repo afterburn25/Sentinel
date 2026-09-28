@@ -10,6 +10,7 @@
 #include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
 #include "Sentinel/Simulation/TrainerStore.hpp"
+#include "Sentinel/Simulation/ModelRegistry.hpp"
 
 #include <array>
 #include <cassert>
@@ -119,6 +120,82 @@ void TestPersonaLoraHistory()
     std::filesystem::remove_all(root);
 }
 
+
+
+void TestTrainerFoundationAndJobs()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-trainer-lifecycle-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"trainer.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::simulation::TrainerStore trainer(db);
+    trainer.EnsureDefaultFoundation("SARA Foundation","base-model","runtime.gguf");
+    const auto foundations=trainer.ListFoundations();
+    Require(foundations.size()==1,"default foundation count mismatch");
+    Require(foundations.front().status=="ACTIVE","default foundation should be active");
+
+    const auto fork=trainer.CreateFork(
+        "SARA Foundation 2",foundations.front().id,
+        foundations.front().sourceModel,"trainable-source","");
+    Require(fork.parentId==foundations.front().id,"foundation fork parent mismatch");
+    Require(fork.status=="DRAFT","new foundation fork should be draft");
+
+    const auto job=trainer.QueueJob(
+        sentinel::simulation::TrainingMode::FoundationSft,
+        fork.name,"Samantha",fork.id,
+        "approved.jsonl","trainable-source","output-folder");
+    Require(job.state=="QUEUED","new trainer job should be queued");
+
+    const auto jobs=trainer.ListJobs(10);
+    Require(!jobs.empty(),"trainer job list is empty");
+    Require(jobs.front().id==job.id,"trainer jobs should return newest first");
+    Require(jobs.front().mode==sentinel::simulation::TrainingMode::FoundationSft,
+        "trainer job mode mismatch");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+void TestModelRegistryLifecycle()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::simulation::ModelRegistry registry;
+    auto& first=registry.Register("http://127.0.0.1:8001","candidate-a");
+    first.evaluationScore=91;
+    registry.Approve(0);
+    Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Approved,
+        "candidate approval failed");
+    registry.Activate(0);
+    Require(registry.ActiveIndex()==0,"first model activation failed");
+    Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Active,
+        "first model active stage missing");
+
+    auto& second=registry.Register("http://127.0.0.1:8002","candidate-b");
+    second.evaluationScore=95;
+    registry.Approve(1);
+    registry.Activate(1);
+    Require(registry.ActiveIndex()==1,"second model activation failed");
+    Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Approved,
+        "previous active model should return to approved");
+
+    Require(registry.Rollback(),"model rollback should succeed");
+    Require(registry.ActiveIndex()==0,"model rollback did not restore previous active model");
+
+    registry.Retire(1);
+    Require(registry.Models()[1].stage==sentinel::simulation::ModelStage::Retired,
+        "model retirement failed");
+}
 
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
@@ -355,6 +432,12 @@ int main()
         std::cout << "[core] persona LoRA history..." << std::endl;
         TestPersonaLoraHistory();
         std::cout << "[core] persona LoRA history PASS" << std::endl;
+        std::cout << "[core] trainer foundation/jobs..." << std::endl;
+        TestTrainerFoundationAndJobs();
+        std::cout << "[core] trainer foundation/jobs PASS" << std::endl;
+        std::cout << "[core] model registry lifecycle..." << std::endl;
+        TestModelRegistryLifecycle();
+        std::cout << "[core] model registry lifecycle PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
