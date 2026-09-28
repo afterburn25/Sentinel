@@ -23,7 +23,7 @@ std::vector<std::byte> BlobBytes(sqlite3_stmt* stmt,int column)
 
 std::string TextColumn(sqlite3_stmt* stmt,int column)
 {
-    const auto* value=static_cast<const char*>(sqlite3_column_text(stmt,column));
+    const auto* value=reinterpret_cast<const char*>(sqlite3_column_text(stmt,column));
     return value?value:"";
 }
 
