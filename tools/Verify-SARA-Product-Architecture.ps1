@@ -110,6 +110,18 @@ foreach ($token in $requiredWorkflowNames) {
     }
 }
 
+$typingWorkflowTokens = @(
+    'simTypingStartedTick_',
+    'simTypingDurationMs_',
+    'SetTimer(hwnd_,kSimReplyTimer,40',
+    'live+=L"|"'
+)
+foreach ($token in $typingWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected progressive Simulation typing workflow is missing: $token"
+    }
+}
+
 $memoryWorkflowTokens = @(
     'RecallQuestionHistory(',
     'Questions this same persona already asked',

@@ -1799,13 +1799,27 @@ public:
             int typingDelay=startupJitter+(int)simPreparedReply_.size()*perChar;
             typingDelay=std::clamp(typingDelay,600,15000);
             simLastTypingDelayMs_=typingDelay;
-            SetTimer(hwnd_,kSimReplyTimer,(UINT)typingDelay,nullptr);
+            simTypingStartedTick_=GetTickCount64();
+            simTypingDurationMs_=typingDelay;
+            SetTimer(hwnd_,kSimReplyTimer,40,nullptr);
+            InvalidateRect(hwnd_,nullptr,FALSE);
             return;
         }
 
         if(id!=kSimReplyTimer) return;
+        if(!simReplyPending_) {
+            KillTimer(hwnd_,kSimReplyTimer);
+            return;
+        }
+
+        if(simBotTyping_ && simTypingDurationMs_>0) {
+            const auto elapsed=GetTickCount64()-simTypingStartedTick_;
+            if(elapsed<(ULONGLONG)simTypingDurationMs_) {
+                InvalidateRect(hwnd_,nullptr,FALSE);
+                return;
+            }
+        }
         KillTimer(hwnd_,kSimReplyTimer);
-        if(!simReplyPending_) return;
 
         try {
             if(!simPreparedReply_.empty()) {
@@ -1874,6 +1888,8 @@ public:
 
         simBotTyping_=false;
         simReplyPending_=false;
+        simTypingStartedTick_=0;
+        simTypingDurationMs_=0;
         simPendingMessage_.clear();
         simPreparedReply_.clear();
         simPreparedFromRule_=false;
@@ -1945,6 +1961,8 @@ private:
     std::optional<PersonaResponseRuleView> simMatchedRule_;
     int simLastStartDelayMs_{0};
     int simLastTypingDelayMs_{0};
+    ULONGLONG simTypingStartedTick_{0};
+    int simTypingDurationMs_{0};
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
     sentinel::simulation::SimulationSettings simSettings_;
     std::unique_ptr<sentinel::operations::IMessageAdapter> messagingAdapter_;
@@ -3627,7 +3645,7 @@ private:
         const float transcriptTop=y+56;
         const float composerY=y+cardH-70.0f;
         const float transcriptBottom=composerY-18.0f;
-        const float messageBottom=simBotTyping_ ? transcriptBottom-54.0f : transcriptBottom;
+        const float messageBottom=simBotTyping_ ? transcriptBottom-78.0f : transcriptBottom;
         const int total=(int)simContext_.history.size();
         const int maxStart=std::max(0,total-kSimVisibleRows);
         simFirstVisible_=std::clamp(simFirstVisible_,0,maxStart);
@@ -3681,10 +3699,30 @@ private:
         }
 
         if(simBotTyping_) {
-            const float typingY=transcriptBottom-38;
-            Rounded(x+20,typingY,218,30,brush_.sidebar.Get(),brush_.border.Get(),15);
-            StatusDot(x+38,typingY+15,3,brush_.green.Get());
-            TextLine(L"Synthetic subject is typing...",x+50,typingY+2,174,26,tinyFmt_.Get(),brush_.muted.Get());
+            const float typingY=transcriptBottom-62;
+            const float typingW=std::min(chatW-120.0f,610.0f);
+            Rounded(x+20,typingY,typingW,54,brush_.sidebar.Get(),brush_.border.Get(),10);
+            TextLine(L"Synthetic Subject",x+32,typingY+4,typingW-64,17,tinyFmt_.Get(),brush_.green.Get());
+
+            const auto full=Widen(simPreparedReply_);
+            size_t visible=0;
+            if(!full.empty()) {
+                if(simTypingDurationMs_<=0 || simTypingStartedTick_==0) {
+                    visible=full.size();
+                } else {
+                    const auto elapsed=std::min<ULONGLONG>(
+                        GetTickCount64()-simTypingStartedTick_,
+                        (ULONGLONG)simTypingDurationMs_);
+                    visible=(size_t)((elapsed*full.size())/
+                        std::max<ULONGLONG>(1,(ULONGLONG)simTypingDurationMs_));
+                    if(elapsed>0) visible=std::max<size_t>(1,visible);
+                    visible=std::min(visible,full.size());
+                }
+            }
+
+            std::wstring live=full.substr(0,visible);
+            live+=L"|";
+            Text(live,x+32,typingY+22,typingW-52,26,tinyFmt_.Get(),brush_.text.Get());
         }
 
         UpdateSimulationScrollbar();
