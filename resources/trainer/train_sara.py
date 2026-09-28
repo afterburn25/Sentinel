@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, json, os, shutil, sqlite3, subprocess, sys, traceback, urllib.request, zipfile
+import argparse, gc, json, os, shutil, sqlite3, subprocess, sys, traceback, urllib.request, zipfile
 from pathlib import Path
 
 LLAMA_TAG="b10977"
@@ -263,16 +263,48 @@ def build_foundation_runtime(job, merged_dir: Path, output: Path, app_root: Path
 
 def complete_foundation(db, job, foundation, app_root):
     model, tokenizer, base, output, adapter_dir=train_lora(job,foundation,db)
-    update_job(db,job["id"],progress=78)
-    print("Merging trained adapter into forked foundation checkpoint...")
-    merged=model.merge_and_unload()
+    update_job(db,job["id"],progress=76)
+
+    # Foundation Fork must become a standalone model. Do not merge the LoRA
+    # into the 4-bit QLoRA training model: PEFT explicitly notes that some
+    # quantization settings are not safe merge targets. Free the quantized
+    # training model, reload the base checkpoint at its native dtype on CPU,
+    # then merge the saved adapter into that full checkpoint.
+    torch, transformers, _datasets, peft, _bitsandbytes=require_training_packages()
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    print("Reloading base checkpoint on CPU for safe foundation merge...")
+    update_job(db,job["id"],progress=80)
+    full_base=transformers.AutoModelForCausalLM.from_pretrained(
+        base,
+        dtype="auto",
+        device_map={"": "cpu"},
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
+    )
+    merge_model=peft.PeftModel.from_pretrained(full_base,adapter_dir,is_trainable=False)
+
+    print("Merging trained adapter into full-precision/native-dtype foundation checkpoint...")
+    merged=merge_model.merge_and_unload(safe_merge=True)
     merged_dir=output/"merged-foundation"
-    merged.save_pretrained(merged_dir,safe_serialization=True)
+    merged.save_pretrained(
+        merged_dir,
+        safe_serialization=True,
+        max_shard_size="5GB",
+    )
     tokenizer.save_pretrained(merged_dir)
 
-    update_job(db,job["id"],progress=84)
+    del merge_model
+    del full_base
+    del merged
+    gc.collect()
+
+    update_job(db,job["id"],progress=88)
     runtime_gguf=build_foundation_runtime(job,merged_dir,output,app_root)
-    update_job(db,job["id"],progress=96)
+    update_job(db,job["id"],progress=97)
 
     db.execute(
         "UPDATE model_foundations "
