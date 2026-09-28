@@ -6650,27 +6650,81 @@ private:
             TextLine(std::to_wstring(model.latencyMs)+L" ms",
                 detailX+144,scoreY+31,detailW-170,24,smallFmt_.Get(),brush_.text.Get());
 
-            TextLine(L"Last response checks",detailX+16,bodyY+214,detailW-32,22,smallFmt_.Get(),brush_.text.Get());
-            TextLine(L"Policy",detailX+16,bodyY+246,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked / not evaluated",
-                detailX+100,bodyY+243,detailW-116,22,tinyFmt_.Get(),
-                lastEvaluation_.policyAllowed?brush_.green.Get():brush_.yellow.Get());
+            int latestRun=evaluationRuns_.LatestIndexForCandidate(model.id);
+            if(latestRun>=0) {
+                if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size() ||
+                   evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_].candidateId!=model.id) {
+                    selectedEvaluationRun_=latestRun;
+                }
+                comparisonEvaluationRun_=-1;
+                for(int i=selectedEvaluationRun_-1;i>=0;--i) {
+                    if(evaluationRuns_.Runs()[(size_t)i].candidateId==model.id) {
+                        comparisonEvaluationRun_=i;
+                        break;
+                    }
+                }
+            }
 
-            TextLine(L"Persona",detailX+16,bodyY+276,74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Warning",
-                detailX+100,bodyY+273,detailW-116,22,tinyFmt_.Get(),
-                lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+            TextLine(L"Persistent Evaluation Run",detailX+16,bodyY+208,detailW-32,22,smallFmt_.Get(),brush_.text.Get());
+            if(selectedEvaluationRun_>=0 && selectedEvaluationRun_<(int)evaluationRuns_.Runs().size() &&
+               evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_].candidateId==model.id) {
+                const auto& run=evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_];
+                TextLine(L"Run "+Widen(run.id)+L"  |  Overall "+std::to_wstring(run.overallScore),
+                    detailX+16,bodyY+234,detailW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
 
-            if(!lastEvaluation_.warnings.empty()) {
-                TextLine(L"Warning",detailX+16,bodyY+310,74,18,tinyFmt_.Get(),brush_.muted.Get());
-                Text(Widen(lastEvaluation_.warnings.front()),
-                    detailX+16,bodyY+332,detailW-32,62,tinyFmt_.Get(),brush_.yellow.Get());
+                if(run.previousOverallScore>=0) {
+                    const std::wstring delta=(run.regressionDelta>=0?L"+":L"")+std::to_wstring(run.regressionDelta);
+                    TextLine(L"Previous "+std::to_wstring(run.previousOverallScore)+L"  |  Delta "+delta,
+                        detailX+16,bodyY+255,detailW-32,18,tinyFmt_.Get(),
+                        run.regressionDelta<0?brush_.yellow.Get():brush_.green.Get());
+                } else {
+                    TextLine(L"First persisted run for this candidate",
+                        detailX+16,bodyY+255,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+                }
+
+                const sentinel::simulation::EvaluationDimension dims[]={
+                    sentinel::simulation::EvaluationDimension::PersonaConsistency,
+                    sentinel::simulation::EvaluationDimension::PolicyCompliance,
+                    sentinel::simulation::EvaluationDimension::StyleConsistency,
+                    sentinel::simulation::EvaluationDimension::MemoryRecall,
+                    sentinel::simulation::EvaluationDimension::TriggerRegression,
+                    sentinel::simulation::EvaluationDimension::ResponseDiversity
+                };
+                float dy=bodyY+282.0f;
+                for(auto dim:dims) {
+                    const int score=sentinel::simulation::DimensionScore(run,dim);
+                    TextLine(Widen(sentinel::simulation::ToString(dim)),
+                        detailX+16,dy,104,18,tinyFmt_.Get(),brush_.muted.Get());
+                    TextLine(score<0?L"-":std::to_wstring(score),
+                        detailX+126,dy,46,18,tinyFmt_.Get(),
+                        score>=80?brush_.green.Get():score>=0?brush_.yellow.Get():brush_.muted.Get(),
+                        DWRITE_TEXT_ALIGNMENT_TRAILING);
+                    const float barX=detailX+184;
+                    const float barW=std::max(40.0f,detailW-204.0f);
+                    target_->FillRectangle(D2D1::RectF(barX,dy+6,barX+barW,dy+11),brush_.border.Get());
+                    if(score>=0) {
+                        const float filled=barW*std::clamp(score,0,100)/100.0f;
+                        target_->FillRectangle(D2D1::RectF(barX,dy+6,barX+filled,dy+11),
+                            score>=80?brush_.green.Get():brush_.yellow.Get());
+                    }
+                    dy+=22.0f;
+                }
+
+                if(!run.warnings.empty() && dy<bodyY+bodyH-76) {
+                    std::wstring warning=Widen(run.warnings.front());
+                    if(warning.size()>92) warning=warning.substr(0,89)+L"...";
+                    TextLine(warning,detailX+16,dy+2,detailW-32,30,tinyFmt_.Get(),brush_.yellow.Get());
+                }
+            } else {
+                TextLine(L"No persistent evaluation run exists for this candidate yet.",
+                    detailX+16,bodyY+238,detailW-32,38,tinyFmt_.Get(),brush_.muted.Get());
             }
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"model_eval",L"Evaluate",detailX+16,actionY,86,30,true);
-            AddButton(L"model_approve",L"Approve",detailX+110,actionY,82,30,false);
-            AddButton(L"model_activate",L"Activate",detailX+200,actionY,80,30,false);
+            AddButton(L"model_eval",L"Evaluate",detailX+16,actionY,72,30,true);
+            AddButton(L"model_approve",L"Approve",detailX+96,actionY,70,30,false);
+            AddButton(L"eval_export_run",L"Export",detailX+174,actionY,68,30,false);
+            AddButton(L"eval_export_compare",L"Compare",detailX+250,actionY,76,30,false);
         }
     }
 
