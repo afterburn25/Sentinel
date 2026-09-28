@@ -3206,12 +3206,12 @@ private:
                 92);
         }
 
-        AddButton(L"subject_save",L"Save",rightX+rightW-190,bodyY+12,58,28,true);
-        AddButton(L"subject_delete",L"Delete",rightX+rightW-124,bodyY+12,58,28,false);
         if(selectedSubject &&
            selectedSubject->identityStatus!=sentinel::identity::SubjectIdentityStatus::Confirmed) {
-            AddButton(L"subject_confirm",L"Confirm",rightX+rightW-82,bodyY+48,66,26,false);
+            AddButton(L"subject_confirm",L"Confirm",rightX+rightW-276,bodyY+12,78,28,false);
         }
+        AddButton(L"subject_save",L"Save",rightX+rightW-190,bodyY+12,58,28,true);
+        AddButton(L"subject_delete",L"Delete",rightX+rightW-124,bodyY+12,58,28,false);
 
         const float halfGap=10.0f;
         const float halfW=(rightW-32.0f-halfGap)/2.0f;
