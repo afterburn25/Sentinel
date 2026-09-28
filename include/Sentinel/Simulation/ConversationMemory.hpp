@@ -29,12 +29,21 @@ public:
         std::string_view personaName,
         std::string_view scenario);
 
+    std::string StartConversation(
+        std::string_view title,
+        std::string_view personaName,
+        std::string_view personaSummary,
+        std::string_view scenario);
+
     void Append(
         std::string_view conversationId,
         ChatTurn::Speaker speaker,
         std::string_view text);
 
     std::vector<ArchivedConversation> List(size_t limit=50) const;
+    std::vector<ArchivedConversation> ListForPersona(
+        std::string_view personaName,
+        size_t limit=50) const;
 
     bool Load(
         std::string_view conversationId,
@@ -43,6 +52,12 @@ public:
     std::string RecallRelevant(
         std::string_view query,
         std::string_view currentConversationId,
+        size_t maxMessages=12) const;
+
+    std::string RecallRelevant(
+        std::string_view query,
+        std::string_view currentConversationId,
+        std::string_view personaName,
         size_t maxMessages=12) const;
 
     std::string RecallParticipantFacts(
