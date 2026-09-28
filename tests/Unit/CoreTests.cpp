@@ -466,11 +466,12 @@ void TestVersionedDatasetSnapshots()
     data.SetState(0,sentinel::simulation::TrainingExampleState::Approved);
 
     auto& first=data.CreateSnapshot("dataset-1");
+    const std::string firstSnapshotId=first.id;
     Require(first.exampleIds.size()==1,"dataset snapshot did not include approved example");
     Require(first.parentId.empty(),"first dataset snapshot should have no parent");
 
     auto& second=data.CreateSnapshot("dataset-2");
-    Require(second.parentId==first.id,"dataset snapshot lineage did not link prior snapshot");
+    Require(second.parentId==firstSnapshotId,"dataset snapshot lineage did not link prior snapshot");
 
     const auto root=std::filesystem::temp_directory_path()/("sara-dataset-versioning-"+sentinel::Uuid::Random().ToString());
     std::filesystem::create_directories(root);
