@@ -1330,6 +1330,16 @@ public:
             else if (b.id==L"case_simulation") { page_=Page::Simulation; ApplyPageControls(); }
             else if (b.id==L"case_evidence") { page_=Page::Evidence; ApplyPageControls(); }
             else if (b.id==L"case_audit") { page_=Page::Audit; ApplyPageControls(); }
+            else if (b.id==L"subjects_create_case") { page_=Page::Cases; ApplyPageControls(); }
+            else if (b.id==L"subject_new") NewSubjectDraft();
+            else if (b.id==L"subject_save") SaveSubjectFromEditors();
+            else if (b.id==L"subject_delete") DeleteSelectedSubject();
+            else if (b.id==L"subject_confirm") ConfirmSelectedSubject();
+            else if (b.id.rfind(L"subject_row:",0)==0) SelectSubjectById(Narrow(b.id.substr(12)));
+            else if (b.id==L"identity_add_lead") AddIdentityLeadFromEditors();
+            else if (b.id.rfind(L"identity_lead:",0)==0) SelectIdentityLeadById(Narrow(b.id.substr(14)));
+            else if (b.id==L"identity_verify") ReviewSelectedIdentityLead(true);
+            else if (b.id==L"identity_reject") ReviewSelectedIdentityLead(false);
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_emoji") OpenEmojiPicker();
             else if (b.id==L"sim_attach") AttachImageToConversation();
@@ -1808,6 +1818,7 @@ private:
     std::string operatingStateCode_;
     std::string selectedSubjectId_;
     std::string selectedIdentityLeadId_;
+    bool subjectDraftNew_{false};
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
     int simPendingPersonaMediaIndex_{-1};
@@ -2761,89 +2772,514 @@ private:
 
 
 
+    void ClearSubjectEditors() {
+        HWND edits[]={
+            subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,
+            subjectContactsEdit_,subjectNotesEdit_,
+            identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,
+            identityConfidenceEdit_,identityProvenanceEdit_
+        };
+        for(HWND edit:edits) if(edit) SetWindowTextW(edit,L"");
+        if(identityConfidenceEdit_) SetWindowTextW(identityConfidenceEdit_,L"50");
+    }
+
+    void LoadSubjectEditors(const sentinel::identity::SubjectRecord& subject) {
+        SetWindowTextW(subjectDisplayEdit_,Widen(subject.displayName).c_str());
+        SetWindowTextW(subjectLegalEdit_,Widen(subject.legalName).c_str());
+        SetWindowTextW(subjectAliasesEdit_,Widen(subject.aliases).c_str());
+        SetWindowTextW(subjectUsernamesEdit_,Widen(subject.usernames).c_str());
+        SetWindowTextW(subjectContactsEdit_,Widen(subject.contactIdentifiers).c_str());
+        SetWindowTextW(subjectNotesEdit_,Widen(subject.notes).c_str());
+    }
+
+    std::optional<sentinel::SubjectId> SelectedSubjectId() const {
+        if(selectedSubjectId_.empty()) return std::nullopt;
+        return sentinel::SubjectId::Parse(selectedSubjectId_);
+    }
+
+    std::optional<sentinel::SubjectIdentityId> SelectedIdentityLeadId() const {
+        if(selectedIdentityLeadId_.empty()) return std::nullopt;
+        return sentinel::SubjectIdentityId::Parse(selectedIdentityLeadId_);
+    }
+
+    void NewSubjectDraft() {
+        if(cases_.empty()) {
+            page_=Page::Cases;
+            ApplyPageControls();
+            statusText_=L"Create a case before adding a subject";
+            return;
+        }
+        selectedSubjectId_.clear();
+        selectedIdentityLeadId_.clear();
+        subjectDraftNew_=true;
+        ClearSubjectEditors();
+        statusText_=L"New subject draft";
+        SetFocus(subjectDisplayEdit_);
+    }
+
+    void SelectSubjectById(const std::string& id) {
+        auto parsed=sentinel::SubjectId::Parse(id);
+        if(!parsed) return;
+        auto subject=runtime_->subjectIdentity.GetSubject(*parsed);
+        if(!subject) return;
+        if(cases_.empty() || subject->caseId.ToString()!=cases_[selectedCase_].id.ToString()) return;
+
+        selectedSubjectId_=id;
+        selectedIdentityLeadId_.clear();
+        subjectDraftNew_=false;
+        LoadSubjectEditors(*subject);
+        statusText_=L"Subject selected: "+Widen(subject->displayName);
+    }
+
+    void SelectIdentityLeadById(const std::string& id) {
+        auto parsed=sentinel::SubjectIdentityId::Parse(id);
+        if(!parsed) return;
+        auto lead=runtime_->subjectIdentity.GetLead(*parsed);
+        auto subjectId=SelectedSubjectId();
+        if(!lead || !subjectId || lead->subjectId.ToString()!=subjectId->ToString()) return;
+        selectedIdentityLeadId_=id;
+        statusText_=L"Identity lead selected";
+    }
+
+    void SaveSubjectFromEditors() {
+        if(cases_.empty()) {
+            statusText_=L"Create or select a case first";
+            return;
+        }
+
+        const auto display=Narrow(EditText(subjectDisplayEdit_));
+        if(display.empty()) {
+            statusText_=L"Subject display name is required";
+            SetFocus(subjectDisplayEdit_);
+            return;
+        }
+
+        try {
+            sentinel::identity::SubjectRecord subject;
+            bool created=false;
+            if(auto id=SelectedSubjectId()) {
+                auto existing=runtime_->subjectIdentity.GetSubject(*id);
+                if(!existing) {
+                    selectedSubjectId_.clear();
+                    subjectDraftNew_=true;
+                } else {
+                    subject=*existing;
+                }
+            }
+
+            if(selectedSubjectId_.empty()) {
+                subject=runtime_->subjectIdentity.CreateSubject(cases_[selectedCase_].id,display);
+                created=true;
+            }
+
+            subject.caseId=cases_[selectedCase_].id;
+            subject.displayName=display;
+            subject.legalName=Narrow(EditText(subjectLegalEdit_));
+            subject.aliases=Narrow(EditText(subjectAliasesEdit_));
+            subject.usernames=Narrow(EditText(subjectUsernamesEdit_));
+            subject.contactIdentifiers=Narrow(EditText(subjectContactsEdit_));
+            subject.notes=Narrow(EditText(subjectNotesEdit_));
+            runtime_->subjectIdentity.SaveSubject(subject);
+
+            selectedSubjectId_=subject.id.ToString();
+            selectedIdentityLeadId_.clear();
+            subjectDraftNew_=false;
+
+            const std::string meta=
+                "case="+subject.caseId.ToString()+
+                " display="+subject.displayName+
+                " status="+sentinel::identity::ToString(subject.identityStatus);
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                created?sentinel::AuditAction::SubjectCreated:sentinel::AuditAction::SubjectUpdated,
+                "subject",
+                subject.id.ToString(),
+                AuditMetadata(meta)
+            });
+
+            auto stored=runtime_->subjectIdentity.GetSubject(subject.id);
+            if(stored) LoadSubjectEditors(*stored);
+            statusText_=created?L"Subject created":L"Subject updated";
+        } catch(const std::exception& e) {
+            statusText_=L"Subject save failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Subject Save",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void DeleteSelectedSubject() {
+        auto id=SelectedSubjectId();
+        if(!id) {
+            statusText_=L"Select a saved subject first";
+            return;
+        }
+        auto subject=runtime_->subjectIdentity.GetSubject(*id);
+        if(!subject) return;
+
+        const std::wstring prompt=L"Delete subject '"+Widen(subject->displayName)+
+            L"' and its identity leads from this case?";
+        if(MessageBoxW(hwnd_,prompt.c_str(),L"Delete Subject",MB_YESNO|MB_ICONWARNING)!=IDYES)
+            return;
+
+        if(runtime_->subjectIdentity.DeleteSubject(*id)) {
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::SubjectDeleted,
+                "subject",
+                id->ToString(),
+                AuditMetadata("case="+subject->caseId.ToString()+" display="+subject->displayName)
+            });
+            selectedSubjectId_.clear();
+            selectedIdentityLeadId_.clear();
+            subjectDraftNew_=false;
+            ClearSubjectEditors();
+            statusText_=L"Subject deleted";
+        }
+    }
+
+    void ConfirmSelectedSubject() {
+        auto id=SelectedSubjectId();
+        if(!id) {
+            statusText_=L"Select a saved subject first";
+            return;
+        }
+        auto subject=runtime_->subjectIdentity.GetSubject(*id);
+        if(!subject) return;
+
+        if(subject->identityStatus==sentinel::identity::SubjectIdentityStatus::Confirmed) {
+            statusText_=L"Subject identity is already confirmed";
+            return;
+        }
+
+        if(MessageBoxW(
+            hwnd_,
+            L"Confirm this subject identity as an investigator-reviewed conclusion?\n\n"
+            L"This does not occur automatically from lead confidence.",
+            L"Confirm Subject Identity",
+            MB_YESNO|MB_ICONQUESTION)!=IDYES) return;
+
+        if(runtime_->subjectIdentity.SetSubjectStatus(
+            *id,sentinel::identity::SubjectIdentityStatus::Confirmed)) {
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::SubjectIdentityConfirmed,
+                "subject",
+                id->ToString(),
+                AuditMetadata("confirmed_by=local-investigator")
+            });
+            statusText_=L"Subject identity confirmed by investigator";
+        }
+    }
+
+    void AddIdentityLeadFromEditors() {
+        auto subjectId=SelectedSubjectId();
+        if(!subjectId) {
+            statusText_=L"Save and select a subject before adding identity leads";
+            return;
+        }
+
+        const auto leadValue=Narrow(EditText(identityLeadValueEdit_));
+        const auto provenance=Narrow(EditText(identityProvenanceEdit_));
+        if(leadValue.empty()) {
+            statusText_=L"Identity lead / finding is required";
+            SetFocus(identityLeadValueEdit_);
+            return;
+        }
+        if(provenance.empty()) {
+            statusText_=L"Provenance/source context is required";
+            SetFocus(identityProvenanceEdit_);
+            return;
+        }
+
+        int confidence=_wtoi(EditText(identityConfidenceEdit_).c_str());
+        confidence=std::clamp(confidence,0,100);
+
+        try {
+            auto lead=runtime_->subjectIdentity.AddLead(
+                *subjectId,
+                Narrow(EditText(identitySourceTypeEdit_)),
+                Narrow(EditText(identitySourceRefEdit_)),
+                leadValue,
+                confidence,
+                provenance);
+
+            selectedIdentityLeadId_=lead.id.ToString();
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::IdentityLeadAdded,
+                "identity_lead",
+                lead.id.ToString(),
+                AuditMetadata(
+                    "subject="+subjectId->ToString()+
+                    " confidence="+std::to_string(confidence)+
+                    " source_type="+lead.sourceType)
+            });
+
+            SetWindowTextW(identitySourceTypeEdit_,L"");
+            SetWindowTextW(identitySourceRefEdit_,L"");
+            SetWindowTextW(identityLeadValueEdit_,L"");
+            SetWindowTextW(identityConfidenceEdit_,L"50");
+            SetWindowTextW(identityProvenanceEdit_,L"");
+            statusText_=L"Identity lead added for human review";
+        } catch(const std::exception& e) {
+            statusText_=L"Identity lead could not be saved";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Identity Lead",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ReviewSelectedIdentityLead(bool verified) {
+        auto leadId=SelectedIdentityLeadId();
+        if(!leadId) {
+            statusText_=L"Select an identity lead first";
+            return;
+        }
+
+        const auto state=verified
+            ? sentinel::identity::IdentityLeadStatus::Verified
+            : sentinel::identity::IdentityLeadStatus::Rejected;
+        const bool ok=runtime_->subjectIdentity.ReviewLead(
+            *leadId,state,"local-investigator",
+            verified?"Verified by investigator in SARA":"Rejected by investigator in SARA");
+        if(!ok) {
+            statusText_=L"Identity lead review failed";
+            return;
+        }
+
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            verified?sentinel::AuditAction::IdentityLeadVerified:sentinel::AuditAction::IdentityLeadRejected,
+            "identity_lead",
+            leadId->ToString(),
+            AuditMetadata(verified?"status=VERIFIED":"status=REJECTED")
+        });
+        statusText_=verified?L"Identity lead verified":L"Identity lead rejected";
+    }
+
     void DrawSubjects(float w,float h) {
         PageTitle(
             L"Subjects & Identity",
-            L"Investigator-controlled subject profiles, aliases, identity-resolution leads, provenance, and confirmation");
+            L"Case-scoped subject profiles, provenance-backed identity leads, and investigator confirmation");
 
         const float x=kSidebar+28.0f;
-        const float y=kHeader+102.0f;
+        const float y=kHeader+94.0f;
         const float contentW=w-x-28.0f;
         const float gap=14.0f;
 
+        if(cases_.empty()) {
+            Rounded(x,y,contentW,184,brush_.panel.Get(),brush_.border.Get(),10);
+            DrawIcon(IconKind::Folder,x+22,y+28,34,brush_.cyan.Get());
+            TextLine(L"Create or select a case before adding subjects.",x+72,y+22,contentW-94,34,h1Fmt_.Get(),brush_.text.Get());
+            Text(
+                L"Subjects, identity leads, provenance, and confirmation are always scoped to an investigation.",
+                x+72,y+62,contentW-112,48,smallFmt_.Get(),brush_.muted.Get());
+            AddButton(L"subjects_create_case",L"Open Cases",x+72,y+126,132,36,true);
+            return;
+        }
+
+        auto subjects=runtime_->subjectIdentity.ListForCase(cases_[selectedCase_].id,100);
+        const bool selectedExists=std::any_of(subjects.begin(),subjects.end(),[&](const auto& subject){
+            return subject.id.ToString()==selectedSubjectId_;
+        });
+        if(!subjectDraftNew_ && !selectedExists) {
+            selectedSubjectId_.clear();
+            selectedIdentityLeadId_.clear();
+            if(!subjects.empty()) {
+                selectedSubjectId_=subjects.front().id.ToString();
+                LoadSubjectEditors(subjects.front());
+            } else {
+                ClearSubjectEditors();
+            }
+        }
+
+        std::optional<sentinel::identity::SubjectRecord> selectedSubject;
+        if(auto id=SelectedSubjectId()) selectedSubject=runtime_->subjectIdentity.GetSubject(*id);
+
+        std::vector<sentinel::identity::IdentityLead> leads;
+        if(selectedSubject) {
+            leads=runtime_->subjectIdentity.ListLeads(selectedSubject->id,100);
+            const bool leadExists=std::any_of(leads.begin(),leads.end(),[&](const auto& lead){
+                return lead.id.ToString()==selectedIdentityLeadId_;
+            });
+            if(!leadExists) {
+                selectedIdentityLeadId_=leads.empty()?"":leads.front().id.ToString();
+            }
+        } else {
+            selectedIdentityLeadId_.clear();
+        }
+
+        const auto counts=runtime_->subjectIdentity.CountsForCase(cases_[selectedCase_].id);
+        const float metricsH=78.0f;
         const float cardW=(contentW-gap*3.0f)/4.0f;
-        const std::wstring caseValue=cases_.empty()
-            ? L"No case selected"
-            : Widen(cases_[selectedCase_].caseNumber);
-        struct SubjectMetric {
+
+        struct MetricData {
             const wchar_t* label;
             std::wstring value;
             const wchar_t* sub;
             ID2D1Brush* accent;
             IconKind icon;
         };
-        SubjectMetric metrics[]={
-            {L"Case Context",caseValue,L"Identity work is case-scoped",brush_.cyan.Get(),IconKind::Folder},
-            {L"Identity Leads",L"0",L"Leads, not automatic conclusions",brush_.yellow.Get(),IconKind::Search},
-            {L"Confirmed IDs",L"0",L"Requires investigator confirmation",brush_.green.Get(),IconKind::Check},
-            {L"Source Policy",L"Human Review",L"Provenance retained",brush_.blue.Get(),IconKind::Shield}
+        MetricData metrics[]={
+            {L"Case",Widen(cases_[selectedCase_].caseNumber),L"Current investigation",brush_.cyan.Get(),IconKind::Folder},
+            {L"Subjects",std::to_wstring(counts.subjects),L"Case-scoped profiles",brush_.blue.Get(),IconKind::Document},
+            {L"Identity Leads",std::to_wstring(counts.leads),L"Human review required",brush_.yellow.Get(),IconKind::Search},
+            {L"Confirmed",std::to_wstring(counts.confirmedSubjects),L"Investigator confirmed",brush_.green.Get(),IconKind::Check}
         };
 
         for(int i=0;i<4;i++) {
             const float cx=x+i*(cardW+gap);
-            Rounded(cx,y,cardW,96,brush_.panel.Get(),brush_.border.Get(),10);
-            Rounded(cx+14,y+18,38,38,brush_.panel2.Get(),nullptr,9);
-            DrawIcon(metrics[i].icon,cx+22,y+26,22,metrics[i].accent);
-            TextLine(metrics[i].label,cx+62,y+10,cardW-74,18,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(metrics[i].value,cx+62,y+30,cardW-74,26,smallFmt_.Get(),brush_.text.Get());
-            TextLine(metrics[i].sub,cx+14,y+70,cardW-28,18,tinyFmt_.Get(),metrics[i].accent);
+            Rounded(cx,y,cardW,metricsH,brush_.panel.Get(),brush_.border.Get(),9);
+            Rounded(cx+12,y+16,34,34,brush_.panel2.Get(),nullptr,8);
+            DrawIcon(metrics[i].icon,cx+19,y+23,20,metrics[i].accent);
+            TextLine(metrics[i].label,cx+56,y+9,cardW-66,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,cx+56,y+27,cardW-66,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+14,y+57,cardW-28,16,tinyFmt_.Get(),metrics[i].accent);
         }
 
-        const float bodyY=y+112.0f;
-        const float leftW=(contentW-gap)*0.60f;
-        const float rightW=contentW-gap-leftW;
+        const float bodyY=y+metricsH+12.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-24.0f);
+        const float leftW=std::clamp(contentW*0.34f,248.0f,286.0f);
         const float rightX=x+leftW+gap;
+        const float rightW=contentW-leftW-gap;
+        const float detailH=254.0f;
+        const float leadsY=bodyY+detailH+gap;
+        const float leadsH=bodyH-detailH-gap;
+        const float leadComposerY=bodyY+bodyH-214.0f;
 
-        Rounded(x,bodyY,leftW,360,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Identity Resolution Workspace",x+18,bodyY+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        Text(
-            L"This module is reserved for case-scoped subject records and lawful identity-resolution leads. "
-            L"Planned records include aliases, usernames, public-profile references, contact identifiers where permitted, "
-            L"court/arrest-record references, and reverse-image/visual-match leads.",
-            x+20,bodyY+58,leftW-40,104,bodyFmt_.Get(),brush_.text.Get());
+        // Subject library + lead capture composer.
+        Rounded(x,bodyY,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Case Subjects",x+16,bodyY+12,leftW-130,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"subject_new",L"+ New",x+leftW-92,bodyY+12,76,28,true);
 
-        Rounded(x+20,bodyY+180,leftW-40,132,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Recovery status",x+34,bodyY+192,leftW-68,22,smallFmt_.Get(),brush_.cyan.Get());
-        Text(
-            L"The recovered 1.0.15 application does not yet contain a finished subject-record UI/storage layer. "
-            L"This page intentionally does not fabricate identities or pretend external sources are connected. "
-            L"The module is now restored to the correct first-class location so its backend can be added without distorting SARA.",
-            x+34,bodyY+222,leftW-68,78,tinyFmt_.Get(),brush_.muted.Get());
+        float sy=bodyY+52.0f;
+        if(subjects.empty()) {
+            Text(
+                L"No subjects recorded for this case yet. Choose + New, enter a display name, and save the subject.",
+                x+18,sy,leftW-36,70,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& subject:subjects) {
+                if(sy+42.0f>leadComposerY-12.0f) break;
+                const bool selected=subject.id.ToString()==selectedSubjectId_;
+                Rounded(x+12,sy,leftW-24,42,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
 
-        Rounded(rightX,bodyY,rightW,360,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Identity Handling Rules",rightX+18,bodyY+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+                TextLine(Widen(subject.displayName),x+22,sy+4,leftW-112,19,smallFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::identity::ToString(subject.identityStatus)),
+                    x+leftW-96,sy+4,72,18,tinyFmt_.Get(),
+                    subject.identityStatus==sentinel::identity::SubjectIdentityStatus::Confirmed
+                        ?brush_.green.Get():brush_.yellow.Get(),
+                    DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-        const wchar_t* rules[]={
-            L"Treat every search result as a lead until a human confirms it.",
-            L"Preserve source provenance and retrieval context.",
-            L"Do not merge identities solely from a visual or username similarity.",
-            L"Keep subject records scoped to the authorized case.",
-            L"Log confirmation and investigator-authored changes.",
-            L"Do not expose connected-source data outside authorized workflows."
-        };
-        float ry=bodyY+58.0f;
-        for(const auto* rule:rules) {
-            StatusDot(rightX+26,ry+10,3,brush_.cyan.Get());
-            Text(rule,rightX+40,ry,rightW-58,38,smallFmt_.Get(),brush_.text.Get());
-            ry+=48.0f;
+                std::wstring second=Widen(subject.usernames.empty()?subject.aliases:subject.usernames);
+                if(second.empty()) second=L"No aliases/usernames";
+                if(second.size()>34) second=second.substr(0,31)+L"...";
+                TextLine(second,x+22,sy+23,leftW-44,16,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+12,sy,x+leftW-12,sy+42},L"subject_row:"+Widen(subject.id.ToString())});
+                sy+=48.0f;
+            }
         }
 
-        Rounded(x,bodyY+376,contentW,116,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Architecture boundary",x+18,bodyY+388,contentW-36,22,smallFmt_.Get(),brush_.cyan.Get());
-        Text(
-            L"Subjects & Identity supports investigations. Model Lab may improve matching or extraction models later, "
-            L"but identity records, provenance, and investigator confirmation remain part of the operational SARA application.",
-            x+18,bodyY+418,contentW-36,58,smallFmt_.Get(),brush_.muted.Get());
+        target_->DrawLine(
+            D2D1::Point2F(x+14,leadComposerY-8),
+            D2D1::Point2F(x+leftW-14,leadComposerY-8),
+            brush_.border.Get(),1.0f);
+        TextLine(L"Add Identity Lead",x+16,leadComposerY,180,24,smallFmt_.Get(),brush_.cyan.Get());
+
+        TextLine(L"Source",x+16,leadComposerY+36,68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Reference",x+16,leadComposerY+66,68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Finding",x+16,leadComposerY+96,68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Confidence",x+16,leadComposerY+126,68,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Provenance",x+16,leadComposerY+156,68,18,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"identity_add_lead",L"Add Lead",x+16,leadComposerY+184,leftW-32,26,false);
+
+        // Subject editor.
+        Rounded(rightX,bodyY,rightW,detailH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(
+            subjectDraftNew_?L"New Subject":L"Subject Details",
+            rightX+16,bodyY+12,180,28,h1Fmt_.Get(),brush_.text.Get());
+
+        if(selectedSubject) {
+            Badge(
+                Widen(sentinel::identity::ToString(selectedSubject->identityStatus)),
+                rightX+190,bodyY+15,
+                selectedSubject->identityStatus==sentinel::identity::SubjectIdentityStatus::Confirmed
+                    ?brush_.green.Get():brush_.yellow.Get(),
+                92);
+        }
+
+        AddButton(L"subject_save",L"Save",rightX+rightW-190,bodyY+12,58,28,true);
+        AddButton(L"subject_delete",L"Delete",rightX+rightW-124,bodyY+12,58,28,false);
+        if(selectedSubject &&
+           selectedSubject->identityStatus!=sentinel::identity::SubjectIdentityStatus::Confirmed) {
+            AddButton(L"subject_confirm",L"Confirm",rightX+rightW-82,bodyY+48,66,26,false);
+        }
+
+        const float halfGap=10.0f;
+        const float halfW=(rightW-32.0f-halfGap)/2.0f;
+        const float fieldLeft=rightX+16.0f;
+        const float fieldRight=fieldLeft+halfW+halfGap;
+
+        TextLine(L"Display name / handle",fieldLeft,bodyY+44,halfW,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Legal name (if verified)",fieldRight,bodyY+44,halfW,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Aliases",fieldLeft,bodyY+92,halfW,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Usernames",fieldRight,bodyY+92,halfW,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Contact identifiers",fieldLeft,bodyY+140,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Investigator notes",fieldLeft,bodyY+184,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+
+        // Identity lead review.
+        Rounded(rightX,leadsY,rightW,leadsH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Identity Leads",rightX+16,leadsY+10,180,26,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"LEADS ARE NOT IDENTITY CONCLUSIONS",rightX+rightW-230,leadsY+12,214,20,tinyFmt_.Get(),brush_.yellow.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+        TextLine(L"SOURCE",rightX+16,leadsY+43,88,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"FINDING",rightX+112,leadsY+43,rightW-310,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"CONF.",rightX+rightW-184,leadsY+43,52,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",rightX+rightW-122,leadsY+43,106,16,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float actionsY=leadsY+leadsH-38.0f;
+        float ly=leadsY+62.0f;
+        if(leads.empty()) {
+            TextLine(L"No identity leads recorded for the selected subject.",
+                rightX+18,ly,rightW-36,28,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& lead:leads) {
+                if(ly+40.0f>actionsY-8.0f) break;
+                const bool selected=lead.id.ToString()==selectedIdentityLeadId_;
+                ID2D1Brush* statusBrush=
+                    lead.status==sentinel::identity::IdentityLeadStatus::Verified?brush_.green.Get():
+                    lead.status==sentinel::identity::IdentityLeadStatus::Rejected?brush_.red.Get():
+                    brush_.yellow.Get();
+
+                Rounded(rightX+12,ly,rightW-24,38,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),6);
+
+                std::wstring source=Widen(lead.sourceType.empty()?"source":lead.sourceType);
+                if(source.size()>14) source=source.substr(0,11)+L"...";
+                std::wstring value=Widen(lead.leadValue);
+                if(value.size()>36) value=value.substr(0,33)+L"...";
+
+                TextLine(source,rightX+20,ly+4,84,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(value,rightX+112,ly+4,rightW-310,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(lead.confidence)+L"%",
+                    rightX+rightW-184,ly+4,52,18,tinyFmt_.Get(),brush_.cyan.Get());
+                TextLine(Widen(sentinel::identity::ToString(lead.status)),
+                    rightX+rightW-122,ly+4,100,18,tinyFmt_.Get(),statusBrush,DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+                std::wstring provenance=Widen(lead.provenance);
+                if(provenance.size()>70) provenance=provenance.substr(0,67)+L"...";
+                TextLine(provenance,rightX+20,ly+21,rightW-42,14,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{rightX+12,ly,rightX+rightW-12,ly+38},L"identity_lead:"+Widen(lead.id.ToString())});
+                ly+=44.0f;
+            }
+        }
+
+        if(!selectedIdentityLeadId_.empty()) {
+            AddButton(L"identity_verify",L"Verify Lead",rightX+16,actionsY,94,28,true);
+            AddButton(L"identity_reject",L"Reject",rightX+118,actionsY,72,28,false);
+            TextLine(L"Verification is a human review action; it does not automatically confirm the subject.",
+                rightX+202,actionsY+3,rightW-218,22,tinyFmt_.Get(),brush_.muted.Get());
+        }
     }
 
     void DrawSimulation(float w,float h) {
@@ -3060,7 +3496,7 @@ private:
         ShowChatEditor(page_==Page::Simulation);
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
-        ShowSubjectEditors(page_==Page::Subjects);
+        ShowSubjectEditors(page_==Page::Subjects && !cases_.empty());
         if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
         if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
 
@@ -8431,6 +8867,7 @@ private:
         selectedCase_=i; selectedEvidence_=0;
         selectedSubjectId_.clear();
         selectedIdentityLeadId_.clear();
+        subjectDraftNew_=false;
         try { evidence_=runtime_->Evidence(cases_[i].id); } catch (...) { evidence_.clear(); }
     }
 
