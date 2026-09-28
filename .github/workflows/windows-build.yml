@@ -39,6 +39,10 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-1.0.15-Recovery-Baseline.ps1
 
+      - name: Guard SARA product architecture
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-Product-Architecture.ps1
+
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         with:
