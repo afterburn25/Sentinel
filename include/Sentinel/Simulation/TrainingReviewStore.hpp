@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sentinel::simulation {
 
@@ -51,6 +52,9 @@ public:
         std::string_view reviewer,
         std::string_view notes = {});
     TrainingReviewCounts Counts() const;
+    std::vector<TrainingReviewItem> ListRecent(
+        size_t limit=50,
+        std::optional<TrainingReviewStatus> status=std::nullopt) const;
     size_t ExportApprovedJsonl(const std::filesystem::path& path) const;
 
 private:
