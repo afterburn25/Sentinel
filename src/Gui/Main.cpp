@@ -2797,16 +2797,20 @@ private:
         const float x=kSidebar+28.0f;
         const float y=kHeader+102.0f;
         const float gap=14.0f;
-        const float sideW=390.0f;
-        const float chatW=std::max(560.0f,w-x-sideW-gap-28.0f);
+        const float contentW=std::max(640.0f,w-x-28.0f);
+        const float sideW=std::clamp(contentW*0.35f,270.0f,330.0f);
+        const float chatW=std::max(360.0f,contentW-sideW-gap);
+        const float cardH=std::max(500.0f,h-y-24.0f);
 
         // Conversation card
-        Rounded(x,y,chatW,540,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(x,y,chatW,cardH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Synthetic Conversation",x+20,y+12,280,34,h1Fmt_.Get(),brush_.text.Get());
-        Badge(L"SIMULATION",x+chatW-126,y+15,brush_.cyan.Get(),104);
+        AddButton(L"sim_export_persona_log",L"Export Log",x+chatW-204,y+15,82,28,false);
+        Badge(L"SIMULATION",x+chatW-112,y+15,brush_.cyan.Get(),90);
 
         const float transcriptTop=y+56;
-        const float transcriptBottom=y+430;
+        const float composerY=y+cardH-70.0f;
+        const float transcriptBottom=composerY-18.0f;
         const float messageBottom=simBotTyping_ ? transcriptBottom-54.0f : transcriptBottom;
         const int total=(int)simContext_.history.size();
         const int maxStart=std::max(0,total-kSimVisibleRows);
@@ -2870,50 +2874,64 @@ private:
         UpdateSimulationScrollbar();
 
         // Stable vector buttons avoid font/encoding regressions in packaged builds.
-        AddIconButton(L"sim_emoji",IconKind::Smile,x+18,y+452,38,46,false);
-        AddIconButton(L"sim_attach",IconKind::Paperclip,x+62,y+452,38,46,false);
-        AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
+        const float sendW=std::clamp(chatW*0.24f,104.0f,146.0f);
+        const float sendX=x+chatW-sendW-18.0f;
+        AddIconButton(L"sim_emoji",IconKind::Smile,x+18,composerY,38,46,false);
+        AddIconButton(L"sim_attach",IconKind::Paperclip,x+62,composerY,38,46,false);
+        AddButton(L"sim_send",L"Send",sendX,composerY,sendW,46,true);
 
-        // Model / scenario card
+        // Responsive Scenario / Model / Conversation context. This card uses
+        // the actual remaining width instead of overflowing the packaged window.
         const float rx=x+chatW+gap;
-        Rounded(rx,y,sideW,330,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Scenario & Model",rx+18,y+12,sideW-36,34,h1Fmt_.Get(),brush_.text.Get());
+        Rounded(rx,y,sideW,cardH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Scenario & Model",rx+16,y+12,sideW-32,30,h1Fmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Persona",rx+18,y+54,84,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(simSettings_.persona.name+" - synthetic profile"),rx+108,y+52,sideW-126,24,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Persona",rx+16,y+50,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(simSettings_.persona.name),rx+92,y+47,sideW-108,22,smallFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Age state",rx+18,y+84,84,20,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+108,y+82,sideW-126,24,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Age state",rx+16,y+76,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(Widen(sentinel::simulation::ToString(simSettings_.ageState)),rx+92,y+73,sideW-108,22,tinyFmt_.Get(),brush_.cyan.Get());
 
-        TextLine(L"OpenAI-compatible endpoint",rx+18,y+118,sideW-36,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"OpenAI-compatible endpoint",rx+16,y+104,sideW-32,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"sim_browse_models",L"Browse Models",rx+18,y+182,126,34,false);
-        AddButton(L"sim_install_ai",L"Install / Repair AI",rx+154,y+182,132,34,true);
+        const float modelButtonGap=8.0f;
+        const float modelButtonW=(sideW-40.0f-modelButtonGap)/2.0f;
+        AddButton(L"sim_browse_models",L"Browse Models",rx+16,y+164,modelButtonW,32,false);
+        AddButton(L"sim_install_ai",L"Install / Repair",rx+16+modelButtonW+modelButtonGap,y+164,modelButtonW,32,true);
 
-        TextLine(L"Available model",rx+18,y+224,112,20,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Available model",rx+16,y+204,112,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Manual model",rx+16,y+258,106,18,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_model",L"Connect",rx+sideW-98,y+278,82,30,true);
 
-        TextLine(L"Manual model",rx+18,y+278,106,20,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"sim_model",L"Connect",rx+sideW-110,y+299,92,32,true);
+        StatusDot(rx+22,y+326,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        TextLine(modelStatus_,rx+34,y+313,sideW-50,28,tinyFmt_.Get(),brush_.text.Get());
 
-        StatusDot(rx+24,y+355,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
-        TextLine(modelStatus_,rx+36,y+342,sideW-54,28,tinyFmt_.Get(),brush_.text.Get());
+        const float sectionY=y+350.0f;
+        target_->DrawLine(
+            D2D1::Point2F(rx+16,sectionY),
+            D2D1::Point2F(rx+sideW-16,sectionY),
+            brush_.border.Get(),1.0f);
 
-        TextLine(L"Conversation",rx+18,y+374,90,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(currentConversationTitle_,rx+112,y+371,sideW-130,24,smallFmt_.Get(),brush_.text.Get());
-        AddButton(L"sim_previous_chat",L"Previous Chat",rx+18,y+402,142,34,false);
-        AddButton(L"sim_new_chat",L"New Chat",rx+170,y+402,112,34,true);
+        TextLine(L"Conversation",rx+16,sectionY+10,sideW-32,22,smallFmt_.Get(),brush_.text.Get());
+        TextLine(currentConversationTitle_,rx+16,sectionY+36,sideW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
 
-        // Suggestion card
-        Rounded(rx,y+400,sideW,140,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Model Suggestion",rx+18,y+410,sideW-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Rounded(rx+18,y+444,sideW-36,48,brush_.sidebar.Get(),brush_.border.Get(),8);
-        Text(simSuggestion_,rx+28,y+451,sideW-56,34,tinyFmt_.Get(),brush_.text.Get());
+        const float convButtonW=(sideW-40.0f-modelButtonGap)/2.0f;
+        AddButton(L"sim_previous_chat",L"Previous",rx+16,sectionY+62,convButtonW,30,false);
+        AddButton(L"sim_new_chat",L"New Chat",rx+16+convButtonW+modelButtonGap,sectionY+62,convButtonW,30,true);
 
-        const float bw=(sideW-52)/3.0f;
-        AddButton(L"sim_suggest",L"Generate",rx+18,y+500,bw,32,false);
-        AddButton(L"sim_reset",L"Reset",rx+26+bw,y+500,bw,32,false);
-        AddButton(L"sim_preserve",L"Preserve",rx+34+bw*2,y+500,bw,32,false);
-        AddButton(L"sim_export_persona_log",L"Export Persona Log",rx+18,y+544,sideW-36,30,false);
+        const float suggestionY=sectionY+104.0f;
+        TextLine(L"Model Suggestion",rx+16,suggestionY,sideW-32,22,smallFmt_.Get(),brush_.text.Get());
+
+        const float actionY=y+cardH-38.0f;
+        const float suggestionBoxY=suggestionY+26.0f;
+        const float suggestionBoxH=std::max(36.0f,actionY-suggestionBoxY-10.0f);
+        Rounded(rx+16,suggestionBoxY,sideW-32,suggestionBoxH,brush_.sidebar.Get(),brush_.border.Get(),8);
+        Text(simSuggestion_,rx+26,suggestionBoxY+8,sideW-52,suggestionBoxH-14,tinyFmt_.Get(),brush_.text.Get());
+
+        const float bw=(sideW-48.0f)/3.0f;
+        AddButton(L"sim_suggest",L"Generate",rx+16,actionY,bw,30,false);
+        AddButton(L"sim_reset",L"Reset",rx+24+bw,actionY,bw,30,false);
+        AddButton(L"sim_preserve",L"Preserve",rx+32+bw*2,actionY,bw,30,false);
     }
 
     void ShowChatEditor(bool show) {
@@ -3005,23 +3023,33 @@ private:
         }
 
         if(page_==Page::Simulation) {
-            const float x=kSidebar+28.0f, y=kHeader+102.0f, gap=14.0f, sideW=390.0f;
-            const float chatW=std::max(560.0f,w-x-sideW-gap-28.0f);
+            const float x=kSidebar+28.0f;
+            const float y=kHeader+102.0f;
+            const float gap=14.0f;
+            const float contentW=std::max(640.0f,w-x-28.0f);
+            const float sideW=std::clamp(contentW*0.35f,270.0f,330.0f);
+            const float chatW=std::max(360.0f,contentW-sideW-gap);
+            const float cardH=std::max(500.0f,(float)rc.bottom-y-24.0f);
             const float transcriptTop=y+56.0f;
-            const float transcriptBottom=y+430.0f;
+            const float composerY=y+cardH-70.0f;
+            const float transcriptBottom=composerY-18.0f;
             const float rx=x+chatW+gap;
 
-            MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,(int)(transcriptBottom-transcriptTop),TRUE);
+            MoveControl(simScroll_,(int)(x+chatW-20),(int)transcriptTop,14,
+                (int)std::max(120.0f,transcriptBottom-transcriptTop),TRUE);
 
-            const int composerW=(int)(chatW-322);
+            const float sendW=std::clamp(chatW*0.24f,104.0f,146.0f);
+            const float sendX=x+chatW-sendW-18.0f;
+            const int composerX=(int)(x+104);
+            const int composerW=std::max(120,(int)(sendX-(x+104)-12.0f));
             const int composerH=46;
-            MoveControl(chatEdit_,(int)(x+104),(int)(y+452),composerW,composerH,TRUE);
+            MoveControl(chatEdit_,composerX,(int)composerY,composerW,composerH,TRUE);
             RECT composerTextRect{12,9,std::max(24,composerW-12),composerH-8};
             SendMessageW(chatEdit_,EM_SETRECTNP,0,(LPARAM)&composerTextRect);
 
-            MoveControl(modelEndpointEdit_,(int)(rx+18),(int)(y+138),(int)(sideW-36),32,TRUE);
-            MoveControl(modelCombo_,(int)(rx+18),(int)(y+244),(int)(sideW-36),180,TRUE);
-            MoveControl(modelNameEdit_,(int)(rx+18),(int)(y+299),(int)(sideW-140),32,TRUE);
+            MoveControl(modelEndpointEdit_,(int)(rx+16),(int)(y+124),(int)(sideW-32),32,TRUE);
+            MoveControl(modelCombo_,(int)(rx+16),(int)(y+222),(int)(sideW-32),170,TRUE);
+            MoveControl(modelNameEdit_,(int)(rx+16),(int)(y+278),(int)(sideW-122),30,TRUE);
         }
 
         if(page_==Page::Persona) {
