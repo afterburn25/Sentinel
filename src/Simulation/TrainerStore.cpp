@@ -289,13 +289,16 @@ TrainerJobRecord TrainerStore::QueueJob(TrainingMode mode,std::string_view targe
 std::vector<TrainerJobRecord> TrainerStore::ListJobs(size_t limit) const {
     std::vector<TrainerJobRecord> out; auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,training_mode,target_name,persona_name,foundation_id,dataset_path,base_model_path,output_path,state,progress "
+        "SELECT id,training_mode,target_name,persona_name,foundation_id,dataset_path,base_model_path,output_path,"
+        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text "
         "FROM trainer_jobs ORDER BY created_utc DESC LIMIT ?",-1,&s,nullptr),db,"prepare trainer jobs list");
     sqlite3_bind_int(s,1,(int)std::min<size_t>(limit,100));
     while(sqlite3_step(s)==SQLITE_ROW) {
         TrainerJobRecord j; j.id=Col(s,0); j.mode=TrainingModeFromString(Col(s,1)); j.targetName=Col(s,2);
         j.personaName=Col(s,3); j.foundationId=Col(s,4); j.datasetPath=Col(s,5); j.baseModelPath=Col(s,6);
-        j.outputPath=Col(s,7); j.state=Col(s,8); j.progress=sqlite3_column_int(s,9); out.push_back(std::move(j));
+        j.outputPath=Col(s,7); j.state=Col(s,8); j.progress=sqlite3_column_int(s,9);
+        j.createdUtc=Col(s,10); j.startedUtc=Col(s,11); j.completedUtc=Col(s,12); j.errorText=Col(s,13);
+        out.push_back(std::move(j));
     }
     sqlite3_finalize(s); return out;
 }
