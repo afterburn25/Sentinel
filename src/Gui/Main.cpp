@@ -1588,6 +1588,7 @@ public:
             else if (b.id==L"job_run_selected") RunSelectedTrainerJob();
             else if (b.id==L"job_cancel_selected") CancelSelectedTrainerJob();
             else if (b.id==L"job_retry_selected") RetrySelectedTrainerJob();
+            else if (b.id==L"job_recover_stale") RecoverStaleTrainerJobs();
             else if (b.id==L"job_open_trainer") {
                 page_=Page::Trainer;
                 ApplyPageControls();
@@ -4724,6 +4725,18 @@ private:
             statusText_=L"Training job reset and returned to the queue";
         } else {
             statusText_=L"Only failed or cancelled jobs can be retried";
+        }
+    }
+
+
+    void RecoverStaleTrainerJobs() {
+        try {
+            const auto recovered=runtime_->trainer.RecoverStaleRunningJobs(3);
+            statusText_=recovered
+                ? std::to_wstring(recovered)+L" stale Trainer job(s) marked failed and made retryable"
+                : L"No stale Trainer jobs found; healthy running jobs were left untouched";
+        } catch(const std::exception& e) {
+            statusText_=L"Stale Trainer job recovery failed: "+Widen(e.what());
         }
     }
 
@@ -9103,6 +9116,8 @@ private:
 
         Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Queue & History",x+16,bodyY+12,190,28,h1Fmt_.Get(),brush_.text.Get());
+        if(running>0)
+            AddButton(L"job_recover_stale",L"Recover Stale",x+listW-210,bodyY+12,100,28,false);
         AddButton(L"job_open_trainer",L"New Job",x+listW-102,bodyY+12,86,28,true);
 
         TextLine(L"TARGET",x+18,bodyY+58,140,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -9165,6 +9180,12 @@ private:
             TextLine(Widen(job.targetName),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
             TextLine(Widen(job.state)+L"  |  "+std::to_wstring(job.progress)+L"%",
                 detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),stateBrush);
+            if(job.state=="RUNNING") {
+                TextLine(
+                    L"Heartbeat "+(job.heartbeatUtc.empty()?L"pending":Widen(job.heartbeatUtc))+
+                    L" | PID "+std::to_wstring(job.workerPid),
+                    detailX+16,bodyY+98,detailW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+            }
 
             TextLine(L"Mode",detailX+16,bodyY+116,76,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(Widen(sentinel::simulation::ToString(job.mode)),

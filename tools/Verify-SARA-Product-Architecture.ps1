@@ -188,6 +188,8 @@ $jobWorkflowTokens = @(
     'job_retry_selected',
     'CancelQueuedJob(',
     'RetryJob(',
+    'job_recover_stale',
+    'RecoverStaleRunningJobs(',
     'Only queued jobs can be cancelled from SARA'
 )
 foreach ($token in $jobWorkflowTokens) {

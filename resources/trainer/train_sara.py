@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, gc, json, os, shutil, sqlite3, subprocess, sys, traceback, urllib.request, zipfile
+import argparse, gc, json, os, shutil, sqlite3, subprocess, sys, threading, traceback, urllib.request, zipfile
 from pathlib import Path
 
 LLAMA_TAG="b10977"
@@ -13,15 +13,33 @@ def update_job(db, job_id, *, state=None, progress=None, error=None):
     fields=[]; values=[]
     if state is not None:
         fields.append("state=?"); values.append(state)
-        if state=="RUNNING": fields.append("started_utc=CURRENT_TIMESTAMP")
-        if state in ("COMPLETED","FAILED","CANCELLED"): fields.append("completed_utc=CURRENT_TIMESTAMP")
+        if state=="RUNNING":
+            fields.append("started_utc=CURRENT_TIMESTAMP")
+            fields.append("worker_pid=?"); values.append(os.getpid())
+        if state in ("COMPLETED","FAILED","CANCELLED"):
+            fields.append("completed_utc=CURRENT_TIMESTAMP")
+            fields.append("worker_pid=0")
     if progress is not None:
         fields.append("progress=?"); values.append(int(progress))
     if error is not None:
         fields.append("error_text=?"); values.append(str(error))
+    fields.append("heartbeat_utc=CURRENT_TIMESTAMP")
     values.append(job_id)
     db.execute(f"UPDATE trainer_jobs SET {','.join(fields)} WHERE id=?", values)
     db.commit()
+
+def heartbeat_worker(db_path: str, job_id: str, stop_event: threading.Event):
+    heartbeat_db=connect(db_path)
+    try:
+        while not stop_event.wait(30):
+            heartbeat_db.execute(
+                "UPDATE trainer_jobs SET heartbeat_utc=CURRENT_TIMESTAMP "
+                "WHERE id=? AND state='RUNNING'",
+                (job_id,),
+            )
+            heartbeat_db.commit()
+    finally:
+        heartbeat_db.close()
 
 def load_job(db, job_id):
     row=db.execute("SELECT * FROM trainer_jobs WHERE id=?", (job_id,)).fetchone()
@@ -335,8 +353,18 @@ def main():
     args=ap.parse_args()
     db=connect(args.db)
     job=load_job(db,args.job)
+    heartbeat_stop=threading.Event()
+    heartbeat_thread=None
     try:
         update_job(db,args.job,state="RUNNING",progress=1,error="")
+        heartbeat_thread=threading.Thread(
+            target=heartbeat_worker,
+            args=(args.db,args.job,heartbeat_stop),
+            name=f"sara-trainer-heartbeat-{args.job}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
+
         foundation=load_foundation(db,job["foundation_id"])
         mode=job["training_mode"]
         print(f"Training mode: {mode}")
@@ -354,6 +382,10 @@ def main():
         traceback.print_exc()
         update_job(db,args.job,state="FAILED",error=str(e))
         raise
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=2)
 
 if __name__=="__main__":
     main()
