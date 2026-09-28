@@ -126,7 +126,7 @@ void TestPersonaLoraHistory()
     Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by ID");
 
     const auto manifest=trainer.BuildPersonaLoraManifest(first.id);
-    Require(manifest.find(""schema": "sara-persona-lora-v1"")!=std::string::npos,
+    Require(manifest.find("\"schema\": \"sara-persona-lora-v1\"")!=std::string::npos,
         "persona LoRA manifest schema missing");
     Require(manifest.find("Samantha v1")!=std::string::npos,
         "persona LoRA manifest name missing");
