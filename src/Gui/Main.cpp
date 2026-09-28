@@ -8548,7 +8548,7 @@ private:
         const float metricW=(contentW-gap*3.0f)/4.0f;
         Metric(
             x,y,metricW,
-            L"Registered Adapters",
+            L"Adapters",
             std::to_wstring(adapters.size()),
             L"Provider-neutral registry",
             brush_.cyan.Get(),IconKind::Chat);
@@ -8561,7 +8561,7 @@ private:
             IconKind::Check);
         Metric(
             x+2.0f*(metricW+gap),y,metricW,
-            L"Pending Approvals",
+            L"Approvals",
             std::to_wstring(pendingApprovals),
             L"Human review queue",
             pendingApprovals?brush_.yellow.Get():brush_.green.Get(),
@@ -8573,7 +8573,7 @@ private:
             L"Local simulation",
             brush_.blue.Get(),IconKind::Document);
 
-        const float mainY=y+92.0f;
+        const float mainY=y+126.0f;
         const float mainH=214.0f;
         const float leftW=(contentW-gap)*0.53f;
         const float rightW=contentW-gap-leftW;
@@ -8696,10 +8696,9 @@ private:
             {L"Telegram / Discord",
                 connectedType(sentinel::channels::ChannelType::Telegram) ||
                 connectedType(sentinel::channels::ChannelType::Discord)},
-            {L"Messenger / WhatsApp",
+            {L"Messenger / WhatsApp / Assist",
                 connectedType(sentinel::channels::ChannelType::Messenger) ||
-                connectedType(sentinel::channels::ChannelType::WhatsApp)},
-            {L"Snapchat Assist / Email",
+                connectedType(sentinel::channels::ChannelType::WhatsApp) ||
                 connectedType(sentinel::channels::ChannelType::SnapchatAssist) ||
                 connectedType(sentinel::channels::ChannelType::Email)}
         };
@@ -8731,7 +8730,7 @@ private:
             Rounded(queueX+16,queueY,queueW-32,48,brush_.sidebar.Get(),brush_.border.Get(),8);
             TextLine(L"No approved messages queued.",queueX+28,queueY+5,queueW-56,36,smallFmt_.Get(),brush_.muted.Get());
         } else {
-            for(size_t i=0;i<msgs.size() && i<2;i++) {
+            for(size_t i=0;i<msgs.size() && i<1;i++) {
                 Rounded(queueX+16,queueY,queueW-32,44,brush_.sidebar.Get(),brush_.border.Get(),8);
                 std::wstring rowText=Widen(msgs[i].text);
                 if(!msgs[i].mediaPath.empty())
