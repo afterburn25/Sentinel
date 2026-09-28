@@ -568,8 +568,8 @@ void TestPersonaScopedConversationMemory()
 
     db.Execute(
         "INSERT INTO persona_learned_notes(persona_name,conversation_id,source_kind,note_text) VALUES"
-        "('Samantha','" + samanthaOld + "','persona_claim','I always pick strawberry ice cream.'),"
-        "('Nikki','" + nikkiOld + "','persona_claim','I always pick mint ice cream.');");
+        "('Samantha','" + samanthaOld + "','reactive_persona_claim','I always pick strawberry ice cream.'),"
+        "('Nikki','" + nikkiOld + "','proactive_persona_claim','I always pick mint ice cream.');");
     const auto samanthaLearned=memory.RecallLearnedPersonaNotes("Samantha",20);
     Require(samanthaLearned.find("strawberry")!=std::string::npos,
         "Samantha learned-note recall missed persona continuity");
