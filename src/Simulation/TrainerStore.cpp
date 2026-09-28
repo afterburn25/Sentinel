@@ -89,6 +89,48 @@ std::optional<ModelFoundation> TrainerStore::GetFoundation(std::string_view id) 
     sqlite3_finalize(s); return out;
 }
 
+
+bool TrainerStore::ApproveFoundation(std::string_view id) {
+    if(id.empty()) return false;
+    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE model_foundations SET status='APPROVED',updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND status IN ('DRAFT','TRAINING','CANDIDATE','APPROVED')",
+        -1,&s,nullptr),db,"prepare foundation approve");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"approve foundation");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
+bool TrainerStore::ActivateFoundation(std::string_view id) {
+    if(id.empty()) return false;
+    auto target=GetFoundation(id);
+    if(!target || (target->status!="APPROVED" && target->status!="ACTIVE")) return false;
+
+    SqliteTransaction tx(db_);
+    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE model_foundations SET status='APPROVED',updated_utc=CURRENT_TIMESTAMP "
+        "WHERE status='ACTIVE' AND id<>?",
+        -1,&s,nullptr),db,"prepare foundation deactivate");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"deactivate active foundation");
+    sqlite3_finalize(s);
+
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE model_foundations SET status='ACTIVE',updated_utc=CURRENT_TIMESTAMP WHERE id=?",
+        -1,&s,nullptr),db,"prepare foundation activate");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"activate foundation");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    tx.Commit();
+    return changed;
+}
+
+
 ModelFoundation TrainerStore::CreateFork(std::string_view name,std::string_view parentId,std::string_view sourceModel,std::string_view trainableSourcePath,std::string_view runtimeGgufPath) {
     const auto id=NewId("foundation"); auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
@@ -131,6 +173,47 @@ std::optional<PersonaLoraBinding> TrainerStore::ResolvePersonaLora(std::string_v
     std::optional<PersonaLoraBinding> out; if(sqlite3_step(s)==SQLITE_ROW) out=ReadBinding(s);
     sqlite3_finalize(s); return out;
 }
+
+
+std::optional<PersonaLoraBinding> TrainerStore::GetPersonaLora(long long id) const {
+    if(id<=0) return std::nullopt;
+    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "FROM persona_lora_bindings WHERE id=? LIMIT 1",
+        -1,&s,nullptr),db,"prepare persona lora get");
+    sqlite3_bind_int64(s,1,id);
+    std::optional<PersonaLoraBinding> out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadBinding(s);
+    sqlite3_finalize(s);
+    return out;
+}
+
+bool TrainerStore::ActivatePersonaLora(long long id) {
+    auto target=GetPersonaLora(id);
+    if(!target) return false;
+
+    SqliteTransaction tx(db_);
+    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE persona_name=?",
+        -1,&s,nullptr),db,"prepare persona lora deactivate all");
+    sqlite3_bind_text(s,1,target->personaName.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"deactivate persona loras");
+    sqlite3_finalize(s);
+
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE persona_lora_bindings SET active=1,updated_utc=CURRENT_TIMESTAMP WHERE id=?",
+        -1,&s,nullptr),db,"prepare persona lora activate");
+    sqlite3_bind_int64(s,1,id);
+    Check(sqlite3_step(s),db,"activate persona lora");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    tx.Commit();
+    return changed;
+}
+
 
 std::vector<PersonaLoraBinding> TrainerStore::ListPersonaLoras(
     std::string_view personaName,
