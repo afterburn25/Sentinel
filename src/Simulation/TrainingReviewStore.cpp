@@ -193,6 +193,31 @@ TrainingReviewCounts TrainingReviewStore::Counts() const {
     return out;
 }
 
+std::vector<TrainingReviewItem> TrainingReviewStore::ListRecent(
+    size_t limit,
+    std::optional<TrainingReviewStatus> status) const
+{
+    std::vector<TrainingReviewItem> out;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=status
+        ? "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
+          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+          "FROM training_review_items WHERE status=? "
+          "ORDER BY created_utc DESC,rowid DESC LIMIT ?"
+        : "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
+          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+          "FROM training_review_items "
+          "ORDER BY created_utc DESC,rowid DESC LIMIT ?";
+    Check(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare recent training reviews");
+    int bind=1;
+    if(status) sqlite3_bind_int(s,bind++,(int)*status);
+    sqlite3_bind_int(s,bind,(int)std::min<size_t>(limit,500));
+    while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadItem(s));
+    sqlite3_finalize(s);
+    return out;
+}
+
 size_t TrainingReviewStore::ExportApprovedJsonl(const std::filesystem::path& path) const {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path,std::ios::trunc|std::ios::binary);
