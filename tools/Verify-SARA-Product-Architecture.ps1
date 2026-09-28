@@ -122,6 +122,18 @@ foreach ($token in $typingWorkflowTokens) {
     }
 }
 
+$learningReviewTokens = @(
+    'learning_notes_toggle',
+    'learning_note_delete:',
+    'PersonaLearnedNotes(',
+    'Learned Continuity'
+)
+foreach ($token in $learningReviewTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Learning Mode review workflow is missing: $token"
+    }
+}
+
 $learningContinuityTokens = @(
     'RecallLearnedPersonaNotes(',
     'Benign continuity notes previously established',

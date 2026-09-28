@@ -1500,6 +1500,9 @@ public:
             else if (b.id.rfind(L"rule_delete:",0)==0)
                 DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
+            else if (b.id==L"learning_notes_toggle") personaShowLearnedNotes_=!personaShowLearnedNotes_;
+            else if (b.id.rfind(L"learning_note_delete:",0)==0)
+                DeletePersonaLearnedNote(std::stoll(b.id.substr(21)));
             else if (b.id==L"trainer_create_fork") CreateFoundationForkFromTrainer();
             else if (b.id==L"trainer_bind_lora") BindCurrentPersonaLoraFromTrainer();
             else if (b.id==L"trainer_queue") QueueTrainerJobFromControls();
@@ -1925,6 +1928,12 @@ private:
         int priority{100};
         int matchScore{};
     };
+    struct PersonaLearnedNoteView {
+        long long id{};
+        std::string sourceKind;
+        std::string text;
+        std::string createdUtc;
+    };
     struct Button { RectF rect; std::wstring id; };
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
@@ -2005,6 +2014,7 @@ private:
     bool trainerAdvancedOpen_{false};
     bool responseRuleExactWording_{false};
     bool responseRuleTerminal_{true};
+    bool personaShowLearnedNotes_{false};
 
     HFONT chatFont_{};
     HFONT uiFont_{};
@@ -4397,6 +4407,52 @@ private:
         }
         sqlite3_finalize(s);
         statusText_=L"Response rule deleted";
+    }
+
+    std::vector<PersonaLearnedNoteView> PersonaLearnedNotes(size_t limit=20) const {
+        std::vector<PersonaLearnedNoteView> out;
+        sqlite3_stmt* s{};
+        const char* sql=
+            "SELECT id,source_kind,note_text,created_utc "
+            "FROM persona_learned_notes "
+            "WHERE persona_name=? "
+            "AND source_kind IN ('reactive_persona_claim','proactive_persona_claim') "
+            "ORDER BY created_utc DESC,id DESC LIMIT ?";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+            return out;
+        sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,100));
+        while(sqlite3_step(s)==SQLITE_ROW) {
+            PersonaLearnedNoteView item;
+            item.id=sqlite3_column_int64(s,0);
+            const auto* kind=(const char*)sqlite3_column_text(s,1);
+            const auto* text=(const char*)sqlite3_column_text(s,2);
+            const auto* when=(const char*)sqlite3_column_text(s,3);
+            item.sourceKind=kind?kind:"";
+            item.text=text?text:"";
+            item.createdUtc=when?when:"";
+            out.push_back(std::move(item));
+        }
+        sqlite3_finalize(s);
+        return out;
+    }
+
+    void DeletePersonaLearnedNote(long long id) {
+        sqlite3_stmt* s{};
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),
+            "DELETE FROM persona_learned_notes WHERE id=? AND persona_name=?",
+            -1,&s,nullptr)!=SQLITE_OK) {
+            statusText_=L"Unable to delete learned continuity note";
+            return;
+        }
+        sqlite3_bind_int64(s,1,id);
+        sqlite3_bind_text(s,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        const bool changed=sqlite3_step(s)==SQLITE_DONE &&
+            sqlite3_changes(runtime_->db.Handle())>0;
+        sqlite3_finalize(s);
+        statusText_=changed
+            ? L"Learned continuity note deleted"
+            : L"Learned continuity note was not found";
     }
 
     void ToggleLearningMode() {
@@ -6795,10 +6851,15 @@ private:
                 L"Saved investigator-approved trigger rules are persona-scoped and evaluated before normal model generation.",
                 x+290,py+20,contentW-312,28,tinyFmt_.Get(),brush_.muted.Get());
 
+            const auto learnedNotes=PersonaLearnedNotes(50);
             AddButton(
                 L"learning_toggle",
                 simSettings_.learningMode?L"Learning ON":L"Learning OFF",
                 x+contentW-126,py+48,110,28,simSettings_.learningMode);
+            AddButton(
+                L"learning_notes_toggle",
+                personaShowLearnedNotes_?L"Show Rules":L"Notes ("+std::to_wstring(learnedNotes.size())+L")",
+                x+contentW-246,py+48,112,28,personaShowLearnedNotes_);
 
             TextLine(L"Trigger",x+22,py+62,58,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(L"Responses (use || for alternates)",x+contentW*0.50f+18,py+62,190,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -6825,6 +6886,39 @@ private:
 
             const float listY=py+180.0f;
             const float rowH=64.0f;
+            if(personaShowLearnedNotes_) {
+                TextLine(
+                    L"Learned Continuity - benign first-person details remembered by this persona",
+                    x+22,listY-24,contentW-44,18,tinyFmt_.Get(),brush_.cyan.Get());
+                if(learnedNotes.empty()) {
+                    Rounded(x+18,listY,contentW-36,82,brush_.sidebar.Get(),brush_.border.Get(),8);
+                    TextLine(L"No learned continuity notes for this persona yet.",
+                        x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.muted.Get());
+                    TextLine(
+                        L"Learning Mode will retain deduplicated first-person persona details after they appear naturally in conversation.",
+                        x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
+                } else {
+                    const size_t visible=std::min<size_t>(learnedNotes.size(),5);
+                    for(size_t i=0;i<visible;i++) {
+                        const auto& note=learnedNotes[i];
+                        const float ry=listY+i*(rowH+6.0f);
+                        Rounded(x+18,ry,contentW-36,rowH,brush_.sidebar.Get(),brush_.border.Get(),8);
+
+                        TextLine(
+                            L"#"+std::to_wstring(note.id)+L" | "+
+                            (note.sourceKind=="proactive_persona_claim"?L"PROACTIVE":L"REACTIVE"),
+                            x+30,ry+5,contentW-150,18,tinyFmt_.Get(),brush_.cyan.Get());
+
+                        std::wstring value=Widen(note.text);
+                        if(value.size()>150) value=value.substr(0,147)+L"...";
+                        Text(value,x+30,ry+24,contentW-140,34,tinyFmt_.Get(),brush_.text.Get());
+
+                        AddButton(
+                            L"learning_note_delete:"+std::to_wstring(note.id),
+                            L"Delete",x+contentW-82,ry+18,64,28,false);
+                    }
+                }
+            } else {
             if(rules.empty()) {
                 Rounded(x+18,listY,contentW-36,82,brush_.sidebar.Get(),brush_.border.Get(),8);
                 TextLine(L"No saved response rules for this persona.",x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.muted.Get());
@@ -6879,6 +6973,7 @@ private:
                         std::to_wstring(rules.size())+L" saved rules.",
                         x+22,listY+visible*(rowH+6.0f)+4,contentW-44,18,tinyFmt_.Get(),brush_.muted.Get());
                 }
+            }
             }
         }
     }
