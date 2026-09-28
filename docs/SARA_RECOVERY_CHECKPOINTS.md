@@ -87,3 +87,50 @@ Artifact digests from run #730:
 - UI screenshots: `sha256:26ed9b786eabe2d608ad0964d495e24d05370d56b74642a6cedc5ea9b21336fc`
 
 If later work damages the application architecture, this commit is the first validated rollback point after the architecture correction.
+
+## Checkpoint 02 — Subjects & Identity unified and validated
+
+Validated commit:
+
+`cb934c5349e1666b1c64092b7ebaf1cb4a853ada`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #754
+- Run ID: `36413928944`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- no SQLite DLL dependency: PASS
+- packaged install: PASS
+- packaged SARA launch past splash: PASS
+- responsive main window and full UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Subjects & Identity recovery proven by this checkpoint:
+
+- case-scoped subject profiles persist legal-name, alias, username, contact-identifier and investigator-note fields
+- identity leads persist source type, source reference, finding, confidence and provenance
+- lead verification/rejection is a human review action and does not automatically mark the subject identity confirmed
+- explicit subject confirmation remains a separate investigator action
+- the recovery-only `investigation_subjects` and `subject_identity_leads` tables are reconciled into the canonical 1.0.15 `subjects` and `subject_identities` tables
+- runtime reads/writes now use only the canonical subject/identity schema
+- subject deletion uses a transaction so related identity-row cleanup is rolled back if the subject itself cannot be deleted
+- subject and identity lifecycle actions are represented in Audit & Compliance
+- the packaged `SARA.exe` exposes Subjects & Identity as the third permanent investigative module without replacing or hiding the 1.0.15 shell
+
+Artifact digests from run #754:
+
+- Windows package: `sha256:f8ccd348e20c4a048d6fc5107b3ea815c3b11e7c70d73aeaa6cc911134199c0d`
+- Setup artifact: `sha256:b1713ef20a6cd755d9087cd198d9595dac0879a18591897c992f71c02fd1502a`
+- UI screenshots: `sha256:647f5718616396c8e039fbaa48523c8fdf2bd22c712ee12741e9d29d79a05bc8`
+
+This is the validated rollback point for the recovered operational shell plus the canonical Subjects & Identity workflow.

@@ -1,6 +1,6 @@
 # SARA Recovery Feature Ledger
 
-Date: 2026-09-27
+Date: 2026-09-28
 
 ## Purpose
 
@@ -256,7 +256,9 @@ Every future feature restoration must follow this exact sequence:
 - Responsive packaged main window after splash: PASS
 - Actual packaged UI capture: PASS
 - Hybrid Model Lab shell/workspaces: RESTORED IN STAGES
-- Persona memory isolation recovery: IMPLEMENTED / CI VALIDATION IN PROGRESS
+- Persona memory isolation recovery: RESTORED / VALIDATED
+- Subjects & Identity workflow: RESTORED / VALIDATED (Windows Build #754)
+- Canonical subject / identity schema reconciliation: PASS
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -297,6 +299,9 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] persona archive/resume/relevant-memory recall isolated by selected persona
 - [x] archived conversations now preserve a separate full persona summary
 - [x] persona switches move to that persona's own conversation scope
+- [x] case-scoped Subjects & Identity workflow with provenance-backed leads
+- [x] explicit human lead review and separate subject confirmation state
+- [x] recovery-only subject tables reconciled into canonical `subjects` / `subject_identities` storage
 
 ### Still genuinely later-only / not yet restored
 
@@ -369,3 +374,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Model Lab prevented from replacing main sidebar: YES
 - transparent approved logo without white plate: YES
 - packaged Windows build/tests/startup/installer checkpoint: PASS
+- Subjects & Identity canonical persistence and packaged UI checkpoint: PASS — run #754 / commit `cb934c5349e1666b1c64092b7ebaf1cb4a853ada`
