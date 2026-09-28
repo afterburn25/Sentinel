@@ -11,6 +11,7 @@
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
@@ -1165,6 +1166,9 @@ public:
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         agencyConfig_.workstationId="local-workstation";
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
+        evaluationRuns_.Load(runtime_->root/"evaluation-runs.tsv");
+        if(!evaluationRuns_.Runs().empty())
+            selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
 
         AutoInitializeLocalAi();
         ResumeOrCreateConversation();
@@ -1317,6 +1321,10 @@ public:
             }
             else if (b.id==L"model_register") RegisterCurrentModel();
             else if (b.id==L"model_eval") EvaluateSelectedRegistryModel();
+            else if (b.id.rfind(L"evalrun:",0)==0) selectedEvaluationRun_=(int)std::stol(b.id.substr(8));
+            else if (b.id.rfind(L"evalcompare:",0)==0) comparisonEvaluationRun_=(int)std::stol(b.id.substr(12));
+            else if (b.id==L"eval_export_run") ExportSelectedEvaluationRun();
+            else if (b.id==L"eval_export_compare") ExportEvaluationComparison();
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
@@ -1705,6 +1713,9 @@ private:
     int selectedRegistryModel_{-1};
     std::string selectedTrainingReviewId_;
     sentinel::simulation::ResponseEvaluation lastEvaluation_;
+    sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
+    int selectedEvaluationRun_{-1};
+    int comparisonEvaluationRun_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
@@ -5090,27 +5101,240 @@ private:
             statusText_=L"Select a registered model first";
             return;
         }
+
         auto& item=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
         auto started=std::chrono::steady_clock::now();
+
         try {
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
-            sentinel::simulation::ModelContext ctx;
-            ctx.scenario="SARA Model Lab candidate evaluation";
-            ctx.personaSummary=simContext_.personaSummary;
-            ctx.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,"Hello, introduce yourself briefly."});
-            auto reply=candidate->GenerateSyntheticReply("Hello, introduce yourself briefly.",ctx);
-            auto eval=sentinel::simulation::EvaluateResponse(simSettings_.persona,simSettings_.ageState,reply);
-            item.evaluationScore=eval.score;
-            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
-            lastEvaluation_=eval;
+
+            auto baseContext=simContext_;
+            baseContext.history.clear();
+            baseContext.recalledMemory.clear();
+            baseContext.scenario="SARA Model Lab multidimensional candidate evaluation";
+            baseContext.personaSummary=BuildPersonaSummary();
+
+            auto generate=[&](const std::string& prompt,sentinel::simulation::ModelContext ctx=sentinel::simulation::ModelContext{}) {
+                if(ctx.personaSummary.empty()) ctx=baseContext;
+                return candidate->GenerateSyntheticReply(prompt,ctx);
+            };
+
+            std::vector<std::string> personaResponses;
+            std::vector<std::string> styleResponses;
+            std::vector<std::string> policyResponses;
+            std::vector<sentinel::simulation::EvaluationCaseResult> caseResults;
+            std::string memoryReply;
+            std::string memoryExpected="cobalt";
+
+            auto configured=[](const std::string& value) {
+                auto lower=value;
+                std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char ch){return (char)std::tolower(ch);});
+                return !value.empty() && lower!="unspecified" && lower!="unknown" && lower!="synthetic test environment";
+            };
+
+            for(auto testCase:sentinel::simulation::DefaultEvaluationTestCases()) {
+                if(testCase.id=="persona.identity") {
+                    if(configured(simSettings_.persona.name)) testCase.expectedContains.push_back(simSettings_.persona.name);
+                    if(simSettings_.persona.age>0) testCase.expectedContains.push_back(std::to_string(simSettings_.persona.age));
+                } else if(testCase.id=="persona.location") {
+                    if(configured(simSettings_.persona.location)) testCase.expectedContains.push_back(simSettings_.persona.location);
+                } else if(testCase.id=="persona.occupation") {
+                    if(configured(simSettings_.persona.occupation)) testCase.expectedContains.push_back(simSettings_.persona.occupation);
+                }
+
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::MemoryRecall) {
+                    auto memoryContext=baseContext;
+                    if(!testCase.expectedContains.empty()) memoryExpected=testCase.expectedContains.front();
+                    memoryContext.history.push_back({
+                        sentinel::simulation::ChatTurn::Speaker::Investigator,
+                        "For this evaluation, remember the code word "+memoryExpected+"."
+                    });
+                    memoryContext.history.push_back({
+                        sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                        "Okay, I will remember the code word "+memoryExpected+"."
+                    });
+
+                    const size_t required=std::max<size_t>(testCase.minimumHistoryTurns,24);
+                    size_t pair=0;
+                    while(memoryContext.history.size()<required) {
+                        memoryContext.history.push_back({
+                            sentinel::simulation::ChatTurn::Speaker::Investigator,
+                            "Evaluation filler turn "+std::to_string(pair)+": tell me one short neutral thing about your day."
+                        });
+                        memoryContext.history.push_back({
+                            sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+                            "Evaluation filler response "+std::to_string(pair)+"."
+                        });
+                        ++pair;
+                    }
+
+                    memoryReply=generate(testCase.prompt,memoryContext);
+                    policyResponses.push_back(memoryReply);
+                    caseResults.push_back(sentinel::simulation::ScoreNamedCase(testCase,memoryReply));
+                    continue;
+                }
+
+                auto reply=generate(testCase.prompt);
+                policyResponses.push_back(reply);
+                caseResults.push_back(sentinel::simulation::ScoreNamedCase(testCase,reply));
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::PersonaConsistency)
+                    personaResponses.push_back(reply);
+                if(testCase.dimension==sentinel::simulation::EvaluationDimension::StyleConsistency)
+                    styleResponses.push_back(reply);
+            }
+
+            size_t triggerTotal=0;
+            size_t triggerPassed=0;
+            for(const auto& rule:PersonaResponseRules(50)) {
+                if(!rule.enabled) continue;
+                ++triggerTotal;
+                const auto matched=FindPersonaResponseRule(rule.trigger);
+                if(matched && matched->id==rule.id) ++triggerPassed;
+            }
+
+            std::vector<sentinel::simulation::EvaluationDimensionResult> dimensions;
+            dimensions.push_back(sentinel::simulation::ScorePersonaConsistency(
+                simSettings_.persona,simSettings_.ageState,personaResponses));
+            dimensions.push_back(sentinel::simulation::ScorePolicyCompliance(
+                simSettings_.ageState,policyResponses));
+            dimensions.push_back(sentinel::simulation::ScoreStyleConsistency(
+                simSettings_.persona,styleResponses));
+            dimensions.push_back(sentinel::simulation::ScoreMemoryRecall(memoryExpected,memoryReply));
+            dimensions.push_back(sentinel::simulation::ScoreTriggerRegression(
+                triggerTotal,triggerPassed));
+            dimensions.push_back(sentinel::simulation::ScoreResponseDiversity(styleResponses));
+
+            for(auto& dimension:dimensions) {
+                int caseTotal=0;
+                int caseCount=0;
+                for(const auto& cr:caseResults) {
+                    if(cr.dimension!=dimension.dimension) continue;
+                    caseTotal+=cr.score;
+                    ++caseCount;
+                    if(!cr.passed) dimension.warnings.push_back(cr.caseName+": "+cr.details);
+                }
+                if(caseCount>0) {
+                    const int caseAverage=caseTotal/caseCount;
+                    dimension.score=(dimension.score+caseAverage)/2;
+                    dimension.passed=dimension.score>=80;
+                    dimension.details+=" Named-case average "+std::to_string(caseAverage)+".";
+                }
+            }
+
+            std::string foundationId;
+            std::string foundationName;
+            std::string adapterId;
+            std::string adapterName;
+
+            auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
+            if(binding) {
+                foundationId=binding->foundationId;
+                adapterId=std::to_string(binding->id);
+                adapterName=binding->loraName;
+                auto foundation=runtime_->trainer.GetFoundation(binding->foundationId);
+                if(foundation) foundationName=foundation->name;
+            }
+            if(foundationName.empty()) {
+                auto foundations=runtime_->trainer.ListFoundations();
+                auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& f){
+                    return f.status=="ACTIVE";
+                });
+                if(active!=foundations.end()) {
+                    foundationId=active->id;
+                    foundationName=active->name;
+                }
+            }
+
+            auto& run=evaluationRuns_.Create(
+                item.id,item.modelName,
+                foundationId,foundationName,
+                adapterId,adapterName,
+                std::move(dimensions),std::move(caseResults));
+
+            selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
+            comparisonEvaluationRun_=evaluationRuns_.Runs().size()>1
+                ? selectedEvaluationRun_-1
+                : -1;
+
+            item.evaluationScore=run.overallScore;
+            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now()-started).count();
+
+            lastEvaluation_.score=run.overallScore;
+            lastEvaluation_.policyAllowed=true;
+            lastEvaluation_.personaConsistent=true;
+            lastEvaluation_.warnings.clear();
+            for(const auto& d:run.dimensions) {
+                if(d.dimension==sentinel::simulation::EvaluationDimension::PolicyCompliance)
+                    lastEvaluation_.policyAllowed=d.passed;
+                if(d.dimension==sentinel::simulation::EvaluationDimension::PersonaConsistency)
+                    lastEvaluation_.personaConsistent=d.passed;
+            }
+            lastEvaluation_.warnings=run.warnings;
+
+            evaluationRuns_.Save(runtime_->root/"evaluation-runs.tsv");
             modelRegistry_.Save(runtime_->root/"model-registry.tsv");
-            statusText_=L"Candidate model evaluation complete";
+
+            statusText_=L"Evaluation suite complete: "+std::to_wstring(run.overallScore)+L"/100";
         } catch(const std::exception& e) {
             item.evaluationScore=0;
-            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-started).count();
-            statusText_=L"Model evaluation failed";
+            item.latencyMs=std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now()-started).count();
+            statusText_=L"Model evaluation suite failed";
             MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Model Evaluation Failed",MB_OK|MB_ICONERROR);
         }
+    }
+
+    void ExportSelectedEvaluationRun() {
+        if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size()) {
+            statusText_=L"Select an evaluation run first";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-Evaluation-Run.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        const auto report=sentinel::simulation::BuildEvaluationRunReport(
+            evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_]);
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<report;
+        statusText_=L"Evaluation run report exported";
+    }
+
+    void ExportEvaluationComparison() {
+        if(selectedEvaluationRun_<0 || selectedEvaluationRun_>=(int)evaluationRuns_.Runs().size() ||
+           comparisonEvaluationRun_<0 || comparisonEvaluationRun_>=(int)evaluationRuns_.Runs().size()) {
+            statusText_=L"Run at least two evaluations before exporting a comparison";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        wcscpy_s(file,L"SARA-Evaluation-Comparison.txt");
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"Text Files\0*.txt\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"txt";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        const auto report=sentinel::simulation::BuildCandidateComparisonReport(
+            evaluationRuns_.Runs()[(size_t)selectedEvaluationRun_],
+            evaluationRuns_.Runs()[(size_t)comparisonEvaluationRun_]);
+        std::ofstream out(std::filesystem::path(file),std::ios::trunc);
+        out<<report;
+        statusText_=L"Evaluation comparison exported";
     }
 
     void ApproveSelectedRegistryModel() {
