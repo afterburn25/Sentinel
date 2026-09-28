@@ -75,7 +75,7 @@ constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs, ModelLabEvaluation, ModelLabDeployment, Subjects };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
-enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
+enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat, Smile, Paperclip };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
 
@@ -1950,6 +1950,27 @@ private:
         buttons_.push_back({{x,y,x+w,y+h},id});
     }
 
+
+    void AddIconButton(
+        const std::wstring& id,
+        IconKind icon,
+        float x,float y,float w,float h,
+        bool primary=false)
+    {
+        Rounded(
+            x,y,w,h,
+            primary?brush_.blue.Get():brush_.panel2.Get(),
+            primary?brush_.cyan.Get():brush_.border.Get(),7);
+        const float iconSize=std::min(w,h)*0.54f;
+        DrawIcon(
+            icon,
+            x+(w-iconSize)*0.5f,
+            y+(h-iconSize)*0.5f,
+            iconSize,
+            primary?brush_.text.Get():brush_.cyan.Get());
+        buttons_.push_back({{x,y,x+w,y+h},id});
+    }
+
     void StatusDot(float x,float y,float r,ID2D1Brush* color) {
         target_->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x,y),r,r),color);
     }
@@ -2052,6 +2073,61 @@ private:
                 target_->DrawLine(D2D1::Point2F(x+s*0.30f,y+s*0.72f),D2D1::Point2F(x+s*0.23f,y+s*0.90f),color,t);
                 target_->DrawLine(D2D1::Point2F(x+s*0.23f,y+s*0.90f),D2D1::Point2F(x+s*0.46f,y+s*0.73f),color,t);
                 break;
+            case IconKind::Smile:
+                target_->DrawEllipse(
+                    D2D1::Ellipse(D2D1::Point2F(x+s*0.50f,y+s*0.50f),s*0.36f,s*0.36f),
+                    color,t);
+                target_->FillEllipse(
+                    D2D1::Ellipse(D2D1::Point2F(x+s*0.38f,y+s*0.42f),s*0.035f,s*0.035f),
+                    color);
+                target_->FillEllipse(
+                    D2D1::Ellipse(D2D1::Point2F(x+s*0.62f,y+s*0.42f),s*0.035f,s*0.035f),
+                    color);
+                {
+                    ComPtr<ID2D1PathGeometry> geo;
+                    factory_->CreatePathGeometry(&geo);
+                    ComPtr<ID2D1GeometrySink> sink;
+                    geo->Open(&sink);
+                    sink->BeginFigure(
+                        D2D1::Point2F(x+s*0.33f,y+s*0.58f),
+                        D2D1_FIGURE_BEGIN_HOLLOW);
+                    sink->AddBezier(D2D1::BezierSegment(
+                        D2D1::Point2F(x+s*0.40f,y+s*0.72f),
+                        D2D1::Point2F(x+s*0.60f,y+s*0.72f),
+                        D2D1::Point2F(x+s*0.67f,y+s*0.58f)));
+                    sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                    sink->Close();
+                    target_->DrawGeometry(geo.Get(),color,t);
+                }
+                break;
+            case IconKind::Paperclip: {
+                ComPtr<ID2D1PathGeometry> geo;
+                factory_->CreatePathGeometry(&geo);
+                ComPtr<ID2D1GeometrySink> sink;
+                geo->Open(&sink);
+                sink->BeginFigure(
+                    D2D1::Point2F(x+s*0.67f,y+s*0.22f),
+                    D2D1_FIGURE_BEGIN_HOLLOW);
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.82f,y+s*0.36f),
+                    D2D1::Point2F(x+s*0.78f,y+s*0.54f),
+                    D2D1::Point2F(x+s*0.63f,y+s*0.69f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.46f,y+s*0.84f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.31f,y+s*0.96f),
+                    D2D1::Point2F(x+s*0.12f,y+s*0.79f),
+                    D2D1::Point2F(x+s*0.25f,y+s*0.63f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.53f,y+s*0.36f));
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F(x+s*0.61f,y+s*0.28f),
+                    D2D1::Point2F(x+s*0.70f,y+s*0.37f),
+                    D2D1::Point2F(x+s*0.62f,y+s*0.45f)));
+                sink->AddLine(D2D1::Point2F(x+s*0.39f,y+s*0.68f));
+                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                sink->Close();
+                target_->DrawGeometry(geo.Get(),color,t);
+                break;
+            }
         }
     }
 
@@ -2683,10 +2759,9 @@ private:
 
         UpdateSimulationScrollbar();
 
-        // Full-color emoji opens the native Windows emoji panel; the paperclip
-        // attaches a persistent image to the conversation.
-        AddButton(L"sim_emoji",L"😊",x+18,y+452,38,46,false);
-        AddButton(L"sim_attach",L"📎",x+62,y+452,38,46,false);
+        // Stable vector buttons avoid font/encoding regressions in packaged builds.
+        AddIconButton(L"sim_emoji",IconKind::Smile,x+18,y+452,38,46,false);
+        AddIconButton(L"sim_attach",IconKind::Paperclip,x+62,y+452,38,46,false);
         AddButton(L"sim_send",L"Send",x+chatW-204,y+452,186,46,true);
 
         // Model / scenario card
