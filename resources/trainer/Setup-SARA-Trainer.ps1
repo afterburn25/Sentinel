@@ -38,6 +38,16 @@ Write-Host 'Updating pip tooling...'
 & $venvPython -m pip install --upgrade pip setuptools wheel
 if($LASTEXITCODE -ne 0) { throw 'Unable to update trainer pip tooling.' }
 
+$nvidia=Get-Command 'nvidia-smi.exe' -ErrorAction SilentlyContinue
+if($nvidia) {
+  Write-Host 'NVIDIA GPU detected. Installing the PyTorch 2.13 CUDA 13.0 build...'
+  & $venvPython -m pip install 'torch==2.13.0' --index-url 'https://download.pytorch.org/whl/cu130'
+} else {
+  Write-Host 'No NVIDIA GPU detected. Installing the CPU PyTorch build for dataset tooling...'
+  & $venvPython -m pip install 'torch==2.13.0' --index-url 'https://download.pytorch.org/whl/cpu'
+}
+if($LASTEXITCODE -ne 0) { throw 'Unable to install the SARA PyTorch runtime.' }
+
 Write-Host 'Installing SARA training packages. This may take several minutes...'
 & $venvPython -m pip install -r $requirements
 if($LASTEXITCODE -ne 0) { throw 'Unable to install one or more SARA training packages.' }
