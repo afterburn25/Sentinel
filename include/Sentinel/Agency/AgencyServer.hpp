@@ -1,5 +1,10 @@
 #pragma once
+
+#include "Sentinel/Storage/SqliteDatabase.hpp"
+
+#include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace sentinel::agency {
@@ -11,7 +16,13 @@ struct AgencyServerConfig {
     bool enabled{false};
 };
 
-enum class SyncItemType { CaseMetadata, EvidenceManifest, AuditRecord, PolicyPackage, ModelProfile };
+enum class SyncItemType {
+    CaseMetadata,
+    EvidenceManifest,
+    AuditRecord,
+    PolicyPackage,
+    ModelProfile
+};
 
 struct SyncQueueItem {
     std::string id;
@@ -28,6 +39,25 @@ public:
     size_t PendingCount() const;
 private:
     std::vector<SyncQueueItem> items_;
+};
+
+// Persistent offline-first state. This intentionally does not implement a
+// network transport; it persists configuration and work that a future
+// authenticated Agency Server transport may consume.
+class AgencyServerStore {
+public:
+    explicit AgencyServerStore(SqliteDatabase& db):db_(db){}
+
+    [[nodiscard]] AgencyServerConfig LoadConfig() const;
+    void SaveConfig(const AgencyServerConfig& config);
+
+    SyncQueueItem Enqueue(SyncQueueItem item);
+    [[nodiscard]] std::vector<SyncQueueItem> Items(size_t limit=100) const;
+    [[nodiscard]] size_t PendingCount() const;
+    bool MarkComplete(std::string_view id);
+
+private:
+    SqliteDatabase& db_;
 };
 
 }

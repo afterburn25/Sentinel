@@ -610,6 +610,7 @@ struct Runtime {
     sentinel::channels::ChannelAdapterRegistry channelAdapters;
     sentinel::channels::JurisdictionRuleStore jurisdictionRules;
     sentinel::operations::SupervisorStateStore supervisorState;
+    sentinel::agency::AgencyServerStore agencyStore;
     sentinel::identity::SubjectIdentityStore subjectIdentity;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
@@ -627,6 +628,7 @@ struct Runtime {
           channelCore(db),
           jurisdictionRules(db),
           supervisorState(db),
+          agencyStore(db),
           subjectIdentity(db),
           conversationMemory(db),
           personaProfiles(db),
@@ -1228,7 +1230,13 @@ public:
         messagingAdapter_=sentinel::operations::CreateInMemoryMessageAdapter();
         runtime_->channelAdapters.Register(
             std::make_unique<sentinel::channels::LocalSimulationChannelAdapter>(*messagingAdapter_));
-        agencyConfig_.workstationId="local-workstation";
+        agencyConfig_=runtime_->agencyStore.LoadConfig();
+        if(agencyConfig_.workstationId.empty()) {
+            agencyConfig_.workstationId="local-workstation";
+            runtime_->agencyStore.SaveConfig(agencyConfig_);
+        }
+        SetWindowTextW(agencyEndpointEdit_,Widen(agencyConfig_.endpoint).c_str());
+        SetWindowTextW(agencyIdEdit_,Widen(agencyConfig_.agencyId).c_str());
         modelRegistry_.Load(runtime_->root/"model-registry.tsv");
         trainingData_.Load(runtime_->root/"training-data.tsv");
         if(!trainingData_.Snapshots().empty())
@@ -1825,7 +1833,6 @@ private:
     sentinel::simulation::DeploymentRegistry deploymentRegistry_;
     int selectedDeployment_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
-    sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
     std::wstring updateStatus_=L"Updates not checked";
     std::wstring aiDiagnostics_=L"Not run";
@@ -6065,20 +6072,27 @@ private:
     void ToggleAgency() {
         agencyConfig_.endpoint=Narrow(EditText(agencyEndpointEdit_));
         agencyConfig_.agencyId=Narrow(EditText(agencyIdEdit_));
-        if(agencyConfig_.endpoint.empty() || agencyConfig_.agencyId.empty()) {
-            statusText_=L"Enter agency endpoint and agency ID first";
+        if(!agencyConfig_.enabled &&
+           (agencyConfig_.endpoint.empty() || agencyConfig_.agencyId.empty())) {
+            statusText_=L"Enter agency endpoint and agency ID before enabling configuration";
             return;
         }
+        if(agencyConfig_.workstationId.empty())
+            agencyConfig_.workstationId="local-workstation";
+
         agencyConfig_.enabled=!agencyConfig_.enabled;
-        statusText_=agencyConfig_.enabled?L"Agency sync configuration enabled":L"Agency sync configuration disabled";
+        runtime_->agencyStore.SaveConfig(agencyConfig_);
+        statusText_=agencyConfig_.enabled
+            ? L"Agency configuration saved; network transport remains inactive"
+            : L"Agency configuration disabled and saved";
     }
 
     void EnqueueAgencySnapshot() {
-        agencyQueue_.Enqueue({
-            "sync-"+std::to_string(agencyQueue_.Items().size()+1),
+        runtime_->agencyStore.Enqueue({
+            {},
             sentinel::agency::SyncItemType::AuditRecord,
             "audit-count:"+std::to_string(runtime_->AuditCount()),0,false});
-        statusText_=L"Encrypted-sync work item queued locally";
+        statusText_=L"Audit snapshot queued persistently for future authenticated sync";
     }
 
     void DrawPersona(float w,float h) {
@@ -9143,7 +9157,7 @@ private:
     }
 
     void DrawAgency(float w,float h) {
-        PageTitle(L"Agency Server",L"Encrypted synchronization configuration and offline work queue");
+        PageTitle(L"Agency Server",L"Persistent offline sync staging, jurisdiction configuration, and future authenticated agency transport");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
@@ -9152,31 +9166,63 @@ private:
         const float rightW=contentW-gap-leftW;
         const float rx=x+leftW+gap;
 
+        const auto queueItems=runtime_->agencyStore.Items(3);
+        const auto pendingCount=runtime_->agencyStore.PendingCount();
+
         const float topH=244.0f;
         Rounded(x,y,leftW,topH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Agency Connection",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Agency Configuration",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Server endpoint",x+20,y+62,116,30,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Agency ID",x+20,y+108,116,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+20,y+154,150,36,true);
+        AddButton(
+            L"agency_toggle",
+            agencyConfig_.enabled?L"Disable Config":L"Enable Config",
+            x+20,y+154,150,36,true);
         StatusDot(x+194,y+172,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
-        TextLine(agencyConfig_.enabled?L"Configuration enabled":L"Offline / local-only",
-            x+206,y+155,leftW-226,34,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+        TextLine(
+            agencyConfig_.enabled?L"Configuration persisted":L"Offline / local-only",
+            x+206,y+155,leftW-226,24,smallFmt_.Get(),
+            agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+        TextLine(
+            L"Workstation: "+Widen(agencyConfig_.workstationId),
+            x+206,y+179,leftW-226,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        Text(L"Transport remains inactive until an agency endpoint and authentication contract are implemented.",
-            x+20,y+202,leftW-40,30,tinyFmt_.Get(),brush_.muted.Get());
+        Text(
+            L"Enabling configuration does not open a network connection. Transport remains inactive until authenticated Agency Server protocol and credentials are implemented.",
+            x+20,y+204,leftW-40,30,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(rx,y,rightW,topH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Sync Queue",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Pending work items",rx+20,y+64,132,24,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::to_wstring(agencyQueue_.PendingCount()),rx+158,y+56,90,38,bigFmt_.Get(),brush_.cyan.Get());
-        AddButton(L"agency_enqueue",L"Queue Audit Snapshot",rx+20,y+112,190,36,false);
+        TextLine(L"Persistent Sync Queue",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Pending",rx+20,y+52,80,22,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::to_wstring(pendingCount),rx+104,y+43,70,38,bigFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"agency_enqueue",L"Queue Audit Snapshot",rx+20,y+88,rightW-40,32,false);
 
-        Rounded(rx+20,y+160,rightW-40,64,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Offline-first",rx+34,y+168,rightW-68,22,bodyFmt_.Get(),brush_.green.Get());
-        Text(L"Case and evidence access stays available even when no agency server is configured.",
-            rx+34,y+193,rightW-68,26,tinyFmt_.Get(),brush_.muted.Get());
+        float queueY=y+132.0f;
+        if(queueItems.empty()) {
+            Rounded(rx+18,queueY,rightW-36,48,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No persistent sync work queued.",rx+30,queueY+7,rightW-60,34,tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<queueItems.size() && i<2;i++) {
+                Rounded(rx+18,queueY,rightW-36,42,brush_.sidebar.Get(),brush_.border.Get(),7);
+                const auto& item=queueItems[i];
+                const wchar_t* type=
+                    item.type==sentinel::agency::SyncItemType::AuditRecord?L"AUDIT":
+                    item.type==sentinel::agency::SyncItemType::EvidenceManifest?L"EVIDENCE":
+                    item.type==sentinel::agency::SyncItemType::CaseMetadata?L"CASE":
+                    item.type==sentinel::agency::SyncItemType::PolicyPackage?L"POLICY":L"MODEL";
+                TextLine(type,rx+28,queueY+4,64,18,tinyFmt_.Get(),brush_.cyan.Get());
+                std::wstring ref=Widen(item.localReference);
+                if(ref.size()>24) ref=ref.substr(0,21)+L"...";
+                TextLine(ref,rx+96,queueY+4,rightW-128,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(
+                    item.complete?L"COMPLETE":L"WAITING FOR TRANSPORT",
+                    rx+28,queueY+22,rightW-56,16,tinyFmt_.Get(),
+                    item.complete?brush_.green.Get():brush_.yellow.Get());
+                queueY+=48.0f;
+            }
+        }
 
         const float jurisdictionY=y+258.0f;
         const float jurisdictionH=132.0f;
@@ -9187,20 +9233,21 @@ private:
         TextLine(jurisdictionStatus_,x+188,jurisdictionY+82,leftW-208,38,tinyFmt_.Get(),brush_.cyan.Get());
 
         Rounded(rx,jurisdictionY,rightW,jurisdictionH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Rules Enforcement",rx+18,jurisdictionY+12,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"State rules sit above every provider adapter. Missing, expired, or unreviewed profiles force human review.",
-            rx+20,jurisdictionY+50,rightW-40,58,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Transport Safety",rx+18,jurisdictionY+12,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(
+            L"Queued work remains local. No item is transmitted until a future authenticated transport explicitly consumes and acknowledges it.",
+            rx+20,jurisdictionY+48,rightW-40,64,tinyFmt_.Get(),brush_.muted.Get());
 
         const float responsibilitiesY=y+404.0f;
         const float responsibilitiesH=std::max(132.0f,h-responsibilitiesY-24.0f);
         Rounded(x,responsibilitiesY,contentW,responsibilitiesH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Agency Server Responsibilities",x+18,responsibilitiesY+12,340,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Agency Server Contract Boundary",x+18,responsibilitiesY+12,340,28,h1Fmt_.Get(),brush_.text.Get());
 
         const wchar_t* items[]={
-            L"Encrypted case and evidence synchronization",
-            L"Central policy and model-profile distribution",
-            L"Workstation registration and role administration",
-            L"Multi-investigator coordination and redundant backup"
+            L"Encrypted case/evidence synchronization after authenticated transport is implemented",
+            L"Central policy and approved model-profile distribution",
+            L"Workstation registration, roles, and investigator authorization",
+            L"Multi-investigator coordination, backup, acknowledgement, and retry state"
         };
         float iy=responsibilitiesY+50.0f;
         for(auto* item:items) {

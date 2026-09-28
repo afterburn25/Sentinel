@@ -18,6 +18,7 @@
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
 #include "Sentinel/Operations/SupervisorStateStore.hpp"
+#include "Sentinel/Agency/AgencyServer.hpp"
 
 #include <array>
 #include <cassert>
@@ -663,6 +664,77 @@ void TestSupervisorStateStore()
 }
 
 
+void TestAgencyServerStore()
+{
+    auto RequireAgency=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/
+        ("sara-agency-store-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto dbPath=root/"agency.db";
+
+    std::string firstId;
+    {
+        sentinel::SqliteDatabase db;
+        db.Open(dbPath);
+        sentinel::MigrationService migrations(db);
+        migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+        sentinel::agency::AgencyServerStore store(db);
+        auto config=store.LoadConfig();
+        RequireAgency(config.workstationId=="local-workstation",
+            "default agency workstation ID missing");
+
+        config.endpoint="https://agency.example.invalid/api";
+        config.agencyId="unit-agency";
+        config.workstationId="unit-workstation";
+        config.enabled=true;
+        store.SaveConfig(config);
+
+        auto first=store.Enqueue({
+            {},sentinel::agency::SyncItemType::AuditRecord,"audit-count:7",0,false});
+        auto second=store.Enqueue({
+            {},sentinel::agency::SyncItemType::EvidenceManifest,"evidence-manifest:case-a",0,false});
+        firstId=first.id;
+        RequireAgency(!first.id.empty() && !second.id.empty(),
+            "persistent agency queue IDs were not generated");
+        RequireAgency(store.PendingCount()==2,
+            "persistent agency queue pending count mismatch");
+
+        db.Close();
+    }
+
+    {
+        sentinel::SqliteDatabase db;
+        db.Open(dbPath);
+        sentinel::agency::AgencyServerStore store(db);
+
+        const auto config=store.LoadConfig();
+        RequireAgency(config.endpoint=="https://agency.example.invalid/api",
+            "agency endpoint did not persist");
+        RequireAgency(config.agencyId=="unit-agency","agency ID did not persist");
+        RequireAgency(config.workstationId=="unit-workstation",
+            "agency workstation ID did not persist");
+        RequireAgency(config.enabled,"agency enabled state did not persist");
+
+        const auto items=store.Items(10);
+        RequireAgency(items.size()==2,"agency sync queue did not persist across reopen");
+        RequireAgency(store.PendingCount()==2,
+            "reopened agency sync queue pending count mismatch");
+        RequireAgency(store.MarkComplete(firstId),
+            "agency sync queue completion update failed");
+        RequireAgency(store.PendingCount()==1,
+            "completed agency sync item remained pending");
+
+        db.Close();
+    }
+
+    std::filesystem::remove_all(root);
+}
+
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -1028,6 +1100,9 @@ int main()
         std::cout << "[core] supervisor takeover state..." << std::endl;
         TestSupervisorStateStore();
         std::cout << "[core] supervisor takeover state PASS" << std::endl;
+        std::cout << "[core] agency server persistence..." << std::endl;
+        TestAgencyServerStore();
+        std::cout << "[core] agency server persistence PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
