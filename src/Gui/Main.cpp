@@ -10639,6 +10639,11 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
             }
             return 0;
         case WM_SIZE: if(g_app) g_app->Resize(); return 0;
+        case WM_ERASEBKGND:
+            // Direct2D clears and repaints the complete client area in WM_PAINT.
+            // Suppress the Win32 class-brush erase so high-frequency typing/
+            // selection repaints never flash a black intermediate frame.
+            return 1;
         case WM_PAINT: {
             PAINTSTRUCT ps{}; BeginPaint(hwnd,&ps); if(g_app) g_app->Paint(); EndPaint(hwnd,&ps); return 0;
         }
@@ -10692,7 +10697,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     wc.lpfnWndProc=WndProc;
     wc.hInstance=instance;
     wc.hCursor=LoadCursor(nullptr,IDC_ARROW);
-    wc.hbrBackground=(HBRUSH)GetStockObject(BLACK_BRUSH);
+    // The Direct2D renderer owns the full client background. A class brush
+    // would cause an erase/fill before every WM_PAINT and visibly flicker.
+    wc.hbrBackground=nullptr;
     wc.lpszClassName=kClassName;
     wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(kSaraIconResource));
     if(!wc.hIcon) wc.hIcon=LoadIcon(nullptr,IDI_APPLICATION);
