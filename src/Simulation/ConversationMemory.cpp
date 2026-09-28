@@ -79,16 +79,26 @@ std::string ConversationMemoryStore::StartConversation(
     std::string_view personaName,
     std::string_view scenario)
 {
+    return StartConversation(title,personaName,personaName,scenario);
+}
+
+std::string ConversationMemoryStore::StartConversation(
+    std::string_view title,
+    std::string_view personaName,
+    std::string_view personaSummary,
+    std::string_view scenario)
+{
     auto* db=db_.Handle();
     const auto id=NewId(db);
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "INSERT INTO simulation_conversations(id,title,persona_name,scenario) VALUES(?,?,?,?)",
+        "INSERT INTO simulation_conversations(id,title,persona_name,persona_summary,scenario) VALUES(?,?,?,?,?)",
         -1,&s,nullptr),db,"prepare conversation insert");
     sqlite3_bind_text(s,1,id.c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,2,std::string(title).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,3,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
-    sqlite3_bind_text(s,4,std::string(scenario).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,4,std::string(personaSummary).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,5,std::string(scenario).c_str(),-1,SQLITE_TRANSIENT);
     Check(sqlite3_step(s),db,"insert conversation");
     sqlite3_finalize(s);
     return id;
@@ -146,6 +156,40 @@ std::vector<ArchivedConversation> ConversationMemoryStore::List(size_t limit) co
     return out;
 }
 
+
+std::vector<ArchivedConversation> ConversationMemoryStore::ListForPersona(
+    std::string_view personaName,
+    size_t limit) const
+{
+    std::vector<ArchivedConversation> out;
+    if(personaName.empty()) return out;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT c.id,c.title,c.persona_name,c.scenario,c.created_utc,c.updated_utc,"
+        "(SELECT COUNT(*) FROM simulation_messages m WHERE m.conversation_id=c.id) "
+        "FROM simulation_conversations c "
+        "WHERE c.persona_name=? "
+        "AND EXISTS(SELECT 1 FROM simulation_messages mx WHERE mx.conversation_id=c.id) "
+        "ORDER BY c.updated_utc DESC LIMIT ?",
+        -1,&s,nullptr),db,"prepare persona conversation list");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,500));
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        ArchivedConversation item;
+        item.id=ColumnText(s,0);
+        item.title=ColumnText(s,1);
+        item.personaName=ColumnText(s,2);
+        item.scenario=ColumnText(s,3);
+        item.createdUtc=ColumnText(s,4);
+        item.updatedUtc=ColumnText(s,5);
+        item.messageCount=sqlite3_column_int(s,6);
+        out.push_back(std::move(item));
+    }
+    sqlite3_finalize(s);
+    return out;
+}
+
 bool ConversationMemoryStore::Load(
     std::string_view conversationId,
     ModelContext& context) const
@@ -153,7 +197,8 @@ bool ConversationMemoryStore::Load(
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT scenario,persona_name FROM simulation_conversations WHERE id=?",
+        "SELECT scenario,CASE WHEN persona_summary<>'' THEN persona_summary ELSE persona_name END "
+        "FROM simulation_conversations WHERE id=?",
         -1,&s,nullptr),db,"prepare conversation load");
     sqlite3_bind_text(s,1,std::string(conversationId).c_str(),-1,SQLITE_TRANSIENT);
     if(sqlite3_step(s)!=SQLITE_ROW) {
@@ -190,6 +235,30 @@ std::string ConversationMemoryStore::RecallRelevant(
     std::string_view currentConversationId,
     size_t maxMessages) const
 {
+    if(currentConversationId.empty()) return {};
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT persona_name FROM simulation_conversations WHERE id=? LIMIT 1",
+        -1,&s,nullptr),db,"prepare current persona lookup");
+    sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    std::string personaName;
+    if(sqlite3_step(s)==SQLITE_ROW) personaName=ColumnText(s,0);
+    sqlite3_finalize(s);
+    if(personaName.empty()) return {};
+
+    return RecallRelevant(query,currentConversationId,personaName,maxMessages);
+}
+
+std::string ConversationMemoryStore::RecallRelevant(
+    std::string_view query,
+    std::string_view currentConversationId,
+    std::string_view personaName,
+    size_t maxMessages) const
+{
+    if(personaName.empty()) return {};
+
     auto tokens=Tokens(query);
     const auto q=Lower(query);
     const bool explicitRecall =
@@ -217,22 +286,24 @@ std::string ConversationMemoryStore::RecallRelevant(
     Check(sqlite3_prepare_v2(db,
         "SELECT m.row_id,m.conversation_id,m.speaker,m.body,c.updated_utc "
         "FROM simulation_messages m JOIN simulation_conversations c ON c.id=m.conversation_id "
-        "WHERE m.conversation_id<>? ORDER BY m.row_id DESC LIMIT 1500",
-        -1,&s,nullptr),db,"prepare memory scan");
+        "WHERE m.conversation_id<>? AND c.persona_name=? "
+        "ORDER BY m.row_id DESC LIMIT 1500",
+        -1,&s,nullptr),db,"prepare persona memory scan");
     sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
     while(sqlite3_step(s)==SQLITE_ROW) {
-        Candidate c;
-        c.row=sqlite3_column_int64(s,0);
-        c.session=ColumnText(s,1);
-        c.speaker=sqlite3_column_int(s,2);
-        c.body=ColumnText(s,3);
-        c.updated=ColumnText(s,4);
-        auto bodyLower=Lower(c.body);
+        Candidate item;
+        item.row=sqlite3_column_int64(s,0);
+        item.session=ColumnText(s,1);
+        item.speaker=sqlite3_column_int(s,2);
+        item.body=ColumnText(s,3);
+        item.updated=ColumnText(s,4);
+        auto bodyLower=Lower(item.body);
         for(const auto& token:tokens) {
-            if(bodyLower.find(token)!=std::string::npos) c.score+=3;
+            if(bodyLower.find(token)!=std::string::npos) item.score+=3;
         }
-        if(explicitRecall && c.score==0 && tokens.empty()) c.score=1;
-        if(c.score>0) candidates.push_back(std::move(c));
+        if(explicitRecall && item.score==0 && tokens.empty()) item.score=1;
+        if(item.score>0) candidates.push_back(std::move(item));
     }
     sqlite3_finalize(s);
 
@@ -240,10 +311,12 @@ std::string ConversationMemoryStore::RecallRelevant(
         Check(sqlite3_prepare_v2(db,
             "SELECT m.row_id,m.conversation_id,m.speaker,m.body,c.updated_utc "
             "FROM simulation_messages m JOIN simulation_conversations c ON c.id=m.conversation_id "
-            "WHERE m.conversation_id<>? ORDER BY m.row_id DESC LIMIT ?",
-            -1,&s,nullptr),db,"prepare recent memory fallback");
+            "WHERE m.conversation_id<>? AND c.persona_name=? "
+            "ORDER BY m.row_id DESC LIMIT ?",
+            -1,&s,nullptr),db,"prepare recent persona memory fallback");
         sqlite3_bind_text(s,1,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
-        sqlite3_bind_int(s,2,(int)std::min<size_t>(maxMessages,12));
+        sqlite3_bind_text(s,2,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(s,3,(int)std::min<size_t>(maxMessages,12));
         while(sqlite3_step(s)==SQLITE_ROW) {
             Candidate item;
             item.score=1;
@@ -267,14 +340,15 @@ std::string ConversationMemoryStore::RecallRelevant(
     if(candidates.empty()) return {};
 
     std::ostringstream out;
-    out<<"Verbatim recalled messages from earlier Sentinel conversations. Treat these as exact historical quotes, not summaries:\n";
+    out<<"Verbatim recalled messages from earlier conversations with this same persona. "
+          "Treat these as exact historical quotes, not summaries:\n";
     std::string lastSession;
-    for(const auto& c:candidates) {
-        if(c.session!=lastSession) {
-            lastSession=c.session;
-            out<<"[Past conversation "<<c.updated<<" | "<<c.session.substr(0,8)<<"]\n";
+    for(const auto& item:candidates) {
+        if(item.session!=lastSession) {
+            lastSession=item.session;
+            out<<"[Past conversation "<<item.updated<<" | "<<item.session.substr(0,8)<<"]\n";
         }
-        out<<SpeakerName(c.speaker)<<": "<<c.body<<"\n";
+        out<<SpeakerName(item.speaker)<<": "<<item.body<<"\n";
     }
     return out.str();
 }
