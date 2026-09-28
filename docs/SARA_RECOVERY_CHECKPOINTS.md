@@ -226,3 +226,52 @@ Artifact digests from run #761:
 - UI screenshots: `sha256:338a7178dc17d673134a1b4493725ec52d2b8cc6ceedb30d9d2462b9790c4e53`
 
 This is the validated rollback point for the operational shell, canonical Subjects & Identity, Channels & Messaging, and persistent human takeover/approval controls.
+
+## Checkpoint 05 — Evidence verification and Audit & Compliance truthfulness validated
+
+Validated commit:
+
+`e686dd6dc73155c40828c7c9330ac959aba61b39`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #764
+- Run ID: `36420876336`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- real packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Evidence / verification recovery proven by this checkpoint:
+
+- evidence is no longer displayed as "Verified" merely because it exists
+- each evidence item distinguishes never checked, last check passed, and recorded integrity failure
+- verification re-reads the current stored bytes rather than trusting a historical label
+- verification validates SEV container structure
+- verification compares the current container SHA-256 against the imported record
+- AES-256-GCM authentication/decryption must succeed
+- decrypted plaintext SHA-256 must match the imported original hash
+- successful verification records `EvidenceVerified` in the audit ledger
+- failed verification records `EvidenceIntegrityFailure` in the audit ledger
+- the Verification screen no longer treats the text `INVALID` as containing a valid `VALID` state
+- a regression test verifies a good container, corrupts its stored bytes, verifies rejection, and confirms the audit chain remains cryptographically valid
+- Audit & Compliance surfaces evidence-integrity alert counts and no longer paints row status green when the global audit chain fails
+- the recovered Subjects & Identity block remained intact after the Evidence UI changes
+
+Artifact digests from run #764:
+
+- Windows package: `sha256:c3ba0dd9224dbd226e57b6bb1e962ef6ae10c512d3c8e54686a4e9cfd7eb1569`
+- Setup artifact: `sha256:37f69e67d70c853455db508e90cad3fa14c39a1794a297056ee727822f332dcf`
+- UI screenshots: `sha256:ecfa09b83009dbd5d5f110f21c3ec7160ac18070cfd94df9002f8890a9c34f76`
+
+This is the validated rollback point for the recovered investigative shell through Evidence verification and Audit & Compliance.
