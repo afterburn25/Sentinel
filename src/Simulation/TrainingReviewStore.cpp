@@ -255,4 +255,49 @@ size_t TrainingReviewStore::ExportApprovedJsonl(const std::filesystem::path& pat
     return count;
 }
 
+size_t TrainingReviewStore::ExportApprovedJsonlForPersona(
+    const std::filesystem::path& path,
+    std::string_view personaName) const
+{
+    if(personaName.empty())
+        throw std::runtime_error("persona name is required for persona-scoped export");
+
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream out(path,std::ios::trunc|std::ios::binary);
+    if(!out) throw std::runtime_error("unable to open persona training dataset export");
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
+        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+        "FROM training_review_items WHERE status=1 AND persona_name=? "
+        "ORDER BY reviewed_utc ASC,created_utc ASC",
+        -1,&s,nullptr),db,"prepare persona approved dataset export");
+    const auto persona=std::string(personaName);
+    sqlite3_bind_text(s,1,persona.c_str(),-1,SQLITE_TRANSIENT);
+
+    size_t count=0;
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        const auto item=ReadItem(s);
+        out<<"{"
+           <<"\"id\":\""<<JsonEscape(item.id)<<"\","
+           <<"\"source_log_id\":\""<<JsonEscape(item.sourceLogId)<<"\","
+           <<"\"conversation_id\":\""<<JsonEscape(item.conversationId)<<"\","
+           <<"\"persona_name\":\""<<JsonEscape(item.personaName)<<"\","
+           <<"\"model_name\":\""<<JsonEscape(item.modelName)<<"\","
+           <<"\"input\":\""<<JsonEscape(item.inputText)<<"\","
+           <<"\"output\":\""<<JsonEscape(item.outputText)<<"\","
+           <<"\"persona_summary\":\""<<JsonEscape(item.personaSummary)<<"\","
+           <<"\"recalled_memory\":\""<<JsonEscape(item.recalledMemory)<<"\","
+           <<"\"context\":"<<(item.contextJson.empty()?"{}":item.contextJson)<<","
+           <<"\"reviewer\":\""<<JsonEscape(item.reviewer)<<"\","
+           <<"\"reviewed_utc\":\""<<JsonEscape(item.reviewedUtc)<<"\""
+           <<"}\n";
+        ++count;
+    }
+    sqlite3_finalize(s);
+    return count;
+}
+
 }

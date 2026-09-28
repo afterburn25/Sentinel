@@ -56,6 +56,9 @@ public:
         size_t limit=50,
         std::optional<TrainingReviewStatus> status=std::nullopt) const;
     size_t ExportApprovedJsonl(const std::filesystem::path& path) const;
+    size_t ExportApprovedJsonlForPersona(
+        const std::filesystem::path& path,
+        std::string_view personaName) const;
 
 private:
     SqliteDatabase& db_;

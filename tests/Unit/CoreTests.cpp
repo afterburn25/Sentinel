@@ -125,6 +125,19 @@ void TestTrainingReviewRecentList()
     Require(approved.size()==1,"approved training review filter count mismatch");
     Require(approved.front().id=="review-old","approved training review filter returned wrong item");
 
+    db.Execute("UPDATE training_review_items SET status=1,reviewer='unit' WHERE id='review-new';");
+    const auto personaExport=root/"samantha-approved.jsonl";
+    const auto exported=reviews.ExportApprovedJsonlForPersona(personaExport,"Samantha");
+    Require(exported==1,"persona-scoped approved export count mismatch");
+    std::ifstream personaIn(personaExport,std::ios::binary);
+    const std::string personaJson(
+        (std::istreambuf_iterator<char>(personaIn)),
+        std::istreambuf_iterator<char>());
+    Require(personaJson.find("\"persona_name\":\"Samantha\"")!=std::string::npos,
+        "persona-scoped export omitted the selected persona");
+    Require(personaJson.find("Nikki")==std::string::npos,
+        "persona-scoped export leaked another persona into the dataset");
+
     db.Close();
     std::filesystem::remove_all(root);
 }
