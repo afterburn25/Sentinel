@@ -123,6 +123,20 @@ foreach ($token in $personaWorkflowTokens) {
     }
 }
 
+$trainerWorkflowTokens = @(
+    'L"Trainer Conversation"',
+    'L"Conversation History"',
+    'L"Send / Preview"',
+    'L"Apply Preview"',
+    'trainer_new_session',
+    'EnsureDialogueSession('
+)
+foreach ($token in $trainerWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected conversational Trainer workflow is missing: $token"
+    }
+}
+
 $labTabs = @(
     'L"Overview"', 'L"Train"', 'L"Datasets"', 'L"Personas & LoRAs"',
     'L"Foundation Forks"', 'L"Jobs"', 'L"Evaluation"', 'L"Deployment"'

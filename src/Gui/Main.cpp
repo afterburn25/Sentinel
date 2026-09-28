@@ -1499,7 +1499,9 @@ public:
             else if (b.id==L"trainer_bind_lora") BindCurrentPersonaLoraFromTrainer();
             else if (b.id==L"trainer_queue") QueueTrainerJobFromControls();
             else if (b.id==L"trainer_run_latest") RunLatestQueuedTrainerJob();
-            else if (b.id==L"trainer_apply_instruction") ApplyTrainerBehaviorInstruction();
+            else if (b.id==L"trainer_apply_instruction") SendTrainerConversationMessage();
+            else if (b.id==L"trainer_apply_preview") ApplyLatestTrainerBehaviorPreview();
+            else if (b.id==L"trainer_new_session") StartNewTrainerConversation();
             else if (b.id==L"trainer_advanced_toggle") trainerAdvancedOpen_=!trainerAdvancedOpen_;
             if (b.id.rfind(L"dataset_item:",0)==0) {
                 selectedTrainingReviewId_=Narrow(b.id.substr(13));
@@ -3958,20 +3960,19 @@ private:
             const float bodyH=std::max(410.0f,(float)rc.bottom-bodyY-24.0f);
             const float rightW=std::clamp(contentW*0.29f,286.0f,342.0f);
             const float leftW=contentW-rightW-gap;
-            const float advancedY=bodyY+232.0f;
             const float fieldSplit=leftW*0.48f;
+            const float actionY=bodyY+bodyH-42.0f;
+            const float composerY=actionY-94.0f;
+            const float advancedY=composerY-132.0f;
 
             MoveControl(trainerModeCombo_,
                 (int)(x+18),(int)(bodyY+66),(int)std::max(170.0f,leftW*0.42f),180,TRUE);
             MoveControl(trainerFoundationCombo_,
                 (int)(x+fieldSplit),(int)(bodyY+66),(int)std::max(190.0f,leftW-fieldSplit-18.0f),180,TRUE);
 
-            const int instructionHeight=trainerAdvancedOpen_
-                ? 74
-                : (int)std::max(120.0f,bodyH-210.0f);
             MoveControl(trainerInstructionEdit_,
-                (int)(x+18),(int)(bodyY+146),(int)(leftW-36),instructionHeight,TRUE);
-            RECT trainerTextRect{12,8,std::max(24,(int)(leftW-60)),std::max(28,instructionHeight-10)};
+                (int)(x+18),(int)(composerY+22),(int)(leftW-36),62,TRUE);
+            RECT trainerTextRect{12,8,std::max(24,(int)(leftW-60)),54};
             SendMessageW(trainerInstructionEdit_,EM_SETRECTNP,0,(LPARAM)&trainerTextRect);
 
             MoveControl(trainerForkNameEdit_,
@@ -4379,20 +4380,46 @@ private:
             : Narrow(EditText(trainerForkNameEdit_));
 
         if(mode==sentinel::simulation::TrainingMode::Behavior) {
-            ApplyTrainerBehaviorInstruction();
+            statusText_=L"Behavior mode uses Send / Preview, then Apply Preview after human review";
+            return;
+        }
+        if(mode==sentinel::simulation::TrainingMode::Preference) {
+            statusText_=L"Preference/DPO worker is not enabled yet; the Trainer conversation is preserved but no job was queued";
             return;
         }
 
-        if(!foundation) {
-            statusText_=L"Select a foundation before queueing training";
+        if((mode==sentinel::simulation::TrainingMode::PersonaLora ||
+            mode==sentinel::simulation::TrainingMode::FoundationSft) &&
+           !foundation)
+        {
+            statusText_=L"Select a foundation before queueing this training mode";
+            return;
+        }
+
+        if(dataset.empty()) {
+            statusText_=L"A reviewed JSONL dataset path is required before queueing weight/correction training";
             return;
         }
 
         try {
+            auto session=runtime_->trainer.ActiveDialogueSession(
+                simSettings_.persona.name,mode);
+            const std::string sessionId=session?session->id:"";
+            const std::string config=
+                "{\"source\":\"SARA Conversational Trainer\","
+                "\"dialogue_session\":\""+sessionId+"\"}";
+
             auto job=runtime_->trainer.QueueJob(
-                mode,target,simSettings_.persona.name,foundation->id,
-                dataset,basePath,output,
-                "{\"source\":\"SARA Conversational Trainer\"}");
+                mode,target,simSettings_.persona.name,
+                foundation?foundation->id:std::string{},
+                dataset,basePath,output,config);
+
+            if(session) {
+                runtime_->trainer.AppendDialogueTurn(
+                    session->id,"SYSTEM",
+                    "Queued reviewed training job "+job.id+
+                    ". Active runtime remains unchanged until training/evaluation/activation completes.");
+            }
             statusText_=L"Training job queued: "+Widen(job.id);
         } catch(const std::exception& e) {
             statusText_=L"Training job could not be queued: "+Widen(e.what());
@@ -4478,54 +4505,174 @@ private:
         statusText_=L"Trainer worker launched for "+Widen(it->id);
     }
 
-    void ApplyTrainerBehaviorInstruction() {
+    void ApplyBehaviorProfileToEditors(const std::string& result) {
+        auto apply=[&](HWND combo,const std::string& key){
+            const auto value=ProfileLineValue(result,key);
+            if(value.empty()) return;
+            SendMessageW(combo,CB_SETCURSEL,(WPARAM)FindComboText(combo,value),0);
+        };
+        apply(personaPersonalityCombo_,"PERSONALITY");
+        apply(personaSocialCombo_,"SOCIAL_STYLE");
+        apply(personaConfidenceCombo_,"CONFIDENCE");
+        apply(personaWritingStyleCombo_,"WRITING_STYLE");
+        apply(personaCommunicationCombo_,"COMMUNICATION");
+        apply(personaCognitiveCombo_,"COGNITIVE");
+        apply(personaSlangCombo_,"SLANG");
+        apply(personaGrammarCombo_,"GRAMMAR");
+        apply(personaTypoCombo_,"TYPOS");
+        apply(personaEmojiCombo_,"EMOJI");
+
+        const auto interests=ProfileLineValue(result,"INTERESTS");
+        if(!interests.empty() && interests!="keep existing interests")
+            SetWindowTextW(personaInterestsEdit_,Widen(interests).c_str());
+    }
+
+    std::string TrainerBehaviorPreviewText(const std::string& result) const {
+        auto field=[&](const char* key,const char* fallback){
+            auto value=ProfileLineValue(result,key);
+            return value.empty()?std::string(fallback):value;
+        };
+        return
+            "Preview only — nothing has been applied yet. "
+            "I would tune this persona toward personality "+field("PERSONALITY","unchanged")+
+            ", social style "+field("SOCIAL_STYLE","unchanged")+
+            ", confidence "+field("CONFIDENCE","unchanged")+
+            ", writing "+field("WRITING_STYLE","unchanged")+
+            ", communication "+field("COMMUNICATION","unchanged")+
+            ", slang "+field("SLANG","unchanged")+
+            ", grammar "+field("GRAMMAR","unchanged")+
+            ", typos "+field("TYPOS","unchanged")+
+            ", and emoji use "+field("EMOJI","unchanged")+
+            ". Use Apply Preview if this interpretation is correct.";
+    }
+
+    void SendTrainerConversationMessage() {
         const auto instruction=Narrow(EditText(trainerInstructionEdit_));
         if(instruction.empty()) {
-            statusText_=L"Enter a trainer instruction first";
+            statusText_=L"Enter a trainer message first";
             return;
         }
-        if(!model_) {
-            statusText_=L"No model available for conversational training";
+
+        const auto mode=SelectedTrainingMode();
+        try {
+            auto session=runtime_->trainer.EnsureDialogueSession(
+                simSettings_.persona.name,mode);
+            runtime_->trainer.AppendDialogueTurn(
+                session.id,"OPERATOR",instruction);
+
+            std::string reply;
+            std::string payload;
+
+            if(mode==sentinel::simulation::TrainingMode::Behavior) {
+                if(!model_) {
+                    reply="I saved the instruction, but no model is available to build a behavior preview.";
+                } else {
+                    sentinel::simulation::ModelContext ctx=simContext_;
+                    ctx.personaSummary=BuildPersonaSummary();
+                    const std::string trainingBackground=
+                        simSettings_.persona.background+
+                        "\nExisting persona: "+BuildPersonaSummary()+
+                        "\nTrainer instruction: "+instruction+
+                        "\nInterpret this as a proposed profile change only. Do not apply it automatically.";
+                    payload=model_->GenerateBehaviorProfile(
+                        simSettings_.persona.age,trainingBackground,ctx);
+                    reply=TrainerBehaviorPreviewText(payload);
+                }
+            }
+            else if(mode==sentinel::simulation::TrainingMode::Correction) {
+                auto staged=runtime_->trainingReviews.StageLatestReply(currentConversationId_);
+                if(staged) {
+                    payload=staged->id;
+                    reply=
+                        "I captured that correction and staged the latest Simulation reply as review item "+
+                        staged->id+
+                        ". The correction remains reviewable; it does not change live model weights.";
+                } else {
+                    reply=
+                        "I saved the correction note in this Trainer conversation. "
+                        "There is no recent Simulation reply available to stage yet.";
+                }
+            }
+            else if(mode==sentinel::simulation::TrainingMode::PersonaLora) {
+                reply=
+                    "I saved this as a Persona LoRA training goal for "+simSettings_.persona.name+
+                    ". It will not alter the active adapter until a reviewed dataset is queued, trained, evaluated, and activated.";
+            }
+            else if(mode==sentinel::simulation::TrainingMode::FoundationSft) {
+                reply=
+                    "I saved this as a Foundation Fork training goal. "
+                    "Use Advanced Setup for the trainable source/dataset, then Queue Mode. "
+                    "The current active foundation remains unchanged until later approval and activation.";
+            }
+            else {
+                reply=
+                    "I saved this preference-training intent. "
+                    "The current external trainer does not run Preference/DPO weight training yet, "
+                    "so this conversation is preserved for later use and cannot be queued as an active weight-training job.";
+            }
+
+            runtime_->trainer.AppendDialogueTurn(
+                session.id,"SARA",reply,payload);
+            SetWindowTextW(trainerInstructionEdit_,L"");
+            statusText_=L"SARA Trainer replied in "+Widen(sentinel::simulation::ToString(mode))+L" mode";
+        } catch(const std::exception& e) {
+            statusText_=L"Trainer conversation failed: "+Widen(e.what());
+        }
+    }
+
+    void ApplyLatestTrainerBehaviorPreview() {
+        if(SelectedTrainingMode()!=sentinel::simulation::TrainingMode::Behavior) {
+            statusText_=L"Apply Preview is available only in Behavior mode";
             return;
         }
 
         try {
-            sentinel::simulation::ModelContext ctx=simContext_;
-            ctx.personaSummary=BuildPersonaSummary();
-            const std::string trainingBackground=
-                simSettings_.persona.background+
-                "\nExisting persona: "+BuildPersonaSummary()+
-                "\nTrainer instruction: "+instruction+
-                "\nChange only the behavior/style controls necessary to satisfy the trainer instruction.";
+            auto session=runtime_->trainer.ActiveDialogueSession(
+                simSettings_.persona.name,
+                sentinel::simulation::TrainingMode::Behavior);
+            if(!session) {
+                statusText_=L"No Behavior trainer conversation exists yet";
+                return;
+            }
 
-            const auto result=model_->GenerateBehaviorProfile(
-                simSettings_.persona.age,trainingBackground,ctx);
+            auto turns=runtime_->trainer.ListDialogueTurns(session->id,50);
+            auto it=std::find_if(turns.rbegin(),turns.rend(),[](const auto& turn){
+                return turn.role=="SARA" && !turn.payload.empty() && !turn.applied;
+            });
+            if(it==turns.rend()) {
+                statusText_=L"No unapplied Behavior preview is waiting";
+                return;
+            }
 
-            auto apply=[&](HWND combo,const std::string& key){
-                const auto v=ProfileLineValue(result,key);
-                if(v.empty()) return;
-                SendMessageW(combo,CB_SETCURSEL,(WPARAM)FindComboText(combo,v),0);
-            };
-            apply(personaPersonalityCombo_,"PERSONALITY");
-            apply(personaSocialCombo_,"SOCIAL_STYLE");
-            apply(personaConfidenceCombo_,"CONFIDENCE");
-            apply(personaWritingStyleCombo_,"WRITING_STYLE");
-            apply(personaCommunicationCombo_,"COMMUNICATION");
-            apply(personaCognitiveCombo_,"COGNITIVE");
-            apply(personaSlangCombo_,"SLANG");
-            apply(personaGrammarCombo_,"GRAMMAR");
-            apply(personaTypoCombo_,"TYPOS");
-            apply(personaEmojiCombo_,"EMOJI");
-
+            ApplyBehaviorProfileToEditors(it->payload);
             SaveProfileEditors(false);
+            runtime_->trainer.MarkDialogueTurnApplied(it->id);
+            runtime_->trainer.AppendDialogueTurn(
+                session->id,"SYSTEM",
+                "Applied the reviewed Behavior preview to the saved persona profile.");
             RecordLearnedPersonaNote(
-                "TRAINER BEHAVIOR INSTRUCTION: "+instruction,
-                "trainer_behavior_instruction");
-            statusText_=L"Trainer instruction applied to "+Widen(simSettings_.persona.name);
+                "TRAINER REVIEWED BEHAVIOR PREVIEW APPLIED",
+                "trainer_behavior_preview");
+            statusText_=L"Reviewed Behavior preview applied to "+Widen(simSettings_.persona.name);
         } catch(const std::exception& e) {
-            statusText_=L"Trainer instruction failed: "+Widen(e.what());
+            statusText_=L"Behavior preview could not be applied: "+Widen(e.what());
         }
     }
+
+    void StartNewTrainerConversation() {
+        try {
+            const auto mode=SelectedTrainingMode();
+            const auto session=runtime_->trainer.NewDialogueSession(
+                simSettings_.persona.name,mode);
+            SetWindowTextW(trainerInstructionEdit_,L"");
+            statusText_=
+                L"New "+Widen(sentinel::simulation::ToString(mode))+
+                L" trainer session started; prior session preserved";
+        } catch(const std::exception& e) {
+            statusText_=L"Could not start a new Trainer conversation: "+Widen(e.what());
+        }
+    }
+
 
     bool WriteActiveRuntimeConfig(
         const std::filesystem::path& modelPath,
@@ -4678,26 +4825,7 @@ private:
             LogPersonaConversationEvent(
                 "behavior_profile_generation",background,result,0,0);
 
-            auto apply=[&](HWND combo,const std::string& key){
-                const auto v=ProfileLineValue(result,key);
-                if(v.empty()) return;
-                const int idx=FindComboText(combo,v);
-                SendMessageW(combo,CB_SETCURSEL,(WPARAM)idx,0);
-            };
-            apply(personaPersonalityCombo_,"PERSONALITY");
-            apply(personaSocialCombo_,"SOCIAL_STYLE");
-            apply(personaConfidenceCombo_,"CONFIDENCE");
-            apply(personaWritingStyleCombo_,"WRITING_STYLE");
-            apply(personaCommunicationCombo_,"COMMUNICATION");
-            apply(personaCognitiveCombo_,"COGNITIVE");
-            apply(personaSlangCombo_,"SLANG");
-            apply(personaGrammarCombo_,"GRAMMAR");
-            apply(personaTypoCombo_,"TYPOS");
-            apply(personaEmojiCombo_,"EMOJI");
-
-            const auto interests=ProfileLineValue(result,"INTERESTS");
-            if(!interests.empty() && interests!="keep existing interests")
-                SetWindowTextW(personaInterestsEdit_,Widen(interests).c_str());
+            ApplyBehaviorProfileToEditors(result);
 
             statusText_=L"Behavior profile generated from background; review and Save";
         } catch(const std::exception& e) {
@@ -7386,16 +7514,13 @@ private:
     void DrawTrainer(float w,float h) {
         PageTitle(
             L"Model Lab / Trainer",
-            L"Conversational training studio - recovered SARA 1.0.15 backend with the approved hybrid workspace");
+            L"Persistent conversational training studio with review-before-apply behavior tuning and queued weight-training modes");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
         const float contentW=w-x-28.0f;
         const float gap=14.0f;
 
-        // Hybrid Model Lab navigation. Only existing recovered workspaces are
-        // activated here; un-restored workspaces remain explicit rather than
-        // silently pretending that later branches were merged.
         const wchar_t* tabLabels[]={
             L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
             L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
@@ -7421,7 +7546,6 @@ private:
         const float heroH=76.0f;
         Rounded(x,heroY,contentW,heroH,brush_.panel.Get(),brush_.cyan.Get(),11);
 
-        // The exact approved logo is transparent; render it directly.
         if(brandBitmap_) {
             const auto sz=brandBitmap_->GetSize();
             const float logoH=56.0f;
@@ -7431,11 +7555,12 @@ private:
                 D2D1::RectF(x+16,heroY+10,x+16+logoW,heroY+10+logoH),
                 1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         }
-        TextLine(L"Train Smarter. Together.",x+90,heroY+10,360,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Teach SARA through reviewed conversation, persona tuning, LoRAs, and foundation forks.",
+        TextLine(L"Conversational Model Trainer",x+90,heroY+10,360,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Talk through a change, inspect SARA's interpretation, then explicitly apply or queue reviewed training work.",
             x+90,heroY+39,contentW-424,22,smallFmt_.Get(),brush_.muted.Get());
         StatusDot(x+contentW-154,heroY+22,5,brush_.green.Get());
-        TextLine(L"TRAINER LIVE",x+contentW-140,heroY+10,122,26,tinyFmt_.Get(),brush_.green.Get());
+        TextLine(L"REVIEW FIRST",x+contentW-140,heroY+10,122,26,tinyFmt_.Get(),brush_.green.Get());
 
         const float bodyY=heroY+heroH+12.0f;
         const float bodyH=std::max(410.0f,h-bodyY-24.0f);
@@ -7443,57 +7568,107 @@ private:
         const float leftW=contentW-rightW-gap;
         const float rightX=x+leftW+gap;
 
-        // Conversational Trainer - primary workspace.
         Rounded(x,bodyY,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),11);
-        TextLine(L"Conversational Trainer",x+18,bodyY+12,300,30,h1Fmt_.Get(),brush_.text.Get());
-        Badge(L"CAPTURE / REFINE",x+leftW-142,bodyY+15,brush_.cyan.Get(),124);
+        TextLine(L"Trainer Conversation",x+18,bodyY+12,300,30,h1Fmt_.Get(),brush_.text.Get());
+        Badge(L"PERSISTENT / REVIEWED",x+leftW-164,bodyY+15,brush_.cyan.Get(),146);
 
         TextLine(L"Training Mode",x+18,bodyY+49,104,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Foundation",x+leftW*0.50f,bodyY+49,92,18,tinyFmt_.Get(),brush_.muted.Get());
 
-        TextLine(
-            L"Talk to SARA naturally. In Behavior mode the instruction updates the active persona parameters; "
-            L"the other modes preserve the same reviewed training/job workflow already present in 1.0.15.",
-            x+18,bodyY+87,leftW-36,42,tinyFmt_.Get(),brush_.muted.Get());
+        const auto mode=SelectedTrainingMode();
+        const auto session=runtime_->trainer.ActiveDialogueSession(
+            simSettings_.persona.name,mode);
+        const auto turns=session
+            ? runtime_->trainer.ListDialogueTurns(session->id,30)
+            : std::vector<sentinel::simulation::TrainerDialogueTurn>{};
 
-        // The native edit control is the real editable training conversation/
-        // instruction surface. It is positioned by LayoutNativeControls().
-        TextLine(L"TRAINING INSTRUCTION / CORRECTION",x+18,bodyY+126,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
+        const float actionY=bodyY+bodyH-42.0f;
+        const float composerY=actionY-94.0f;
+        const float advancedY=composerY-132.0f;
+        const float conversationY=bodyY+104.0f;
+        const float conversationBottom=trainerAdvancedOpen_
+            ? advancedY-10.0f
+            : composerY-12.0f;
+        const float conversationH=std::max(52.0f,conversationBottom-conversationY);
 
-        // Advanced recovered 1.0.15 training controls remain available,
-        // but the hybrid Trainer keeps them collapsed until the operator asks
-        // for them. This preserves functionality without turning Train back
-        // into a utility form.
-        const float advancedY=bodyY+232.0f;
+        TextLine(L"Conversation History",x+18,bodyY+86,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
+
+        const int maxRows=std::max(1,(int)(conversationH/62.0f));
+        const size_t start=turns.size()>(size_t)maxRows
+            ? turns.size()-(size_t)maxRows
+            : 0;
+        float turnY=conversationY;
+
+        if(turns.empty()) {
+            Rounded(x+18,turnY,leftW-36,std::min(72.0f,conversationH),brush_.sidebar.Get(),brush_.border.Get(),8);
+            Text(
+                L"SARA Trainer is ready. Describe the behavior you want changed, a correction you want captured, "
+                L"or the goal for a LoRA/foundation job. Behavior changes are previewed and require Apply Preview.",
+                x+32,turnY+10,leftW-64,std::min(54.0f,conversationH-16.0f),
+                tinyFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t index=start;index<turns.size();++index) {
+                const auto& turn=turns[index];
+                const bool operatorTurn=turn.role=="OPERATOR";
+                const bool systemTurn=turn.role=="SYSTEM";
+                ID2D1Brush* accent=
+                    operatorTurn?brush_.cyan.Get():
+                    systemTurn?brush_.yellow.Get():
+                    brush_.green.Get();
+
+                Rounded(x+18,turnY,leftW-36,56,brush_.sidebar.Get(),brush_.border.Get(),8);
+                TextLine(
+                    operatorTurn?L"Investigator / Trainer":
+                    systemTurn?L"Trainer System":L"SARA Trainer",
+                    x+30,turnY+5,leftW-190,17,tinyFmt_.Get(),accent);
+
+                if(turn.applied)
+                    Badge(L"APPLIED",x+leftW-100,turnY+5,brush_.green.Get(),70);
+
+                std::wstring message=Widen(turn.text);
+                if(message.size()>220) message=message.substr(0,217)+L"...";
+                Text(message,x+30,turnY+23,leftW-60,28,tinyFmt_.Get(),brush_.text.Get());
+                turnY+=62.0f;
+                if(turnY+56>conversationY+conversationH+2) break;
+            }
+        }
+
         if(trainerAdvancedOpen_) {
             target_->DrawLine(
-                D2D1::Point2F(x+18,advancedY-10),
-                D2D1::Point2F(x+leftW-18,advancedY-10),
+                D2D1::Point2F(x+18,advancedY-8),
+                D2D1::Point2F(x+leftW-18,advancedY-8),
                 brush_.border.Get(),1.0f);
-            TextLine(L"Advanced Training Setup",x+18,advancedY,200,24,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Advanced Training Setup",x+18,advancedY,200,20,smallFmt_.Get(),brush_.text.Get());
             AddButton(L"trainer_create_fork",L"Create Fork",x+leftW-202,advancedY-3,92,26,false);
             AddButton(L"trainer_bind_lora",L"Bind LoRA",x+leftW-102,advancedY-3,84,26,false);
 
             TextLine(L"Fork name",x+18,advancedY+25,82,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(L"Source",x+leftW*0.48f,advancedY+25,90,18,tinyFmt_.Get(),brush_.muted.Get());
-
             TextLine(L"LoRA name",x+18,advancedY+59,82,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(L"Adapter",x+leftW*0.48f,advancedY+59,90,18,tinyFmt_.Get(),brush_.muted.Get());
-
             TextLine(L"Dataset",x+18,advancedY+93,82,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(L"Output",x+leftW*0.48f,advancedY+93,90,18,tinyFmt_.Get(),brush_.muted.Get());
         }
 
-        const float actionY=bodyY+bodyH-42.0f;
-        AddButton(L"trainer_apply_instruction",L"Apply Instruction",x+18,actionY,130,30,true);
-        AddButton(L"trainer_queue",L"Queue Mode",x+156,actionY,92,30,false);
-        AddButton(L"trainer_run_latest",L"Run Latest",x+256,actionY,90,30,false);
-        AddButton(L"trainer_advanced_toggle",
-            trainerAdvancedOpen_?L"Hide Advanced":L"Advanced Setup",
-            x+354,actionY,110,30,false);
+        TextLine(
+            mode==sentinel::simulation::TrainingMode::Behavior
+                ? L"MESSAGE TO SARA TRAINER — generates a preview; no change is applied automatically"
+                : L"MESSAGE TO SARA TRAINER — captured as reviewed training intent",
+            x+18,composerY,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
 
-        // Right-side Training Context.
-        const float contextH=136.0f;
+        float bx=x+18.0f;
+        AddButton(L"trainer_apply_instruction",L"Send / Preview",bx,actionY,108,30,true); bx+=116.0f;
+        AddButton(L"trainer_apply_preview",L"Apply Preview",bx,actionY,102,30,
+            mode==sentinel::simulation::TrainingMode::Behavior); bx+=110.0f;
+        AddButton(L"trainer_new_session",L"New Session",bx,actionY,90,30,false); bx+=98.0f;
+        AddButton(L"trainer_queue",L"Queue Mode",bx,actionY,86,30,false); bx+=94.0f;
+        AddButton(
+            L"trainer_advanced_toggle",
+            trainerAdvancedOpen_?L"Hide Advanced":L"Advanced",
+            bx,actionY,96,30,false);
+
+        // Right-side training context.
+        const float contextH=148.0f;
         Rounded(rightX,bodyY,rightW,contextH,brush_.panel.Get(),brush_.border.Get(),11);
         TextLine(L"Training Context",rightX+16,bodyY+12,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
 
@@ -7501,12 +7676,23 @@ private:
         TextLine(Widen(simSettings_.persona.name),rightX+118,bodyY+47,rightW-134,24,smallFmt_.Get(),brush_.cyan.Get());
 
         TextLine(L"Mode",rightX+16,bodyY+78,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(EditText(trainerModeCombo_),rightX+118,bodyY+75,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(Widen(sentinel::simulation::ToString(mode)),rightX+118,bodyY+75,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Foundation",rightX+16,bodyY+106,92,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(EditText(trainerFoundationCombo_),rightX+118,bodyY+103,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
+        TextLine(L"Session",rightX+16,bodyY+106,92,18,tinyFmt_.Get(),brush_.muted.Get());
+        std::wstring sessionLabel=session?Widen(session->id):L"Not started";
+        if(sessionLabel.size()>24) sessionLabel=sessionLabel.substr(0,21)+L"...";
+        TextLine(sessionLabel,rightX+118,bodyY+103,rightW-134,24,tinyFmt_.Get(),brush_.text.Get());
 
-        // Visible lifecycle from the approved hybrid design.
+        TextLine(L"Weight change",rightX+16,bodyY+132,92,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            mode==sentinel::simulation::TrainingMode::Behavior
+                ? L"Profile only"
+                : mode==sentinel::simulation::TrainingMode::Preference
+                    ? L"Not enabled"
+                    : L"Queued + reviewed",
+            rightX+118,bodyY+129,rightW-134,20,tinyFmt_.Get(),
+            mode==sentinel::simulation::TrainingMode::Preference?brush_.yellow.Get():brush_.green.Get());
+
         const float pipelineY=bodyY+contextH+12.0f;
         const float pipelineH=118.0f;
         Rounded(rightX,pipelineY,rightW,pipelineH,brush_.panel.Get(),brush_.border.Get(),11);
@@ -7520,9 +7706,10 @@ private:
             D2D1::Point2F(lineL,pipelineY+58),
             D2D1::Point2F(lineR,pipelineY+58),
             brush_.border.Get(),2.0f);
+        const int currentStage=turns.empty()?0:1;
         for(int i=0;i<6;i++) {
             const float sx=lineL+i*stepGap;
-            const bool current=i==0;
+            const bool current=i==currentStage;
             Rounded(sx-10,pipelineY+48,20,20,
                 current?brush_.blue.Get():brush_.sidebar.Get(),
                 current?brush_.cyan.Get():brush_.border.Get(),10);
@@ -7532,11 +7719,11 @@ private:
                 current?brush_.cyan.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
         }
 
-        // Recovered job state, shown as an actual command-center panel.
         const float jobsY=pipelineY+pipelineH+12.0f;
         const float jobsH=std::max(132.0f,bodyH-(jobsY-bodyY));
         Rounded(rightX,jobsY,rightW,jobsH,brush_.panel.Get(),brush_.border.Get(),11);
-        TextLine(L"Recent Training Jobs",rightX+16,jobsY+10,rightW-32,26,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Recent Training Jobs",rightX+16,jobsY+10,rightW-132,26,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"trainer_run_latest",L"Run Latest",rightX+rightW-104,jobsY+10,88,26,false);
 
         auto jobs=runtime_->trainer.ListJobs(4);
         float jy=jobsY+44.0f;
@@ -7559,7 +7746,6 @@ private:
         TextLine(L"Runtime",rightX+16,jobsY+jobsH-28,58,18,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(trainerRuntimeStatus_,rightX+76,jobsY+jobsH-30,rightW-92,20,tinyFmt_.Get(),brush_.cyan.Get());
     }
-
 
 
     size_t SyncApprovedReviewsToVersionedData() {

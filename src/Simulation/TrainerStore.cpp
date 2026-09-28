@@ -51,6 +51,31 @@ PersonaLoraBinding ReadBinding(sqlite3_stmt* s) {
     b.loraName=Col(s,3); b.loraPath=Col(s,4); b.weight=sqlite3_column_double(s,5);
     b.active=sqlite3_column_int(s,6)!=0; return b;
 }
+
+TrainerDialogueSession ReadDialogueSession(sqlite3_stmt* s) {
+    TrainerDialogueSession session;
+    session.id=Col(s,0);
+    session.personaName=Col(s,1);
+    session.mode=TrainingModeFromString(Col(s,2));
+    session.title=Col(s,3);
+    session.active=sqlite3_column_int(s,4)!=0;
+    session.createdUtc=Col(s,5);
+    session.updatedUtc=Col(s,6);
+    return session;
+}
+
+TrainerDialogueTurn ReadDialogueTurn(sqlite3_stmt* s) {
+    TrainerDialogueTurn turn;
+    turn.id=sqlite3_column_int64(s,0);
+    turn.sessionId=Col(s,1);
+    turn.role=Col(s,2);
+    turn.text=Col(s,3);
+    turn.payload=Col(s,4);
+    turn.applied=sqlite3_column_int(s,5)!=0;
+    turn.createdUtc=Col(s,6);
+    turn.appliedUtc=Col(s,7);
+    return turn;
+}
 }
 
 std::string ToString(TrainingMode mode) {
@@ -301,6 +326,172 @@ std::vector<TrainerJobRecord> TrainerStore::ListJobs(size_t limit) const {
         out.push_back(std::move(j));
     }
     sqlite3_finalize(s); return out;
+}
+
+std::optional<TrainerDialogueSession> TrainerStore::ActiveDialogueSession(
+    std::string_view personaName,
+    TrainingMode mode) const
+{
+    if(personaName.empty()) return std::nullopt;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,persona_name,training_mode,title,active,created_utc,updated_utc "
+        "FROM trainer_dialogue_sessions "
+        "WHERE persona_name=? AND training_mode=? AND active=1 "
+        "ORDER BY updated_utc DESC,id DESC LIMIT 1",
+        -1,&s,nullptr),db,"prepare active trainer dialogue session");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    const auto modeText=ToString(mode);
+    sqlite3_bind_text(s,2,modeText.c_str(),-1,SQLITE_TRANSIENT);
+
+    std::optional<TrainerDialogueSession> out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadDialogueSession(s);
+    sqlite3_finalize(s);
+    return out;
+}
+
+TrainerDialogueSession TrainerStore::EnsureDialogueSession(
+    std::string_view personaName,
+    TrainingMode mode)
+{
+    if(auto existing=ActiveDialogueSession(personaName,mode)) return *existing;
+    return NewDialogueSession(personaName,mode,{});
+}
+
+TrainerDialogueSession TrainerStore::NewDialogueSession(
+    std::string_view personaName,
+    TrainingMode mode,
+    std::string_view title)
+{
+    if(personaName.empty()) throw std::runtime_error("trainer dialogue persona is required");
+
+    SqliteTransaction tx(db_);
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_dialogue_sessions "
+        "SET active=0,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE persona_name=? AND training_mode=? AND active=1",
+        -1,&s,nullptr),db,"prepare trainer dialogue archive");
+    const auto persona=std::string(personaName);
+    const auto modeText=ToString(mode);
+    sqlite3_bind_text(s,1,persona.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,modeText.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"archive trainer dialogue");
+    sqlite3_finalize(s);
+
+    const auto id=NewId("trainer-dialogue");
+    std::string resolvedTitle=std::string(title);
+    if(resolvedTitle.empty())
+        resolvedTitle=ToString(mode)+" trainer conversation";
+
+    Check(sqlite3_prepare_v2(db,
+        "INSERT INTO trainer_dialogue_sessions("
+        "id,persona_name,training_mode,title,active"
+        ") VALUES(?,?,?,?,1)",
+        -1,&s,nullptr),db,"prepare trainer dialogue create");
+    sqlite3_bind_text(s,1,id.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,persona.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,modeText.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,4,resolvedTitle.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"create trainer dialogue");
+    sqlite3_finalize(s);
+    tx.Commit();
+
+    auto created=ActiveDialogueSession(personaName,mode);
+    if(!created) throw std::runtime_error("trainer dialogue session could not be reloaded");
+    return *created;
+}
+
+TrainerDialogueTurn TrainerStore::AppendDialogueTurn(
+    std::string_view sessionId,
+    std::string_view role,
+    std::string_view text,
+    std::string_view payload)
+{
+    if(sessionId.empty()) throw std::runtime_error("trainer dialogue session is required");
+    if(role!="OPERATOR" && role!="SARA" && role!="SYSTEM")
+        throw std::runtime_error("invalid trainer dialogue role");
+    if(text.empty()) throw std::runtime_error("trainer dialogue text is required");
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "INSERT INTO trainer_dialogue_turns("
+        "session_id,role,message_text,payload,applied"
+        ") VALUES(?,?,?,?,0)",
+        -1,&s,nullptr),db,"prepare trainer dialogue turn");
+    const auto session=std::string(sessionId);
+    const auto roleText=std::string(role);
+    const auto message=std::string(text);
+    const auto payloadText=std::string(payload);
+    sqlite3_bind_text(s,1,session.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,roleText.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,message.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,4,payloadText.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"insert trainer dialogue turn");
+    const auto id=sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(s);
+
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_dialogue_sessions SET updated_utc=CURRENT_TIMESTAMP WHERE id=?",
+        -1,&s,nullptr),db,"prepare trainer dialogue touch");
+    sqlite3_bind_text(s,1,session.c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"touch trainer dialogue session");
+    sqlite3_finalize(s);
+
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,session_id,role,message_text,payload,applied,created_utc,"
+        "COALESCE(applied_utc,'') FROM trainer_dialogue_turns WHERE id=?",
+        -1,&s,nullptr),db,"prepare trainer dialogue turn reload");
+    sqlite3_bind_int64(s,1,id);
+    TrainerDialogueTurn out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadDialogueTurn(s);
+    sqlite3_finalize(s);
+    return out;
+}
+
+std::vector<TrainerDialogueTurn> TrainerStore::ListDialogueTurns(
+    std::string_view sessionId,
+    size_t limit) const
+{
+    std::vector<TrainerDialogueTurn> out;
+    if(sessionId.empty()) return out;
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,session_id,role,message_text,payload,applied,created_utc,"
+        "COALESCE(applied_utc,'') "
+        "FROM trainer_dialogue_turns WHERE session_id=? "
+        "ORDER BY id DESC LIMIT ?",
+        -1,&s,nullptr),db,"prepare trainer dialogue list");
+    const auto session=std::string(sessionId);
+    sqlite3_bind_text(s,1,session.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,200));
+    while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadDialogueTurn(s));
+    sqlite3_finalize(s);
+    std::reverse(out.begin(),out.end());
+    return out;
+}
+
+bool TrainerStore::MarkDialogueTurnApplied(long long turnId)
+{
+    if(turnId<=0) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_dialogue_turns "
+        "SET applied=1,applied_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND applied=0",
+        -1,&s,nullptr),db,"prepare trainer dialogue apply");
+    sqlite3_bind_int64(s,1,turnId);
+    Check(sqlite3_step(s),db,"apply trainer dialogue turn");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
 }
 
 } // namespace sentinel::simulation

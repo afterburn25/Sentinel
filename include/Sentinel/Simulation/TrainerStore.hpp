@@ -50,6 +50,27 @@ struct TrainerJobRecord {
     std::string errorText;
 };
 
+struct TrainerDialogueSession {
+    std::string id;
+    std::string personaName;
+    TrainingMode mode{TrainingMode::Behavior};
+    std::string title;
+    bool active{true};
+    std::string createdUtc;
+    std::string updatedUtc;
+};
+
+struct TrainerDialogueTurn {
+    long long id{};
+    std::string sessionId;
+    std::string role;
+    std::string text;
+    std::string payload;
+    bool applied{};
+    std::string createdUtc;
+    std::string appliedUtc;
+};
+
 class TrainerStore {
 public:
     explicit TrainerStore(SqliteDatabase& db) : db_(db) {}
@@ -67,6 +88,27 @@ public:
     std::vector<PersonaLoraBinding> ListPersonaLoras(std::string_view personaName,size_t limit=12) const;
     TrainerJobRecord QueueJob(TrainingMode mode,std::string_view targetName,std::string_view personaName,std::string_view foundationId,std::string_view datasetPath,std::string_view baseModelPath,std::string_view outputPath,std::string_view configJson = "{}");
     std::vector<TrainerJobRecord> ListJobs(size_t limit=12) const;
+
+    std::optional<TrainerDialogueSession> ActiveDialogueSession(
+        std::string_view personaName,
+        TrainingMode mode) const;
+    TrainerDialogueSession EnsureDialogueSession(
+        std::string_view personaName,
+        TrainingMode mode);
+    TrainerDialogueSession NewDialogueSession(
+        std::string_view personaName,
+        TrainingMode mode,
+        std::string_view title = {});
+    TrainerDialogueTurn AppendDialogueTurn(
+        std::string_view sessionId,
+        std::string_view role,
+        std::string_view text,
+        std::string_view payload = {});
+    std::vector<TrainerDialogueTurn> ListDialogueTurns(
+        std::string_view sessionId,
+        size_t limit=20) const;
+    bool MarkDialogueTurnApplied(long long turnId);
+
 private:
     SqliteDatabase& db_;
 };

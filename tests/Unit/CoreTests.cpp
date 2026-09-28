@@ -234,6 +234,41 @@ void TestTrainerFoundationAndJobs()
     Require(jobs.front().mode==sentinel::simulation::TrainingMode::FoundationSft,
         "trainer job mode mismatch");
 
+    const auto dialogue=trainer.EnsureDialogueSession(
+        "Samantha",sentinel::simulation::TrainingMode::Behavior);
+    Require(!dialogue.id.empty(),"trainer dialogue session id missing");
+    Require(dialogue.active,"trainer dialogue session should be active");
+
+    const auto operatorTurn=trainer.AppendDialogueTurn(
+        dialogue.id,"OPERATOR","make her writing more casual");
+    const auto previewTurn=trainer.AppendDialogueTurn(
+        dialogue.id,"SARA","preview generated",
+        "PERSONALITY=Balanced\nWRITING_STYLE=Casual\n");
+    Require(operatorTurn.id>0 && previewTurn.id>operatorTurn.id,
+        "trainer dialogue turn ids were not ordered");
+
+    auto dialogueTurns=trainer.ListDialogueTurns(dialogue.id,10);
+    Require(dialogueTurns.size()==2,"trainer dialogue turn count mismatch");
+    Require(dialogueTurns.front().role=="OPERATOR",
+        "trainer dialogue list should be chronological");
+    Require(dialogueTurns.back().payload.find("WRITING_STYLE=Casual")!=std::string::npos,
+        "trainer dialogue preview payload missing");
+
+    Require(trainer.MarkDialogueTurnApplied(previewTurn.id),
+        "trainer dialogue preview could not be marked applied");
+    dialogueTurns=trainer.ListDialogueTurns(dialogue.id,10);
+    Require(dialogueTurns.back().applied,
+        "trainer dialogue applied state was not persisted");
+
+    const auto replacementSession=trainer.NewDialogueSession(
+        "Samantha",sentinel::simulation::TrainingMode::Behavior,"Second review");
+    Require(replacementSession.id!=dialogue.id,
+        "new trainer dialogue session reused the prior id");
+    auto activeDialogue=trainer.ActiveDialogueSession(
+        "Samantha",sentinel::simulation::TrainingMode::Behavior);
+    Require(activeDialogue.has_value() && activeDialogue->id==replacementSession.id,
+        "new trainer dialogue session did not become active");
+
     db.Close();
     std::filesystem::remove_all(root);
 }
