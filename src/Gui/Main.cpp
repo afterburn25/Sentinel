@@ -8421,7 +8421,7 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         case WM_CREATE:
             try { g_app=new App(); g_app->Init(hwnd); }
             catch (const std::exception& e) {
-                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"Sentinel Startup Failed",MB_OK|MB_ICONERROR);
+                MessageBoxW(hwnd,Widen(e.what()).c_str(),L"SARA Startup Failed",MB_OK|MB_ICONERROR);
                 return -1;
             }
             return 0;
