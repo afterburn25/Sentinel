@@ -308,3 +308,64 @@ Therefore those baseline implementations must be preserved and improved in place
 - later Model Lab diagnostic/export refinements not already present in 1.0.15
 
 Those remain candidates for selective porting only after their individual implementations are reviewed against the recovered code.
+
+
+## Architecture correction checkpoint — 2026-09-28
+
+The product hierarchy is now locked by `docs/SARA_PRODUCT_ARCHITECTURE.md`.
+
+Validated rollback point:
+- commit `5ce02765cff5b739cb4dd88d1a1c4928f136a821`
+- Windows Build #730 / run `36401709869`
+- result: PASS
+- full details: `docs/SARA_RECOVERY_CHECKPOINTS.md`
+
+The permanent SARA main navigation is now:
+1. Dashboard
+2. Cases
+3. Subjects & Identity
+4. Simulation Chat
+5. Personas
+6. Channels & Messaging
+7. Supervisor & Approvals
+8. Evidence
+9. Audit & Compliance
+10. Model Lab
+11. Agency Server
+12. Settings
+
+Model Lab is subordinate and retains only internal Model Lab navigation. Trainer and Verification are sub-workflows, not permanent top-level application modules.
+
+### Selectively restored later-only capabilities now present on the recovery line
+
+The following were manually reviewed and selectively restored without wholesale branch merges:
+
+- [x] persistent multidimensional Evaluation Suite and evaluation-run registry
+- [x] named evaluation cases, dimension scores, regression deltas and report/comparison export
+- [x] versioned dataset snapshots with lineage
+- [x] dataset snapshot import/export with duplicate-safe IDs
+- [x] persona LoRA version selection/reactivation by exact binding ID
+- [x] persona LoRA metadata JSON export
+- [x] trainer job created/start/completion/error history surfaced from the existing worker
+- [x] deployment package registry
+- [x] deployment version locks
+- [x] deployment manifest export
+- [x] deployment package activation and rollback
+- [x] deployment lifecycle audit action IDs
+- [x] Model Lab diagnostics export
+- [x] persona-scoped archive/resume/relevant-memory recall
+- [x] full packaged screenshot regression across the permanent investigative shell and Model Lab subpages
+
+No later application shell, startup implementation, splash implementation, or installer implementation was wholesale merged.
+
+### Current architectural recovery status
+
+- trusted 1.0.15 immutable source: PROTECTED
+- single active recovery branch: YES
+- product mission contract in repo: YES
+- permanent navigation contract enforced in CI: YES
+- Simulation Chat first-class and captured from packaged EXE: YES
+- Cases/Evidence/Audit operational modules captured from packaged EXE: YES
+- Model Lab prevented from replacing main sidebar: YES
+- transparent approved logo without white plate: YES
+- packaged Windows build/tests/startup/installer checkpoint: PASS
