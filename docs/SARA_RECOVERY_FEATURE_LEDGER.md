@@ -251,8 +251,60 @@ Every future feature restoration must follow this exact sequence:
 - Exact 1.0.15 baseline locked: YES
 - Later PRs closed/quarantined: YES
 - Single active recovery branch: YES
-- Recovery validation workflow: RUNNING
-- Exact packaged 1.0.15 launch past splash: PENDING
-- Actual 1.0.15 UI capture: PENDING
-- User visual confirmation of recovered UI: PENDING
-- Any post-1.0.15 feature ported: NO
+- Recovery validation workflow: ACTIVE AND PASSING ON VALIDATED CHECKPOINTS
+- Exact packaged 1.0.15 launch past splash: PASS
+- Responsive packaged main window after splash: PASS
+- Actual packaged UI capture: PASS
+- Hybrid Model Lab shell/workspaces: RESTORED IN STAGES
+- Persona memory isolation recovery: IMPLEMENTED / CI VALIDATION IN PROGRESS
+- Wholesale post-1.0.15 branch merges: NONE
+
+
+## Verified baseline source inventory correction — 2026-09-28
+
+Direct reads from immutable commit `78a2aa3d30eb8cd647d1f4213f5d4e3961a6105d` confirm that several capabilities previously listed below as later-only/quarantined are already physically present in the trusted 1.0.15 source tree.
+
+Present in the trusted 1.0.15 commit:
+- provider-neutral channel core source/header
+- jurisdiction rule store source/header
+- reusable SQLite persona profile store
+- persona profile migration
+- foundation / persona-LoRA / trainer store
+- foundation / persona-LoRA / trainer migration
+- persistent persona conversation logs
+- conversation memory store
+- training review store and review lifecycle
+- smart persona response-rule persistence
+- trainer worker launch path
+
+Therefore those baseline implementations must be preserved and improved in place. Later branches may still contain additional revisions, but they are not the origin of these capabilities and must not be wholesale merged.
+
+### Recovery changes now implemented on top of 1.0.15
+
+- [x] startup no longer hangs indefinitely behind the splash
+- [x] packaged main window is required to become responsive before CI passes
+- [x] exact 1.0.15 installer/model verification contract remains guarded
+- [x] exact approved SARA logo asset is used in the recovered application shell
+- [x] dedicated hybrid Model Lab navigation shell restored
+- [x] Model Lab Overview rebuilt against real 1.0.15 state
+- [x] Train workspace rebuilt against real trainer controls/backend
+- [x] Datasets workspace built against the real training-review store
+- [x] Personas & LoRAs workspace built against real persona profiles and LoRA bindings
+- [x] Foundation Forks workspace built against real foundation lineage
+- [x] Jobs workspace built against real trainer job records
+- [x] Evaluation workspace built against the trusted model registry/evaluator
+- [x] Deployment workspace built against trusted approve/activate/rollback registry behavior
+- [x] persona archive/resume/relevant-memory recall isolated by selected persona
+- [x] archived conversations now preserve a separate full persona summary
+- [x] persona switches move to that persona's own conversation scope
+
+### Still genuinely later-only / not yet restored
+
+- persistent multi-run Evaluation Suite registry and detailed named-case reports
+- dataset snapshot lineage/import/export beyond the trusted approved-JSONL review store
+- richer adapter version-management metadata/export beyond existing persona LoRA bindings
+- persistent deployment package registry/version locks/full-stack package manifests
+- later deployment audit lifecycle extensions
+- later Model Lab diagnostic/export refinements not already present in 1.0.15
+
+Those remain candidates for selective porting only after their individual implementations are reviewed against the recovered code.
