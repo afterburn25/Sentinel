@@ -126,9 +126,11 @@ foreach ($token in $personaWorkflowTokens) {
 $trainerWorkflowTokens = @(
     'L"Trainer Conversation"',
     'L"Conversation History"',
-    'L"Send / Preview"',
-    'L"Apply Preview"',
+    'trainer_apply_instruction',
+    'trainer_apply_preview',
     'trainer_new_session',
+    'L"Behavior Tuning"',
+    'L"Evaluation / Test"',
     'EnsureDialogueSession('
 )
 foreach ($token in $trainerWorkflowTokens) {
