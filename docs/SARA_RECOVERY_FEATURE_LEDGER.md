@@ -259,6 +259,7 @@ Every future feature restoration must follow this exact sequence:
 - Persona memory isolation recovery: RESTORED / VALIDATED
 - Subjects & Identity workflow: RESTORED / VALIDATED (Windows Build #754)
 - Canonical subject / identity schema reconciliation: PASS
+- Channels & Messaging operational adapter view: RESTORED / VALIDATED (Windows Build #759)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -302,6 +303,10 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] case-scoped Subjects & Identity workflow with provenance-backed leads
 - [x] explicit human lead review and separate subject confirmation state
 - [x] recovery-only subject tables reconciled into canonical `subjects` / `subject_identities` storage
+- [x] provider-neutral channel adapter registry surfaced in Channels & Messaging
+- [x] local SARA simulation transport bridged into the canonical adapter registry
+- [x] channel readiness matrix and human-approved routing gate added without enabling third-party transports
+- [x] draft jurisdiction profiles render as auto-send locked rather than operationally ready
 
 ### Still genuinely later-only / not yet restored
 
@@ -375,3 +380,4 @@ No later application shell, startup implementation, splash implementation, or in
 - transparent approved logo without white plate: YES
 - packaged Windows build/tests/startup/installer checkpoint: PASS
 - Subjects & Identity canonical persistence and packaged UI checkpoint: PASS — run #754 / commit `cb934c5349e1666b1c64092b7ebaf1cb4a853ada`
+- Channels & Messaging adapter-registry and packaged UI checkpoint: PASS — run #759 / commit `eb0709b4cd64ae705453aed99a172756caaa9855`

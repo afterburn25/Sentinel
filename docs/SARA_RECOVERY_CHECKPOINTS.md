@@ -134,3 +134,52 @@ Artifact digests from run #754:
 - UI screenshots: `sha256:647f5718616396c8e039fbaa48523c8fdf2bd22c712ee12741e9d29d79a05bc8`
 
 This is the validated rollback point for the recovered operational shell plus the canonical Subjects & Identity workflow.
+
+## Checkpoint 03 — Channels & Messaging operationalized and validated
+
+Validated commit:
+
+`eb0709b4cd64ae705453aed99a172756caaa9855`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #759
+- Run ID: `36415535221`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- no SQLite DLL dependency: PASS
+- packaged install: PASS
+- packaged SARA launch past splash: PASS
+- responsive main window and full UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Channels & Messaging recovery proven by this checkpoint:
+
+- the main Channels & Messaging page is now an operational module rather than a local-test placeholder
+- the existing provider-neutral `ChannelAdapterRegistry` is surfaced in the investigative shell
+- the existing local simulation transport is bridged into that registry without duplicating the approval queue
+- adapter connection state and declared text/media/automation capabilities are visible
+- routing state shows current case, subject, jurisdiction and required human approval
+- draft/unapproved jurisdiction profiles are visibly shown as locked rather than ready
+- channel readiness is shown for local simulation, SMS/MMS/RCS, Telegram/Discord, Messenger/WhatsApp and assisted channels
+- no live third-party transport is enabled by this checkpoint
+- third-party adapters remain subordinate to jurisdiction and supervisor gates
+- the approved local queue and Simulation Chat / Approvals workflow remain inside the recovered permanent SARA shell
+- packaged `07-channels-messaging.png` was inspected for overlap and clipping at the regression-capture window size
+
+Artifact digests from run #759:
+
+- Windows package: `sha256:3e8450b72569c790e3cbf33cbdd43b0d38b98d02bc8d8ddb5c1a4a2723eed8fb`
+- Setup artifact: `sha256:66ea84e8d0c695d1714f830d8bc612b3a3d40c3e4d4d21ad9248a1c991e719fe`
+- UI screenshots: `sha256:6933fd7302dcf7c73e1d8fea1e50088d4bd7e524747dccc180dc03578a5c907e`
+
+This is the validated rollback point for the investigative shell, canonical Subjects & Identity workflow, and operational Channels & Messaging adapter-readiness workflow.
