@@ -29,6 +29,7 @@ add_library(sentinel_core
     src/Simulation/PersonaPolicy.cpp
     src/Simulation/SettingsStore.cpp
     src/Simulation/ResponseEvaluator.cpp
+    src/Simulation/EvaluationSuite.cpp
     src/Simulation/SessionStore.cpp
     src/Simulation/ConversationMemory.cpp
     src/Simulation/ModelRegistry.cpp
