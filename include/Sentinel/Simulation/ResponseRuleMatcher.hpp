@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sentinel::simulation {
 
@@ -28,5 +29,12 @@ struct ResponseRuleMatchQuality {
     int currentPriority,
     long long currentId,
     const ResponseRuleMatchQuality& current) noexcept;
+
+[[nodiscard]] std::vector<std::string> SplitResponseRuleVariants(
+    std::string_view responseText);
+
+[[nodiscard]] std::string SelectResponseRuleVariant(
+    std::string_view responseText,
+    std::string_view deterministicBasis);
 
 }

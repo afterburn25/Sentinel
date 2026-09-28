@@ -118,6 +118,21 @@ void TestResponseRuleMatcher()
         "newer rule should win a true equal-priority/equal-quality tie");
     Require(!PreferResponseRuleMatch(99,99,exactTie,100,1,contains),
         "higher explicit priority must outrank match type");
+
+    const auto variants=sentinel::simulation::SplitResponseRuleVariants(
+        " blue mostly || probably blue ||  blue is my favorite  ");
+    Require(variants.size()==3,"response-rule alternate parsing count mismatch");
+    Require(variants[0]=="blue mostly" && variants[2]=="blue is my favorite",
+        "response-rule alternate trimming mismatch");
+
+    const auto selectedA=sentinel::simulation::SelectResponseRuleVariant(
+        "one || two || three","conversation-a|rule-7");
+    const auto selectedB=sentinel::simulation::SelectResponseRuleVariant(
+        "one || two || three","conversation-a|rule-7");
+    Require(selectedA==selectedB,
+        "response-rule alternate selection was not deterministic");
+    Require(selectedA=="one" || selectedA=="two" || selectedA=="three",
+        "response-rule alternate selection returned an invalid variant");
 }
 
 void TestIdsAndHashes()

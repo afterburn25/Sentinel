@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -161,6 +162,55 @@ bool PreferResponseRuleMatch(
 
     // Newer investigator-authored rules intentionally win only a true tie.
     return candidateId>currentId;
+}
+
+std::vector<std::string> SplitResponseRuleVariants(std::string_view responseText)
+{
+    std::vector<std::string> variants;
+    std::string current;
+
+    auto trim=[](std::string value) {
+        const auto first=value.find_first_not_of(" \t\r\n");
+        if(first==std::string::npos) return std::string{};
+        const auto last=value.find_last_not_of(" \t\r\n");
+        return value.substr(first,last-first+1);
+    };
+
+    for(std::size_t i=0;i<responseText.size();) {
+        if(i+1<responseText.size() &&
+           responseText[i]=='|' && responseText[i+1]=='|')
+        {
+            auto value=trim(std::move(current));
+            if(!value.empty()) variants.push_back(std::move(value));
+            current.clear();
+            i+=2;
+            continue;
+        }
+        current.push_back(responseText[i]);
+        ++i;
+    }
+
+    auto value=trim(std::move(current));
+    if(!value.empty()) variants.push_back(std::move(value));
+    return variants;
+}
+
+std::string SelectResponseRuleVariant(
+    std::string_view responseText,
+    std::string_view deterministicBasis)
+{
+    auto variants=SplitResponseRuleVariants(responseText);
+    if(variants.empty()) return {};
+    if(variants.size()==1) return variants.front();
+
+    // FNV-1a gives stable cross-process selection unlike std::hash, whose
+    // implementation is not part of the persistence contract.
+    std::uint64_t hash=1469598103934665603ULL;
+    for(unsigned char ch:deterministicBasis) {
+        hash^=ch;
+        hash*=1099511628211ULL;
+    }
+    return variants[(std::size_t)(hash%variants.size())];
 }
 
 }
