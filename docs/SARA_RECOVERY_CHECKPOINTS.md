@@ -275,3 +275,46 @@ Artifact digests from run #764:
 - UI screenshots: `sha256:ecfa09b83009dbd5d5f110f21c3ec7160ac18070cfd94df9002f8890a9c34f76`
 
 This is the validated rollback point for the recovered investigative shell through Evidence verification and Audit & Compliance.
+
+## Checkpoint 06 — Audit-v2 metadata binding validated
+
+Validated commit:
+
+`842ac592a1b39fba241dd5b566dd764274a2a024`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #768
+- Run ID: `36422692168`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- real packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Audit-v2 recovery proven by this checkpoint:
+
+- existing immutable audit-v1 records continue to verify under their original canonical format
+- new audit records store a SHA-256 digest of the metadata blob
+- new audit-v2 record hashes cryptographically bind that metadata digest
+- mixed legacy-v1 and new-v2 chains verify as one continuous chain
+- direct SQLite modification of audit-v2 metadata is detected by `VerifyChain()`
+- the migration does not rewrite or rehash historical v1 records
+- Settings accurately describes new metadata-bound audit records without claiming legacy records were rewritten
+
+Artifact digests from run #768:
+
+- Windows package: `sha256:27e991672b1f5f58020c6af6b0ec6c5f1cb416f8a3ecc40d1b05c8d86f1c8b4f`
+- Setup artifact: `sha256:c028663f0563fb93064add09ed9a48aea6cf58b0f36590832b50991dbcec7a09`
+- UI screenshots: `sha256:b1441521282fbcce133931720c37f66b57992e14bfe90b41ca8fdff5e282da2b`
+
+This is the validated rollback point for the recovered shell through metadata-bound audit provenance.
