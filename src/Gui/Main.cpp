@@ -23,6 +23,7 @@
 #include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
 #include "Sentinel/Operations/Supervisor.hpp"
+#include "Sentinel/Operations/SupervisorStateStore.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/AutomationEngine.hpp"
 #include "Sentinel/Channels/ChannelAdapterRegistry.hpp"
@@ -586,6 +587,11 @@ std::wstring AuditActionName(int action) {
         case 711: return L"Identity lead verified";
         case 712: return L"Identity lead rejected";
         case 713: return L"Subject identity confirmed";
+        case 720: return L"Investigator takeover activated";
+        case 721: return L"Investigator takeover released";
+        case 722: return L"Supervisor approval requested";
+        case 723: return L"Supervisor approval approved";
+        case 724: return L"Supervisor approval rejected";
         case 900: return L"Application shutdown";
         default: return L"System event";
     }
@@ -603,6 +609,7 @@ struct Runtime {
     sentinel::channels::AutomationEngine automationEngine;
     sentinel::channels::ChannelAdapterRegistry channelAdapters;
     sentinel::channels::JurisdictionRuleStore jurisdictionRules;
+    sentinel::operations::SupervisorStateStore supervisorState;
     sentinel::identity::SubjectIdentityStore subjectIdentity;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
@@ -619,6 +626,7 @@ struct Runtime {
           migrations(db),
           channelCore(db),
           jurisdictionRules(db),
+          supervisorState(db),
           subjectIdentity(db),
           conversationMemory(db),
           personaProfiles(db),
@@ -1506,6 +1514,8 @@ public:
             else if (b.id==L"msg_queue") QueueOperatorTestMessage();
             else if (b.id==L"approval_request") RequestLatestSuggestionApproval();
             else if (b.id==L"approval_approve") ApproveFirstPending();
+            else if (b.id==L"approval_reject") RejectFirstPending();
+            else if (b.id==L"supervisor_takeover") ToggleInvestigatorTakeover();
             else if (b.id==L"agency_toggle") ToggleAgency();
             else if (b.id==L"agency_enqueue") EnqueueAgencySnapshot();
             else if (b.id==L"jurisdiction_apply") ApplyOperatingJurisdiction();
@@ -5657,13 +5667,27 @@ private:
         }
     }
 
+    std::optional<sentinel::operations::SupervisorControlState> CurrentSupervisorState() const {
+        if(cases_.empty() || selectedCase_>=cases_.size()) return std::nullopt;
+        return runtime_->supervisorState.Get(cases_[selectedCase_].id.ToString());
+    }
+
+    bool InvestigatorTakeoverActive() const {
+        const auto state=CurrentSupervisorState();
+        return state && state->investigatorTakeover;
+    }
+
     void QueueOperatorTestMessage() {
         RequestLatestSuggestionApproval();
         page_=Page::Supervisor;
-        statusText_=L"Message queued for supervisor approval";
     }
 
     void RequestLatestSuggestionApproval() {
+        if(InvestigatorTakeoverActive()) {
+            statusText_=L"Investigator takeover is active; AI approval requests are locked";
+            return;
+        }
+
         std::wstring candidate=simSuggestion_;
         if(candidate.empty() || candidate==L"No suggestion generated yet") {
             statusText_=L"Generate a model suggestion first";
@@ -5676,14 +5700,37 @@ private:
             statusText_=L"Policy blocked approval request";
             return;
         }
-        approvals_.push_back(sentinel::operations::CreateApprovalRequest("message:local-sim:"+text,"local-investigator"));
+
+        auto request=sentinel::operations::CreateApprovalRequest(
+            "message:local-sim:"+text,"local-investigator");
+        approvals_.push_back(request);
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::SupervisorApprovalRequested,
+            "approval",
+            request.id,
+            AuditMetadata("action_sha256="+request.actionHash)
+        });
         statusText_=L"Supervisor approval requested";
     }
 
     void ApproveFirstPending() {
+        if(InvestigatorTakeoverActive()) {
+            statusText_=L"Investigator takeover is active; release takeover before AI outbound is queued";
+            return;
+        }
+
         for(auto& a:approvals_) {
             if(a.status==sentinel::operations::ApprovalStatus::Pending) {
                 sentinel::operations::Approve(a,"local-supervisor","Approved in SARA supervisor console");
+                runtime_->audit.Append({
+                    sentinel::UserId::Random(),
+                    sentinel::AuditAction::SupervisorApprovalApproved,
+                    "approval",
+                    a.id,
+                    AuditMetadata("action_sha256="+a.actionHash)
+                });
+
                 const std::string prefix="message:local-sim:";
                 const std::string mediaPrefix="media:local-sim:";
                 if(a.action.rfind(prefix,0)==0 && messagingAdapter_) {
@@ -5716,6 +5763,54 @@ private:
             }
         }
         statusText_=L"No pending approvals";
+    }
+
+    void RejectFirstPending() {
+        for(auto& a:approvals_) {
+            if(a.status!=sentinel::operations::ApprovalStatus::Pending) continue;
+
+            sentinel::operations::Reject(a,"local-supervisor","Rejected in SARA supervisor console");
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::SupervisorApprovalRejected,
+                "approval",
+                a.id,
+                AuditMetadata("action_sha256="+a.actionHash)
+            });
+            statusText_=L"Supervisor rejection recorded; nothing was queued";
+            return;
+        }
+        statusText_=L"No pending approvals";
+    }
+
+    void ToggleInvestigatorTakeover() {
+        if(cases_.empty() || selectedCase_>=cases_.size()) {
+            statusText_=L"Open a case before changing investigator takeover state";
+            return;
+        }
+
+        const auto caseId=cases_[selectedCase_].id.ToString();
+        const bool activate=!InvestigatorTakeoverActive();
+        const auto state=runtime_->supervisorState.SetTakeover(
+            caseId,
+            activate,
+            "local-investigator",
+            activate?"Manual investigator control activated in SARA supervisor console":"");
+
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            activate
+                ? sentinel::AuditAction::SupervisorTakeoverActivated
+                : sentinel::AuditAction::SupervisorTakeoverReleased,
+            "case",
+            caseId,
+            AuditMetadata(
+                std::string("investigator_takeover=")+(state.investigatorTakeover?"1":"0"))
+        });
+
+        statusText_=activate
+            ? L"Investigator takeover active; AI approval and outbound queueing are locked"
+            : L"Investigator takeover released; normal supervisor approval gating restored";
     }
 
     std::string SelectedStateCode() const {
@@ -8771,6 +8866,7 @@ private:
         PageTitle(L"Supervisor & Approvals",L"Human review, operational approvals, takeover controls, and SHA-256 action hashes");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
+        const float gap=14.0f;
         const float contentW=w-x-28.0f;
 
         size_t pending=0,approved=0,rejected=0;
@@ -8780,41 +8876,99 @@ private:
             else ++rejected;
         }
 
-        const float cardW=(contentW-28)/3.0f;
-        struct M{const wchar_t* label;size_t value;ID2D1Brush* brush;};
-        M ms[]={{L"Pending",pending,brush_.yellow.Get()},{L"Approved",approved,brush_.green.Get()},{L"Rejected",rejected,brush_.red.Get()}};
-        for(int i=0;i<3;i++) {
-            float cx=x+i*(cardW+14);
-            Rounded(cx,y,cardW,92,brush_.panel.Get(),brush_.border.Get(),10);
-            TextLine(ms[i].label,cx+18,y+14,cardW-36,20,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(std::to_wstring(ms[i].value),cx+18,y+36,cardW-36,40,bigFmt_.Get(),ms[i].brush);
+        const auto takeoverState=CurrentSupervisorState();
+        const bool takeoverActive=takeoverState && takeoverState->investigatorTakeover;
+
+        const float metricW=(contentW-gap*3.0f)/4.0f;
+        Metric(
+            x,y,metricW,
+            L"Pending",std::to_wstring(pending),L"Review",
+            pending?brush_.yellow.Get():brush_.green.Get(),IconKind::Shield);
+        Metric(
+            x+metricW+gap,y,metricW,
+            L"Approved",std::to_wstring(approved),L"Allowed",
+            brush_.green.Get(),IconKind::Check);
+        Metric(
+            x+2.0f*(metricW+gap),y,metricW,
+            L"Rejected",std::to_wstring(rejected),L"Blocked",
+            rejected?brush_.red.Get():brush_.muted.Get(),IconKind::Lock);
+        Metric(
+            x+3.0f*(metricW+gap),y,metricW,
+            L"Takeover",takeoverActive?L"ACTIVE":L"OFF",
+            takeoverActive?L"AI locked":L"Supervisor gate",
+            takeoverActive?brush_.yellow.Get():brush_.cyan.Get(),IconKind::Shield);
+
+        const float controlY=y+126.0f;
+        Rounded(x,controlY,contentW,106,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Human Control",x+18,controlY+10,180,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::wstring controlStatus;
+        ID2D1Brush* controlBrush=brush_.cyan.Get();
+        if(cases_.empty()) {
+            controlStatus=L"Open a case to use investigator takeover";
+            controlBrush=brush_.yellow.Get();
+        } else if(takeoverActive) {
+            controlStatus=L"Manual control active";
+            if(!takeoverState->takeoverActor.empty())
+                controlStatus+=L" | "+Widen(takeoverState->takeoverActor);
+            controlBrush=brush_.yellow.Get();
+        } else {
+            controlStatus=L"AI outbound remains supervisor-gated";
         }
+        TextLine(controlStatus,x+208,controlY+12,contentW-226,24,tinyFmt_.Get(),controlBrush,DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-        Rounded(x,y+108,contentW,90,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Approval Actions",x+18,y+120,200,28,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"approval_request",L"Request Latest Suggestion",x+240,y+132,220,38,false);
-        AddButton(L"approval_approve",L"Approve First Pending",x+474,y+132,210,38,true);
+        const float innerX=x+18.0f;
+        const float buttonGap=8.0f;
+        const float buttonW=(contentW-36.0f-buttonGap*3.0f)/4.0f;
+        const float buttonY=controlY+52.0f;
+        AddButton(L"approval_request",L"Request Suggestion",innerX,buttonY,buttonW,34,false);
+        AddButton(L"approval_approve",L"Approve Next",innerX+buttonW+buttonGap,buttonY,buttonW,34,true);
+        AddButton(L"approval_reject",L"Reject Next",innerX+2.0f*(buttonW+buttonGap),buttonY,buttonW,34,false);
+        AddButton(
+            L"supervisor_takeover",
+            takeoverActive?L"Release Takeover":L"Activate Takeover",
+            innerX+3.0f*(buttonW+buttonGap),buttonY,buttonW,34,
+            takeoverActive);
 
-        Rounded(x,y+214,contentW,326,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Approval Ledger",x+18,y+226,240,30,h1Fmt_.Get(),brush_.text.Get());
+        const float ledgerY=controlY+120.0f;
+        const float ledgerH=std::max(190.0f,h-ledgerY-24.0f);
+        Rounded(x,ledgerY,contentW,ledgerH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Approval Ledger",x+18,ledgerY+10,240,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(
+            L"Action hashes identify the exact reviewed payload.",
+            x+280,ledgerY+12,contentW-298,22,tinyFmt_.Get(),brush_.muted.Get(),
+            DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-        float yy=y+266;
+        float yy=ledgerY+48.0f;
         if(approvals_.empty()) {
-            Rounded(x+22,yy,contentW-44,52,brush_.sidebar.Get(),brush_.border.Get(),8);
-            TextLine(L"No approval requests yet.",x+36,yy+6,contentW-72,40,bodyFmt_.Get(),brush_.muted.Get());
-        }
+            Rounded(x+18,yy,contentW-36,50,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"No approval requests yet.",x+32,yy+6,contentW-64,38,bodyFmt_.Get(),brush_.muted.Get());
+        } else {
+            const float available=std::max(64.0f,ledgerH-62.0f);
+            const size_t maxRows=std::max<size_t>(1,(size_t)(available/66.0f));
+            for(size_t row=0;row<approvals_.size() && row<maxRows;row++) {
+                const auto& a=approvals_[approvals_.size()-1-row];
+                Rounded(x+18,yy,contentW-36,58,brush_.sidebar.Get(),brush_.border.Get(),8);
 
-        for(size_t i=0;i<approvals_.size() && i<4;i++) {
-            const auto& a=approvals_[i];
-            Rounded(x+22,yy,contentW-44,58,brush_.sidebar.Get(),brush_.border.Get(),8);
-            std::wstring state=a.status==sentinel::operations::ApprovalStatus::Pending?L"PENDING":
-                a.status==sentinel::operations::ApprovalStatus::Approved?L"APPROVED":L"REJECTED";
-            ID2D1Brush* sb=a.status==sentinel::operations::ApprovalStatus::Pending?brush_.yellow.Get():
-                a.status==sentinel::operations::ApprovalStatus::Approved?brush_.green.Get():brush_.red.Get();
-            TextLine(state,x+34,yy+6,90,20,tinyFmt_.Get(),sb);
-            TextLine(Widen(a.action),x+136,yy+4,contentW-172,24,smallFmt_.Get(),brush_.text.Get());
-            TextLine(L"SHA-256 "+Widen(a.actionHash),x+136,yy+30,contentW-172,20,tinyFmt_.Get(),brush_.muted.Get());
-            yy+=68;
+                const std::wstring state=
+                    a.status==sentinel::operations::ApprovalStatus::Pending?L"PENDING":
+                    a.status==sentinel::operations::ApprovalStatus::Approved?L"APPROVED":L"REJECTED";
+                ID2D1Brush* stateBrush=
+                    a.status==sentinel::operations::ApprovalStatus::Pending?brush_.yellow.Get():
+                    a.status==sentinel::operations::ApprovalStatus::Approved?brush_.green.Get():brush_.red.Get();
+
+                TextLine(state,x+30,yy+6,88,20,tinyFmt_.Get(),stateBrush);
+                TextLine(Widen(a.action),x+128,yy+3,contentW-158,24,smallFmt_.Get(),brush_.text.Get());
+
+                std::wstring detail=L"SHA-256 "+Widen(a.actionHash);
+                if(a.status==sentinel::operations::ApprovalStatus::Pending) {
+                    detail+=L" | requested by "+Widen(a.requestedBy);
+                } else if(!a.reviewedBy.empty()) {
+                    detail+=L" | "+Widen(a.reviewedBy);
+                }
+                TextLine(detail,x+128,yy+30,contentW-158,20,tinyFmt_.Get(),brush_.muted.Get());
+                yy+=66.0f;
+            }
         }
     }
 

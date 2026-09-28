@@ -41,6 +41,7 @@ add_library(sentinel_core
     src/Simulation/TrainerStore.cpp
     src/Operations/Messaging.cpp
     src/Operations/Supervisor.cpp
+    src/Operations/SupervisorStateStore.cpp
     src/Channels/ChannelCore.cpp
     src/Channels/LocalSimulationChannelAdapter.cpp
     src/Channels/AutomationEngine.cpp

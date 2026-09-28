@@ -16,6 +16,7 @@
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
+#include "Sentinel/Operations/SupervisorStateStore.hpp"
 
 #include <array>
 #include <cassert>
@@ -618,6 +619,49 @@ void TestSubjectIdentityStore()
 }
 
 
+void TestSupervisorStateStore()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/
+        ("sara-supervisor-state-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"supervisor.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::operations::SupervisorStateStore store(db);
+    Require(!store.Get("case-unit").has_value(),
+        "supervisor state should not exist before first control change");
+
+    auto active=store.SetTakeover(
+        "case-unit",true,"unit-investigator","manual operational handoff");
+    Require(active.investigatorTakeover,"investigator takeover was not activated");
+    Require(active.takeoverActor=="unit-investigator","takeover actor mismatch");
+    Require(active.takeoverNote=="manual operational handoff","takeover note mismatch");
+    Require(!active.takeoverUtc.empty(),"takeover timestamp missing");
+    Require(active.releasedBy.empty(),"fresh takeover unexpectedly has release actor");
+
+    auto reloaded=store.Get("case-unit");
+    Require(reloaded.has_value(),"persisted takeover state could not be reloaded");
+    Require(reloaded->investigatorTakeover,"reloaded takeover state lost active flag");
+
+    auto released=store.SetTakeover("case-unit",false,"unit-investigator");
+    Require(!released.investigatorTakeover,"investigator takeover was not released");
+    Require(released.releasedBy=="unit-investigator","takeover release actor mismatch");
+    Require(!released.releasedUtc.empty(),"takeover release timestamp missing");
+    Require(released.takeoverActor=="unit-investigator",
+        "takeover activation provenance was lost on release");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -874,6 +918,9 @@ int main()
         std::cout << "[core] subject identity store..." << std::endl;
         TestSubjectIdentityStore();
         std::cout << "[core] subject identity store PASS" << std::endl;
+        std::cout << "[core] supervisor takeover state..." << std::endl;
+        TestSupervisorStateStore();
+        std::cout << "[core] supervisor takeover state PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
