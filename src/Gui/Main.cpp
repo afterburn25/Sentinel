@@ -13,6 +13,7 @@
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/ResponseRuleMatcher.hpp"
+#include "Sentinel/Simulation/ResponseRuleMatchLog.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
@@ -669,6 +670,7 @@ struct Runtime {
     sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::simulation::TrainingReviewStore trainingReviews;
     sentinel::simulation::TrainerStore trainer;
+    sentinel::simulation::ResponseRuleMatchLog responseRuleMatches;
     sentinel::KeyManager keys;
     sentinel::SqliteCaseRepository caseRepo;
     sentinel::CaseService cases;
@@ -687,6 +689,7 @@ struct Runtime {
           personaProfiles(db),
           trainingReviews(db),
           trainer(db),
+          responseRuleMatches(db),
           keys(root/"keys"/"master.dpapi",db,dpapi,random,cipher),
           caseRepo(db,&keys,&cipher),
           cases(caseRepo),
@@ -1804,6 +1807,20 @@ public:
                     }
 
                     if(simPreparedFromRule_) {
+                        if(simMatchedRule_) {
+                            try {
+                                runtime_->responseRuleMatches.Append(
+                                    simSettings_.persona.name,
+                                    currentConversationId_,
+                                    simMatchedRule_->id,
+                                    simMatchedRule_->matchType,
+                                    simMatchedRule_->matchScore,
+                                    simMatchedRule_->trigger,
+                                    simPendingMessage_,
+                                    simMatchedRule_->responseMode,
+                                    simPreparedReply_);
+                            } catch(...) {}
+                        }
                         statusText_=simRuleResponseMode_=="persona_variation"
                             ? L"Response rule applied in persona voice"
                             : L"Exact response rule applied";
@@ -1830,6 +1847,7 @@ public:
         simPreparedFromRule_=false;
         simRuleMeaning_.clear();
         simRuleResponseMode_.clear();
+        simMatchedRule_.reset();
         sentinel::simulation::SaveSession(runtime_->root/"simulation-session.tsv",simContext_);
         // One benign proactive nudge is allowed in Simulation after 60 seconds
         // of silence. Live-channel automation remains governed by the operation
@@ -1881,6 +1899,7 @@ private:
     bool simPreparedFromRule_{false};
     std::string simRuleMeaning_;
     std::string simRuleResponseMode_;
+    std::optional<PersonaResponseRuleView> simMatchedRule_;
     int simLastStartDelayMs_{0};
     int simLastTypingDelayMs_{0};
     std::vector<std::pair<RectF,size_t>> simMessageRects_;
@@ -5517,12 +5536,14 @@ private:
 
         simRuleMeaning_.clear();
         simRuleResponseMode_.clear();
+        simMatchedRule_.reset();
 
         if(auto rule=FindPersonaResponseRule(utf8)) {
             const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
                 simSettings_.ageState,rule->response);
             if(policy.allowed) {
                 simPreparedFromRule_=true;
+                simMatchedRule_=*rule;
                 simRuleMeaning_=rule->response;
                 simRuleResponseMode_=rule->responseMode;
                 if(rule->responseMode=="exact")
@@ -6610,9 +6631,12 @@ private:
                     const std::wstring modeLabel=
                         rule.responseMode=="exact"?L"EXACT WORDING":L"PERSONA VOICE";
 
+                    const auto hitCount=runtime_->responseRuleMatches.CountForRule(
+                        simSettings_.persona.name,rule.id);
                     TextLine(
                         L"#"+std::to_wstring(rule.id)+L"  "+typeLabel+L"  |  "+modeLabel+
-                        L"  |  P"+std::to_wstring(rule.priority),
+                        L"  |  P"+std::to_wstring(rule.priority)+
+                        L"  |  "+std::to_wstring(hitCount)+L" hit"+(hitCount==1?L"":L"s"),
                         x+30,ry+5,contentW-260,18,tinyFmt_.Get(),
                         rule.enabled?brush_.cyan.Get():brush_.muted.Get());
 
@@ -7451,6 +7475,20 @@ private:
                <<" | enabled="<<(rule.enabled?"yes":"no")
                <<" | trigger="<<rule.trigger
                <<" | response="<<rule.response<<"\n";
+        }
+
+        out<<"\nRECENT RESPONSE RULE MATCHES\n";
+        for(const auto& match:runtime_->responseRuleMatches.Recent(
+                simSettings_.persona.name,50)) {
+            out<<match.id
+               <<" | rule="<<match.ruleId
+               <<" | type="<<match.matchType
+               <<" | score="<<match.matchScore
+               <<" | mode="<<match.responseMode
+               <<" | conversation="<<match.conversationId
+               <<" | input="<<match.inputText
+               <<" | output="<<match.outputText
+               <<" | created="<<match.createdUtc<<"\n";
         }
 
         out<<"\nDATASET SNAPSHOTS\n";

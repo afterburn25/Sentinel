@@ -114,6 +114,8 @@ $personaWorkflowTokens = @(
     'L"Rules & Learning"',
     'L"persona_tab_rules"',
     'PersonaResponseRules(50)',
+    'responseRuleMatches.Append(',
+    'CountForRule(',
     'rule_toggle:',
     'rule_delete:'
 )
