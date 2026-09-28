@@ -4533,7 +4533,7 @@ private:
             return value.empty()?std::string(fallback):value;
         };
         return
-            "Preview only — nothing has been applied yet. "
+            "Preview only - nothing has been applied yet. "
             "I would tune this persona toward personality "+field("PERSONALITY","unchanged")+
             ", social style "+field("SOCIAL_STYLE","unchanged")+
             ", confidence "+field("CONFIDENCE","unchanged")+
@@ -7656,16 +7656,18 @@ private:
                 : L"MESSAGE TO SARA TRAINER — captured as reviewed training intent",
             x+18,composerY,leftW-36,18,tinyFmt_.Get(),brush_.cyan.Get());
 
+        const float actionGap=6.0f;
+        const float actionW=(leftW-36.0f-actionGap*4.0f)/5.0f;
         float bx=x+18.0f;
-        AddButton(L"trainer_apply_instruction",L"Send / Preview",bx,actionY,108,30,true); bx+=116.0f;
-        AddButton(L"trainer_apply_preview",L"Apply Preview",bx,actionY,102,30,
-            mode==sentinel::simulation::TrainingMode::Behavior); bx+=110.0f;
-        AddButton(L"trainer_new_session",L"New Session",bx,actionY,90,30,false); bx+=98.0f;
-        AddButton(L"trainer_queue",L"Queue Mode",bx,actionY,86,30,false); bx+=94.0f;
+        AddButton(L"trainer_apply_instruction",L"Send / Preview",bx,actionY,actionW,30,true); bx+=actionW+actionGap;
+        AddButton(L"trainer_apply_preview",L"Apply Preview",bx,actionY,actionW,30,
+            mode==sentinel::simulation::TrainingMode::Behavior); bx+=actionW+actionGap;
+        AddButton(L"trainer_new_session",L"New Session",bx,actionY,actionW,30,false); bx+=actionW+actionGap;
+        AddButton(L"trainer_queue",L"Queue Mode",bx,actionY,actionW,30,false); bx+=actionW+actionGap;
         AddButton(
             L"trainer_advanced_toggle",
             trainerAdvancedOpen_?L"Hide Advanced":L"Advanced",
-            bx,actionY,96,30,false);
+            bx,actionY,actionW,30,false);
 
         // Right-side training context.
         const float contextH=148.0f;
