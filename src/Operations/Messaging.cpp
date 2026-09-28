@@ -5,7 +5,7 @@ namespace sentinel::operations {
 namespace {
 class InMemoryAdapter final : public IMessageAdapter {
 public:
-    std::string ProviderName() const override { return "Sentinel Local Test Adapter"; }
+    std::string ProviderName() const override { return "SARA Local Simulation Adapter"; }
     bool Connected() const override { return true; }
     std::vector<NormalizedMessage> Poll(const std::string& conversationId) override {
         std::vector<NormalizedMessage> out;
