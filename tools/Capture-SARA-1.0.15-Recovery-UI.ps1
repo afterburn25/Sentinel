@@ -313,6 +313,20 @@ try {
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[4]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-personas.png")
 
+    # Persona Rules & Learning is a protected internal Persona workflow.
+    [SaraRecoveryUiNative+RECT]$personaClient = New-Object SaraRecoveryUiNative+RECT
+    if (-not [SaraRecoveryUiNative]::GetClientRect($main, [ref]$personaClient)) {
+        throw "GetClientRect failed while calculating Persona tab positions"
+    }
+    $personaClientWidth = $personaClient.Right - $personaClient.Left
+    $personaTabBaseX = 248.0
+    $personaTabGap = 8.0
+    $personaContentWidth = $personaClientWidth - $personaTabBaseX - 28.0
+    $personaTabWidth = ($personaContentWidth - ($personaTabGap * 5.0)) / 6.0
+    $personaRulesX = [int]($personaTabBaseX + (5.0 * ($personaTabWidth + $personaTabGap)) + ($personaTabWidth / 2.0))
+    Click-SaraClient -Window $main -X $personaRulesX -Y 202
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06b-persona-rules-learning.png")
+
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[5]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-channels-messaging.png")
 
@@ -384,7 +398,8 @@ The screenshots came from the compiled packaged SARA.exe.
 The main-window capture is also a startup-hang regression test.
 The capture sequence verifies the permanent investigative SARA shell:
 Dashboard, Cases, Subjects & Identity, Simulation Chat, Personas,
-Channels & Messaging, Supervisor & Approvals, Evidence,
+including the Rules & Learning Persona sub-workflow, Channels & Messaging,
+Supervisor & Approvals, Evidence,
 Audit & Compliance, Model Lab, Agency Server, and Settings.
 Model Lab subpages are captured through internal top tabs while the SARA sidebar remains global.
 "@ | Set-Content -Encoding utf8 (Join-Path $OutputDir "README.txt")

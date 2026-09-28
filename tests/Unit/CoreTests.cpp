@@ -14,6 +14,7 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/ResponseRuleMatcher.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
@@ -30,6 +31,49 @@
 #include <vector>
 
 namespace {
+
+
+void TestResponseRuleMatcher()
+{
+    using sentinel::simulation::EvaluateResponseRuleMatch;
+    using sentinel::simulation::PreferResponseRuleMatch;
+
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto exact=EvaluateResponseRuleMatch(
+        "exact","What's your favorite color?","whats your favorite color");
+    Require(exact.Matched() && exact.score==100 && exact.typeRank==3,
+        "exact response-rule normalization/match failed");
+
+    const auto contains=EvaluateResponseRuleMatch(
+        "contains","hey so what is your favorite color today","favorite color");
+    Require(contains.Matched() && contains.score==95 && contains.typeRank==2,
+        "contains response-rule match failed");
+
+    const auto smart=EvaluateResponseRuleMatch(
+        "smart","whats your favrite color","what is your favorite color");
+    Require(smart.Matched() && smart.typeRank==1,
+        "smart response-rule typo/contraction match failed");
+
+    const auto unrelated=EvaluateResponseRuleMatch(
+        "smart","what time is school","favorite color");
+    Require(!unrelated.Matched(),
+        "smart response rule matched unrelated input");
+
+    Require(PreferResponseRuleMatch(100,10,exact,100,20,smart),
+        "exact rule should outrank smart rule at equal priority");
+    Require(!PreferResponseRuleMatch(100,20,smart,100,10,exact),
+        "smart rule should not outrank exact rule at equal priority");
+
+    const auto exactTie=EvaluateResponseRuleMatch(
+        "exact","hello there","hello there");
+    Require(PreferResponseRuleMatch(100,22,exactTie,100,21,exactTie),
+        "newer rule should win a true equal-priority/equal-quality tie");
+    Require(!PreferResponseRuleMatch(99,99,exactTie,100,1,contains),
+        "higher explicit priority must outrank match type");
+}
 
 void TestIdsAndHashes()
 {
@@ -1067,6 +1111,9 @@ void TestUnifiedChannelCore()
 int main()
 {
     try {
+        std::cout << "[core] response-rule matcher..." << std::endl;
+        TestResponseRuleMatcher();
+        std::cout << "[core] response-rule matcher PASS" << std::endl;
         std::cout << "[core] ids/hashes..." << std::endl;
         TestIdsAndHashes();
         std::cout << "[core] ids/hashes PASS" << std::endl;

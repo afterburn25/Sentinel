@@ -12,6 +12,7 @@
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
+#include "Sentinel/Simulation/ResponseRuleMatcher.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
@@ -77,7 +78,7 @@ constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
 enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs, ModelLabEvaluation, ModelLabDeployment, Subjects };
-enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
+enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery, Rules };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat, Smile, Paperclip };
 
 struct RectF { float l,t,r,b; bool Contains(float x,float y) const { return x>=l&&x<=r&&y>=t&&y<=b; } };
@@ -1427,6 +1428,8 @@ public:
             else if (b.id==L"persona_tab_behavior") { personaTab_=PersonaTab::Behavior; ApplyPageControls(); }
             else if (b.id==L"persona_tab_scenario") { personaTab_=PersonaTab::Scenario; ApplyPageControls(); }
             else if (b.id==L"persona_tab_gallery") { personaTab_=PersonaTab::Gallery; ApplyPageControls(); }
+            else if (b.id==L"persona_tab_rules") { personaTab_=PersonaTab::Rules; ApplyPageControls(); }
+            else if (b.id==L"persona_rules_open") { page_=Page::Persona; personaTab_=PersonaTab::Rules; ApplyPageControls(); }
             else if (b.id==L"ml_overview") { page_=Page::ModelLab; ApplyPageControls(); }
             else if (b.id==L"ml_train") { page_=Page::Trainer; ApplyPageControls(); }
             else if (b.id==L"ml_personas") { page_=Page::ModelLabPersonas; ApplyPageControls(); }
@@ -1485,6 +1488,10 @@ public:
             else if (b.id==L"rule_test") TestPersonaResponseRuleMatch();
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
             else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
+            else if (b.id.rfind(L"rule_open:",0)==0)
+                LoadPersonaResponseRuleIntoEditors(std::stoll(b.id.substr(10)));
+            else if (b.id.rfind(L"rule_toggle:",0)==0)
+                TogglePersonaResponseRuleEnabled(std::stoll(b.id.substr(12)));
             else if (b.id.rfind(L"rule_delete:",0)==0)
                 DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
@@ -3717,6 +3724,7 @@ private:
                 showGroup({scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,ageStateCombo_});
                 break;
             case PersonaTab::Gallery:
+            case PersonaTab::Rules:
                 break;
         }
     }
@@ -3741,8 +3749,11 @@ private:
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
         ShowSubjectEditors(page_==Page::Subjects && !cases_.empty());
-        if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
-        if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
+        const bool showResponseRuleEditors=
+            page_==Page::ModelLab ||
+            (page_==Page::Persona && personaTab_==PersonaTab::Rules);
+        if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,showResponseRuleEditors?SW_SHOW:SW_HIDE);
+        if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,showResponseRuleEditors?SW_SHOW:SW_HIDE);
 
         HWND trainerAlways[]={
             trainerModeCombo_,trainerFoundationCombo_,trainerInstructionEdit_
@@ -3909,6 +3920,16 @@ private:
                 MoveControl(minDelayEdit_,(int)fieldX,(int)row,160,34);
                 MoveControl(maxDelayEdit_,(int)(x+contentW*0.42f+116),(int)row,160,34);
             }
+            else if(personaTab_==PersonaTab::Rules) {
+                MoveControl(
+                    responseRuleTriggerEdit_,
+                    (int)(x+86),(int)(py+78),
+                    (int)std::max(190.0f,contentW*0.34f),30,TRUE);
+                MoveControl(
+                    responseRuleResponseEdit_,
+                    (int)(x+contentW*0.50f+86),(int)(py+78),
+                    (int)std::max(200.0f,contentW*0.50f-108.0f),30,TRUE);
+            }
         }
 
         if(page_==Page::ModelLab) {
@@ -3993,90 +4014,6 @@ private:
         return value;
     }
 
-    static std::string NormalizeRuleText(std::string_view input) {
-        std::string out;
-        bool pendingSpace=false;
-        for(unsigned char ch:input) {
-            if(std::isalnum(ch)) {
-                if(pendingSpace && !out.empty()) out.push_back(' ');
-                out.push_back((char)std::tolower(ch));
-                pendingSpace=false;
-            } else if(std::isspace(ch)) {
-                pendingSpace=true;
-            } else {
-                // Ignore punctuation entirely so "what's", "whats", and
-                // "what's?" normalize consistently for rule matching.
-            }
-        }
-        return out;
-    }
-
-
-    static std::vector<std::string> RuleWords(std::string_view input) {
-        auto normalized=NormalizeRuleText(input);
-        std::vector<std::string> words;
-        std::istringstream in(normalized);
-        std::string word;
-        while(in>>word) {
-            if(word=="whats") { words.push_back("what"); words.push_back("is"); continue; }
-            if(word=="im") { words.push_back("i"); words.push_back("am"); continue; }
-            if(word=="youre") { words.push_back("you"); words.push_back("are"); continue; }
-            if(word=="dont") { words.push_back("do"); words.push_back("not"); continue; }
-            if(word=="cant") { words.push_back("can"); words.push_back("not"); continue; }
-            if(word=="wont") { words.push_back("will"); words.push_back("not"); continue; }
-            words.push_back(word);
-        }
-        return words;
-    }
-
-    static int EditDistance(std::string_view a,std::string_view b) {
-        std::vector<int> prev(b.size()+1),cur(b.size()+1);
-        for(size_t j=0;j<=b.size();++j) prev[j]=(int)j;
-        for(size_t i=1;i<=a.size();++i) {
-            cur[0]=(int)i;
-            for(size_t j=1;j<=b.size();++j) {
-                const int cost=a[i-1]==b[j-1]?0:1;
-                cur[j]=std::min({prev[j]+1,cur[j-1]+1,prev[j-1]+cost});
-            }
-            prev.swap(cur);
-        }
-        return prev[b.size()];
-    }
-
-    static bool WordClose(std::string_view a,std::string_view b) {
-        if(a==b) return true;
-        if(a.size()<4 || b.size()<4) return false;
-        return EditDistance(a,b)<=1;
-    }
-
-    static int SmartRuleScore(std::string_view input,std::string_view trigger) {
-        const auto inputWords=RuleWords(input);
-        const auto triggerWords=RuleWords(trigger);
-        if(triggerWords.empty() || inputWords.empty()) return 0;
-
-        size_t matched=0;
-        std::vector<bool> used(inputWords.size(),false);
-        for(const auto& tw:triggerWords) {
-            for(size_t i=0;i<inputWords.size();++i) {
-                if(used[i]) continue;
-                if(WordClose(tw,inputWords[i])) {
-                    used[i]=true;
-                    ++matched;
-                    break;
-                }
-            }
-        }
-
-        const double recall=(double)matched/(double)triggerWords.size();
-        const double precision=(double)matched/(double)inputWords.size();
-        const int score=(int)std::lround((recall*0.75+precision*0.25)*100.0);
-
-        // Require nearly all meaningful trigger words so "favorite color"
-        // cannot accidentally match a totally different favorite-* question.
-        if(triggerWords.size()<=2) return recall>=1.0?score:0;
-        return recall>=0.75?score:0;
-    }
-
     struct PersonaResponseRuleView {
         long long id{};
         std::string matchType;
@@ -4084,6 +4021,7 @@ private:
         std::string response;
         std::string responseMode{"persona_variation"};
         bool enabled{};
+        int priority{100};
         int matchScore{};
     };
 
@@ -4091,9 +4029,9 @@ private:
         std::vector<PersonaResponseRuleView> out;
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority "
             "FROM persona_response_rules WHERE persona_name=? "
-            "ORDER BY priority DESC,id ASC LIMIT ?";
+            "ORDER BY priority DESC,id DESC LIMIT ?";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
             return out;
         sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
@@ -4110,6 +4048,7 @@ private:
             const auto* rm=(const char*)sqlite3_column_text(s,4);
             item.responseMode=rm?rm:"persona_variation";
             item.enabled=sqlite3_column_int(s,5)!=0;
+            item.priority=sqlite3_column_int(s,6);
             out.push_back(std::move(item));
         }
         sqlite3_finalize(s);
@@ -4132,16 +4071,19 @@ private:
     std::optional<PersonaResponseRuleView> FindPersonaResponseRule(const std::string& input) const {
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled "
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority "
             "FROM persona_response_rules "
             "WHERE persona_name=? AND enabled=1 "
-            "ORDER BY priority DESC,id ASC";
+            "ORDER BY priority DESC,id DESC";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
             return std::nullopt;
 
         sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
-        const auto normalized=NormalizeRuleText(input);
+
         std::optional<PersonaResponseRuleView> found;
+        sentinel::simulation::ResponseRuleMatchQuality bestQuality{};
+        int bestPriority=0;
+        long long bestId=0;
 
         while(sqlite3_step(s)==SQLITE_ROW) {
             PersonaResponseRuleView item;
@@ -4155,20 +4097,21 @@ private:
             item.response=rp?rp:"";
             item.responseMode=rm?rm:"persona_variation";
             item.enabled=sqlite3_column_int(s,5)!=0;
+            item.priority=sqlite3_column_int(s,6);
 
-            const auto trigger=NormalizeRuleText(item.trigger);
-            int score=0;
-            if(item.matchType=="exact" && !trigger.empty() && normalized==trigger)
-                score=100;
-            else if(item.matchType=="contains" && !trigger.empty() && normalized.find(trigger)!=std::string::npos)
-                score=95;
-            else if(item.matchType=="smart")
-                score=SmartRuleScore(input,item.trigger);
+            const auto quality=sentinel::simulation::EvaluateResponseRuleMatch(
+                item.matchType,input,item.trigger);
+            if(!quality.Matched()) continue;
 
-            if(score>0 && (!found || score>found->matchScore)) {
-                item.matchScore=score;
+            if(!found || sentinel::simulation::PreferResponseRuleMatch(
+                    item.priority,item.id,quality,
+                    bestPriority,bestId,bestQuality))
+            {
+                item.matchScore=quality.score;
                 found=item;
-                if(score==100) break;
+                bestQuality=quality;
+                bestPriority=item.priority;
+                bestId=item.id;
             }
         }
 
@@ -4193,11 +4136,58 @@ private:
             L"Matched Rule #"+std::to_wstring(rule->id)+
             L"\nMatch: "+Widen(rule->matchType)+
             L" ("+std::to_wstring(rule->matchScore)+L"%)"+
+            L"\nPriority: "+std::to_wstring(rule->priority)+
             L"\nTrigger: "+Widen(rule->trigger)+
             L"\nResponse: "+Widen(rule->response);
         statusText_=L"Rule #"+std::to_wstring(rule->id)+L" matched sample at "+
             std::to_wstring(rule->matchScore)+L"%";
         MessageBoxW(hwnd_,msg.c_str(),L"Rule Test Result",MB_OK|MB_ICONINFORMATION);
+    }
+
+    void LoadPersonaResponseRuleIntoEditors(long long id) {
+        sqlite3_stmt* s{};
+        const char* sql=
+            "SELECT trigger_text,response_text,response_mode FROM persona_response_rules "
+            "WHERE id=? AND persona_name=? LIMIT 1";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
+            statusText_=L"Unable to load response rule";
+            return;
+        }
+
+        sqlite3_bind_int64(s,1,id);
+        sqlite3_bind_text(s,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        if(sqlite3_step(s)==SQLITE_ROW) {
+            const auto* trigger=(const char*)sqlite3_column_text(s,0);
+            const auto* response=(const char*)sqlite3_column_text(s,1);
+            const auto* mode=(const char*)sqlite3_column_text(s,2);
+            SetWindowTextW(responseRuleTriggerEdit_,Widen(trigger?trigger:"").c_str());
+            SetWindowTextW(responseRuleResponseEdit_,Widen(response?response:"").c_str());
+            responseRuleExactWording_=mode && std::string(mode)=="exact";
+            statusText_=L"Loaded Rule #"+std::to_wstring(id)+L" into the rule editor";
+        } else {
+            statusText_=L"Response rule not found";
+        }
+        sqlite3_finalize(s);
+    }
+
+    void TogglePersonaResponseRuleEnabled(long long id) {
+        sqlite3_stmt* s{};
+        const char* sql=
+            "UPDATE persona_response_rules "
+            "SET enabled=CASE enabled WHEN 1 THEN 0 ELSE 1 END,"
+            "updated_utc=CURRENT_TIMESTAMP "
+            "WHERE id=? AND persona_name=?";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
+            statusText_=L"Unable to update response rule";
+            return;
+        }
+        sqlite3_bind_int64(s,1,id);
+        sqlite3_bind_text(s,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        const bool changed=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(runtime_->db.Handle())==1;
+        sqlite3_finalize(s);
+        statusText_=changed
+            ? L"Rule #"+std::to_wstring(id)+L" enabled state changed"
+            : L"Response rule could not be updated";
     }
 
     void AddPersonaResponseRule(const std::string& matchType) {
@@ -4241,6 +4231,7 @@ private:
             if(matchType=="exact") statusText_=L"Exact response rule added";
             else if(matchType=="contains") statusText_=L"Contains response rule added";
             else statusText_=L"Smart response rule added";
+            statusText_+=L" | saved for "+Widen(simSettings_.persona.name);
         } else {
             statusText_=L"Response rule could not be saved";
         }
@@ -6148,7 +6139,7 @@ private:
     }
 
     void DrawPersona(float w,float h) {
-        PageTitle(L"Personas",L"Reusable synthetic identities, behavior, communication style, scenarios, media, and policy");
+        PageTitle(L"Personas",L"Reusable synthetic identities, behavior, rules, communication style, scenarios, media, and policy");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
@@ -6162,10 +6153,16 @@ private:
 
         // Professional section tabs.
         const float tabGap=8.0f;
-        const float tabW=(contentW-tabGap*4)/5.0f;
-        const wchar_t* labels[]={L"Profile",L"Bio & Home Life",L"Behavior & Speech",L"Scenario & Policy",L"Gallery"};
-        const wchar_t* ids[]={L"persona_tab_profile",L"persona_tab_bio",L"persona_tab_behavior",L"persona_tab_scenario",L"persona_tab_gallery"};
-        for(int i=0;i<5;i++) {
+        const float tabW=(contentW-tabGap*5)/6.0f;
+        const wchar_t* labels[]={
+            L"Profile",L"Bio & Home Life",L"Behavior & Speech",
+            L"Scenario & Policy",L"Gallery",L"Rules & Learning"
+        };
+        const wchar_t* ids[]={
+            L"persona_tab_profile",L"persona_tab_bio",L"persona_tab_behavior",
+            L"persona_tab_scenario",L"persona_tab_gallery",L"persona_tab_rules"
+        };
+        for(int i=0;i<6;i++) {
             const float tx=x+i*(tabW+tabGap);
             const bool active=(int)personaTab_==i;
             Rounded(tx,y,tabW,42,active?brush_.panel2.Get():brush_.sidebar.Get(),active?brush_.cyan.Get():brush_.border.Get(),8);
@@ -6304,6 +6301,94 @@ private:
                     if(name.size()>22) name=name.substr(0,19)+L"...";
                     TextLine(name,cx+8,cy+112,cardW-16,16,tinyFmt_.Get(),brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
                     buttons_.push_back({{cx,cy,cx+cardW,cy+cardH},L"media:"+std::to_wstring(i)});
+                }
+            }
+        }
+        else if(personaTab_==PersonaTab::Rules) {
+            const auto rules=PersonaResponseRules(50);
+            size_t enabledRules=0;
+            for(const auto& rule:rules) if(rule.enabled) ++enabledRules;
+
+            TextLine(L"Rules & Learning",x+22,py+16,260,32,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(
+                L"Saved investigator-approved trigger rules are persona-scoped and evaluated before normal model generation.",
+                x+290,py+20,contentW-312,28,tinyFmt_.Get(),brush_.muted.Get());
+
+            AddButton(
+                L"learning_toggle",
+                simSettings_.learningMode?L"Learning ON":L"Learning OFF",
+                x+contentW-126,py+48,110,28,simSettings_.learningMode);
+
+            TextLine(L"Trigger",x+22,py+62,58,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Response",x+contentW*0.50f+18,py+62,66,18,tinyFmt_.Get(),brush_.muted.Get());
+
+            const float actionY=py+116.0f;
+            AddButton(
+                L"rule_wording_toggle",
+                responseRuleExactWording_?L"Wording: Exact":L"Wording: Persona",
+                x+22,actionY,142,28,false);
+            AddButton(L"rule_add_smart",L"Add Smart",x+174,actionY,86,28,true);
+            AddButton(L"rule_add_contains",L"Add Contains",x+270,actionY,96,28,false);
+            AddButton(L"rule_add_exact",L"Add Exact",x+376,actionY,84,28,false);
+            AddButton(L"rule_test",L"Test",x+470,actionY,62,28,false);
+            AddButton(L"rule_clear",L"Clear All",x+542,actionY,76,28,false);
+
+            TextLine(
+                std::to_wstring(enabledRules)+L" enabled / "+
+                std::to_wstring(rules.size())+L" saved for "+Widen(simSettings_.persona.name),
+                x+22,py+154,contentW-44,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+            const float listY=py+180.0f;
+            const float rowH=64.0f;
+            if(rules.empty()) {
+                Rounded(x+18,listY,contentW-36,82,brush_.sidebar.Get(),brush_.border.Get(),8);
+                TextLine(L"No saved response rules for this persona.",x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.muted.Get());
+                TextLine(
+                    L"Enter a trigger and approved response above, choose the wording mode, then add Smart, Contains, or Exact.",
+                    x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
+            } else {
+                const size_t visible=std::min<size_t>(rules.size(),4);
+                for(size_t i=0;i<visible;i++) {
+                    const auto& rule=rules[i];
+                    const float ry=listY+i*(rowH+6.0f);
+                    Rounded(x+18,ry,contentW-36,rowH,brush_.sidebar.Get(),brush_.border.Get(),8);
+
+                    const std::wstring typeLabel=
+                        rule.matchType=="exact"?L"EXACT":
+                        rule.matchType=="contains"?L"CONTAINS":L"SMART";
+                    const std::wstring modeLabel=
+                        rule.responseMode=="exact"?L"EXACT WORDING":L"PERSONA VOICE";
+
+                    TextLine(
+                        L"#"+std::to_wstring(rule.id)+L"  "+typeLabel+L"  |  "+modeLabel+
+                        L"  |  P"+std::to_wstring(rule.priority),
+                        x+30,ry+5,contentW-260,18,tinyFmt_.Get(),
+                        rule.enabled?brush_.cyan.Get():brush_.muted.Get());
+
+                    std::wstring trigger=Widen(rule.trigger);
+                    std::wstring response=Widen(rule.response);
+                    if(trigger.size()>56) trigger=trigger.substr(0,53)+L"...";
+                    if(response.size()>66) response=response.substr(0,63)+L"...";
+                    TextLine(L"Trigger: "+trigger,x+30,ry+24,contentW-260,18,tinyFmt_.Get(),brush_.text.Get());
+                    TextLine(L"Response: "+response,x+30,ry+42,contentW-260,18,tinyFmt_.Get(),brush_.muted.Get());
+
+                    AddButton(
+                        L"rule_open:"+std::to_wstring(rule.id),
+                        L"Open",x+contentW-214,ry+18,50,28,false);
+                    AddButton(
+                        L"rule_toggle:"+std::to_wstring(rule.id),
+                        rule.enabled?L"Disable":L"Enable",
+                        x+contentW-156,ry+18,72,28,rule.enabled);
+                    AddButton(
+                        L"rule_delete:"+std::to_wstring(rule.id),
+                        L"Delete",x+contentW-76,ry+18,58,28,false);
+                }
+
+                if(rules.size()>visible) {
+                    TextLine(
+                        L"Showing newest "+std::to_wstring(visible)+L" of "+
+                        std::to_wstring(rules.size())+L" saved rules.",
+                        x+22,listY+visible*(rowH+6.0f)+4,contentW-44,18,tinyFmt_.Get(),brush_.muted.Get());
                 }
             }
         }
@@ -7278,7 +7363,7 @@ private:
         AddButton(L"rule_add_smart",L"Add Smart",x+contentW-310,rulesY+84,82,28,true);
         AddButton(L"rule_test",L"Test",x+contentW-220,rulesY+84,60,28,false);
         AddButton(L"rule_clear",L"Clear",x+contentW-152,rulesY+84,60,28,false);
-        AddButton(L"training_export",L"Export",x+contentW-84,rulesY+84,68,28,false);
+        AddButton(L"persona_rules_open",L"Manage",x+contentW-84,rulesY+84,68,28,false);
 
         TextLine(
             L"Approved "+std::to_wstring(reviewCounts.approved)+

@@ -110,6 +110,19 @@ foreach ($token in $requiredWorkflowNames) {
     }
 }
 
+$personaWorkflowTokens = @(
+    'L"Rules & Learning"',
+    'L"persona_tab_rules"',
+    'PersonaResponseRules(50)',
+    'rule_toggle:',
+    'rule_delete:'
+)
+foreach ($token in $personaWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Persona Rules & Learning workflow is missing: $token"
+    }
+}
+
 $labTabs = @(
     'L"Overview"', 'L"Train"', 'L"Datasets"', 'L"Personas & LoRAs"',
     'L"Foundation Forks"', 'L"Jobs"', 'L"Evaluation"', 'L"Deployment"'
