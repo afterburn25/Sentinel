@@ -8087,7 +8087,7 @@ private:
         float rowY=bodyY+94.0f;
         if(recent.empty()) {
             Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"No captured training examples yet. Open Train or Simulation, create a reply, then choose Stage Latest Reply.",
+            TextLine(L"No training examples yet. Create a Simulation reply, then choose Stage Latest.",
                 x+26,rowY+9,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
         } else {
             for(const auto& item:recent) {
@@ -8123,7 +8123,7 @@ private:
         if(!selectedItem && !recent.empty()) selectedItem=recent.front();
 
         if(!selectedItem) {
-            TextLine(L"Select or stage a training example to inspect its input, output, persona, and review status.",
+            TextLine(L"Select or stage an example to inspect its input, output, persona, and status.",
                 detailX+16,bodyY+54,detailW-32,66,smallFmt_.Get(),brush_.muted.Get());
         } else {
             const auto& item=*selectedItem;
@@ -8330,7 +8330,7 @@ private:
         float rowY=bodyY+94.0f;
         if(names.empty()) {
             Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"No saved persona profiles yet. Open the Persona editor to create and save the first reusable profile.",
+            TextLine(L"No saved personas yet. Open Personas to create the first reusable profile.",
                 x+26,rowY+9,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
         } else {
             for(const auto& name:names) {
@@ -8377,7 +8377,7 @@ private:
             selectedProfile=runtime_->personaProfiles.Load(selectedModelLabPersonaName_);
 
         if(!selectedProfile) {
-            TextLine(L"Select a saved persona to inspect its profile and LoRA assignment.",
+            TextLine(L"Select a persona to inspect its profile and LoRA assignment.",
                 detailX+16,bodyY+54,detailW-32,50,smallFmt_.Get(),brush_.muted.Get());
         } else {
             const auto& p=*selectedProfile;
@@ -8631,7 +8631,7 @@ private:
             Text(Widen(item.notes),detailX+16,bodyY+298,detailW-32,64,tinyFmt_.Get(),brush_.muted.Get());
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"foundation_open_trainer",L"Train / Configure",detailX+16,actionY,108,30,true);
+            AddButton(L"foundation_open_trainer",L"Train",detailX+16,actionY,108,30,true);
             AddButton(L"foundation_approve_selected",L"Approve",detailX+132,actionY,76,30,false);
             AddButton(L"foundation_new_fork",L"Child Fork",detailX+216,actionY,82,30,false);
         }
@@ -8709,7 +8709,7 @@ private:
         const float detailX=x+listW+gap;
 
         Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Training Queue & History",x+16,bodyY+12,260,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Queue & History",x+16,bodyY+12,190,28,h1Fmt_.Get(),brush_.text.Get());
         AddButton(L"job_open_trainer",L"New Job",x+listW-102,bodyY+12,86,28,true);
 
         TextLine(L"TARGET",x+18,bodyY+58,140,18,tinyFmt_.Get(),brush_.muted.Get());
@@ -8759,7 +8759,7 @@ private:
         for(const auto& job:jobs) if(job.id==selectedModelLabJobId_) { selected=job; break; }
 
         if(!selected) {
-            TextLine(L"Select a training job to inspect its mode, data, target, output, and state.",
+            TextLine(L"Select a job to inspect its mode, dataset, output, and state.",
                 detailX+16,bodyY+54,detailW-32,50,smallFmt_.Get(),brush_.muted.Get());
         } else {
             const auto& job=*selected;
@@ -8900,7 +8900,7 @@ private:
         float rowY=bodyY+80.0f;
         if(models.empty()) {
             Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"No models are registered. Configure a model in Simulation Lab and choose Register Current.",
+            TextLine(L"No registered models yet. Configure one in Simulation Chat, then choose Register Current.",
                 x+26,rowY+10,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
         } else {
             for(size_t i=0;i<models.size();++i) {
@@ -9090,7 +9090,7 @@ private:
 
         const float heroY=y+48.0f;
         Rounded(x,heroY,contentW,102,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Active Deployment Package",x+18,heroY+10,300,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Active Deployment",x+18,heroY+10,260,28,h1Fmt_.Get(),brush_.text.Get());
 
         if(activePackage>=0 && activePackage<(int)packages.size()) {
             const auto& p=packages[(size_t)activePackage];
@@ -9132,7 +9132,7 @@ private:
         float rowY=bodyY+80.0f;
         if(packages.empty()) {
             Rounded(x+14,rowY,listW-28,62,brush_.sidebar.Get(),brush_.border.Get(),7);
-            TextLine(L"No deployment packages yet. Prepare one from an approved model with a persisted evaluation run.",
+            TextLine(L"No deployment packages yet. Evaluate and approve a model, then prepare one.",
                 x+26,rowY+10,listW-52,42,smallFmt_.Get(),brush_.muted.Get());
         } else {
             for(size_t i=0;i<packages.size();++i) {
