@@ -123,6 +123,19 @@ foreach ($token in $personaWorkflowTokens) {
     }
 }
 
+$foundationWorkflowTokens = @(
+    'foundation_activate_selected',
+    'foundation_rollback',
+    'foundation_compare',
+    'RollbackFoundation()',
+    'runtimeGgufPath.empty()'
+)
+foreach ($token in $foundationWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Foundation Fork lifecycle is missing: $token"
+    }
+}
+
 $trainerWorkflowTokens = @(
     'L"Trainer Conversation"',
     'L"Conversation History"',

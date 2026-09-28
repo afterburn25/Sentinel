@@ -1566,6 +1566,9 @@ public:
                     statusText_=L"Foundation approved for activation/deployment";
                 } else statusText_=L"Foundation could not be approved from its current state";
             }
+            else if (b.id==L"foundation_activate_selected") ActivateSelectedFoundationFromLab();
+            else if (b.id==L"foundation_rollback") RollbackFoundationFromLab();
+            else if (b.id==L"foundation_compare") CompareSelectedFoundationToActive();
             else if (b.id==L"foundation_new_fork") {
                 RefreshTrainerFoundationList(selectedModelLabFoundationId_);
                 trainerAdvancedOpen_=true;
@@ -4817,7 +4820,18 @@ private:
             std::replace(alias.begin(),alias.end(),' ','-');
             trainerRuntimeStatus_=L"Persona LoRA: "+Widen(binding->loraName);
         } else {
-            trainerRuntimeStatus_=L"No persona LoRA bound; using SARA foundation";
+            const auto foundations=runtime_->trainer.ListFoundations();
+            auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& item){
+                return item.status=="ACTIVE";
+            });
+            if(active!=foundations.end() && !active->runtimeGgufPath.empty()) {
+                modelPath=std::filesystem::path(active->runtimeGgufPath);
+                alias="sara-foundation-"+std::to_string(active->version);
+                trainerRuntimeStatus_=L"Foundation: "+Widen(active->name)+
+                    L" v"+std::to_wstring(active->version);
+            } else {
+                trainerRuntimeStatus_=L"Protected SARA base foundation";
+            }
         }
 
         if(!WriteActiveRuntimeConfig(modelPath,loraPath,alias)) {
@@ -8467,6 +8481,91 @@ private:
     }
 
 
+    void ActivateSelectedFoundationFromLab() {
+        if(selectedModelLabFoundationId_.empty()) {
+            statusText_=L"Select a foundation first";
+            return;
+        }
+        auto foundation=runtime_->trainer.GetFoundation(selectedModelLabFoundationId_);
+        if(!foundation) {
+            statusText_=L"Selected foundation no longer exists";
+            return;
+        }
+        if(foundation->status!="APPROVED" && foundation->status!="ACTIVE") {
+            statusText_=L"Foundation must be approved before activation";
+            return;
+        }
+        if(foundation->runtimeGgufPath.empty()) {
+            statusText_=L"Foundation has no deployable GGUF runtime yet";
+            return;
+        }
+        if(!runtime_->trainer.ActivateFoundation(foundation->id)) {
+            statusText_=L"Foundation activation failed";
+            return;
+        }
+        RefreshTrainerFoundationList(foundation->id);
+        ApplyPersonaRuntimeBinding();
+        statusText_=L"Foundation activated: "+Widen(foundation->name);
+    }
+
+    void RollbackFoundationFromLab() {
+        auto previous=runtime_->trainer.PreviousFoundation();
+        if(!previous) {
+            statusText_=L"No previous foundation activation is available";
+            return;
+        }
+        if(previous->runtimeGgufPath.empty()) {
+            statusText_=L"Previous foundation has no deployable GGUF runtime";
+            return;
+        }
+        if(!runtime_->trainer.RollbackFoundation()) {
+            statusText_=L"Foundation rollback failed";
+            return;
+        }
+        RefreshTrainerFoundationList(previous->id);
+        selectedModelLabFoundationId_=previous->id;
+        ApplyPersonaRuntimeBinding();
+        statusText_=L"Foundation rollback restored "+Widen(previous->name);
+    }
+
+    void CompareSelectedFoundationToActive() {
+        if(selectedModelLabFoundationId_.empty()) {
+            statusText_=L"Select a foundation first";
+            return;
+        }
+        auto selected=runtime_->trainer.GetFoundation(selectedModelLabFoundationId_);
+        if(!selected) return;
+
+        const auto foundations=runtime_->trainer.ListFoundations();
+        auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& item){
+            return item.status=="ACTIVE";
+        });
+        if(active==foundations.end()) {
+            statusText_=L"No active foundation is available for comparison";
+            return;
+        }
+
+        const auto display=[](const std::string& value,const wchar_t* emptyValue){
+            return value.empty()?std::wstring(emptyValue):Widen(value);
+        };
+        const std::wstring message=
+            L"ACTIVE\n"+
+            Widen(active->name)+L" v"+std::to_wstring(active->version)+
+            L" | "+Widen(active->status)+
+            L"\nSource: "+display(active->sourceModel,L"(none)")+
+            L"\nTrainable: "+display(active->trainableSourcePath,L"(none)")+
+            L"\nRuntime: "+display(active->runtimeGgufPath,L"(none)")+
+            L"\n\nSELECTED\n"+
+            Widen(selected->name)+L" v"+std::to_wstring(selected->version)+
+            L" | "+Widen(selected->status)+
+            L"\nParent: "+display(selected->parentId,L"Immutable base")+
+            L"\nSource: "+display(selected->sourceModel,L"(none)")+
+            L"\nTrainable: "+display(selected->trainableSourcePath,L"(none)")+
+            L"\nRuntime: "+display(selected->runtimeGgufPath,L"(none)");
+        MessageBoxW(hwnd_,message.c_str(),L"Foundation Comparison",MB_OK|MB_ICONINFORMATION);
+        statusText_=L"Foundation comparison opened";
+    }
+
     void DrawFoundationForks(float w,float h) {
         PageTitle(
             L"Model Lab / Foundation Forks",
@@ -8631,9 +8730,23 @@ private:
             Text(Widen(item.notes),detailX+16,bodyY+298,detailW-32,64,tinyFmt_.Get(),brush_.muted.Get());
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"foundation_open_trainer",L"Train",detailX+16,actionY,108,30,true);
-            AddButton(L"foundation_approve_selected",L"Approve",detailX+132,actionY,76,30,false);
-            AddButton(L"foundation_new_fork",L"Child Fork",detailX+216,actionY,82,30,false);
+            const float upperY=actionY-36.0f;
+            const auto previousFoundation=runtime_->trainer.PreviousFoundation();
+            auto activeFoundation=std::find_if(foundations.begin(),foundations.end(),[](const auto& f){
+                return f.status=="ACTIVE";
+            });
+
+            if(item.status=="APPROVED" && !item.runtimeGgufPath.empty())
+                AddButton(L"foundation_activate_selected",L"Activate",detailX+16,upperY,78,28,true);
+            if(item.status=="ACTIVE" && previousFoundation)
+                AddButton(L"foundation_rollback",L"Rollback",detailX+102,upperY,78,28,false);
+            if(activeFoundation!=foundations.end() && activeFoundation->id!=item.id)
+                AddButton(L"foundation_compare",L"Compare",detailX+188,upperY,78,28,false);
+
+            AddButton(L"foundation_open_trainer",L"Train",detailX+16,actionY,78,30,true);
+            if(item.status!="ACTIVE")
+                AddButton(L"foundation_approve_selected",L"Approve",detailX+102,actionY,78,30,false);
+            AddButton(L"foundation_new_fork",L"Child Fork",detailX+188,actionY,78,30,false);
         }
     }
 
