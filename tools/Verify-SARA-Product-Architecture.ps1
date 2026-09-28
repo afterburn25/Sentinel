@@ -1,0 +1,127 @@
+param()
+
+$ErrorActionPreference = "Stop"
+$repo = Split-Path -Parent $PSScriptRoot
+$mainPath = Join-Path $repo "src\Gui\Main.cpp"
+$contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
+
+if (-not (Test-Path $contractPath)) {
+    throw "SARA product architecture contract is missing: $contractPath"
+}
+if (-not (Test-Path $mainPath)) {
+    throw "SARA GUI source is missing: $mainPath"
+}
+
+$src = Get-Content $mainPath -Raw
+
+$begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
+$end = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_END")
+if ($begin -lt 0 -or $end -le $begin) {
+    throw "Permanent SARA main-navigation contract markers are missing."
+}
+$nav = $src.Substring($begin, $end - $begin)
+
+$required = @(
+    "Dashboard",
+    "Cases",
+    "Subjects & Identity",
+    "Simulation Chat",
+    "Personas",
+    "Channels & Messaging",
+    "Supervisor & Approvals",
+    "Evidence",
+    "Audit & Compliance",
+    "Model Lab",
+    "Agency Server",
+    "Settings"
+)
+
+$last = -1
+foreach ($label in $required) {
+    $token = 'L"' + $label + '"'
+    $pos = $nav.IndexOf($token)
+    if ($pos -lt 0) {
+        throw "Required permanent SARA navigation item is missing: $label"
+    }
+    if ($pos -le $last) {
+        throw "Permanent SARA navigation order changed near: $label"
+    }
+    $last = $pos
+}
+
+$forbiddenTopLevel = @(
+    'L"Trainer"',
+    'L"Verification"',
+    'L"Datasets"',
+    'L"Foundation Forks"',
+    'L"Jobs"',
+    'L"Evaluation"',
+    'L"Deployment"'
+)
+foreach ($token in $forbiddenTopLevel) {
+    if ($nav.Contains($token)) {
+        throw "Sub-workflow was promoted into permanent SARA navigation: $token"
+    }
+}
+
+if ($nav.Contains("page_==Page::ModelLab") -or $nav.Contains("MODEL LAB Recovery")) {
+    throw "Model Lab-specific sidebar takeover detected in the permanent navigation block."
+}
+
+$requiredDispatch = @(
+    "case Page::Dashboard: DrawDashboard",
+    "case Page::Cases: DrawCases",
+    "case Page::Subjects: DrawSubjects",
+    "case Page::Simulation: DrawSimulation",
+    "case Page::Persona: DrawPersona",
+    "case Page::Messaging: DrawMessaging",
+    "case Page::Supervisor: DrawSupervisor",
+    "case Page::Evidence: DrawEvidence",
+    "case Page::Audit: DrawAudit",
+    "case Page::ModelLab: DrawModelLab",
+    "case Page::Agency: DrawAgency",
+    "case Page::Settings: DrawSettings"
+)
+foreach ($token in $requiredDispatch) {
+    if (-not $src.Contains($token)) {
+        throw "Protected SARA module is no longer dispatched: $token"
+    }
+}
+
+$requiredWorkflowNames = @(
+    'PageTitle(L"Simulation Chat"',
+    'PageTitle(L"Personas"',
+    'PageTitle(L"Channels & Messaging"',
+    'PageTitle(L"Supervisor & Approvals"',
+    'PageTitle(L"Audit & Compliance"'
+)
+foreach ($token in $requiredWorkflowNames) {
+    if (-not $src.Contains($token)) {
+        throw "Protected product workflow/title is missing: $token"
+    }
+}
+
+$labTabs = @(
+    'L"Overview"', 'L"Train"', 'L"Datasets"', 'L"Personas & LoRAs"',
+    'L"Foundation Forks"', 'L"Jobs"', 'L"Evaluation"', 'L"Deployment"'
+)
+foreach ($token in $labTabs) {
+    if (-not $src.Contains($token)) {
+        throw "Required Model Lab internal workspace is missing: $token"
+    }
+}
+
+$brandStart = $src.IndexOf("void DrawBrand()")
+$brandEnd = $src.IndexOf("void DrawSidebar()", $brandStart)
+if ($brandStart -lt 0 -or $brandEnd -le $brandStart) {
+    throw "Could not inspect SARA brand renderer."
+}
+$brand = $src.Substring($brandStart, $brandEnd - $brandStart)
+if ($brand.Contains("plateX") -or $brand.Contains("Rounded(plate")) {
+    throw "White/light logo plate was reintroduced. Approved SARA logo must render transparently."
+}
+
+Write-Host "SARA product architecture contract: PASS"
+Write-Host "Permanent main navigation: $($required -join ' | ')"
+Write-Host "Model Lab remains subordinate with internal tabs."
+Write-Host "Simulation Chat and investigative modules remain protected."
