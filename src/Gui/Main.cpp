@@ -4410,16 +4410,54 @@ private:
     }
 
     void RecordLearnedPersonaNote(const std::string& text,const char* sourceKind) {
-        if(!simSettings_.learningMode || text.empty()) return;
+        if(!simSettings_.learningMode || text.empty() || !sourceKind) return;
+
+        const std::string kind=sourceKind;
+        if(kind!="reactive_persona_claim" && kind!="proactive_persona_claim")
+            return;
+
+        std::string note=text;
+        while(!note.empty() && std::isspace((unsigned char)note.front()))
+            note.erase(note.begin());
+        while(!note.empty() && std::isspace((unsigned char)note.back()))
+            note.pop_back();
+        if(note.size()<8) return;
+        if(note.size()>600) note.resize(600);
+
+        auto lower=note;
+        std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char ch){
+            return (char)std::tolower(ch);
+        });
+        const bool firstPerson=
+            lower.rfind("i ",0)==0 ||
+            lower.rfind("i'm ",0)==0 ||
+            lower.rfind("im ",0)==0 ||
+            lower.rfind("my ",0)==0 ||
+            lower.rfind("we ",0)==0 ||
+            lower.rfind("our ",0)==0 ||
+            lower.find(" i ")!=std::string::npos ||
+            lower.find(" i'm ")!=std::string::npos ||
+            lower.find(" im ")!=std::string::npos ||
+            lower.find(" my ")!=std::string::npos ||
+            lower.find(" we ")!=std::string::npos ||
+            lower.find(" our ")!=std::string::npos;
+        if(!firstPerson) return;
+
         sqlite3_stmt* s{};
         const char* sql=
             "INSERT INTO persona_learned_notes(persona_name,conversation_id,source_kind,note_text) "
-            "VALUES(?,?,?,?)";
+            "SELECT ?,?,?,? "
+            "WHERE NOT EXISTS("
+            "  SELECT 1 FROM persona_learned_notes "
+            "  WHERE persona_name=? AND lower(note_text)=lower(?)"
+            ")";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)==SQLITE_OK) {
             sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
             sqlite3_bind_text(s,2,currentConversationId_.c_str(),-1,SQLITE_TRANSIENT);
-            sqlite3_bind_text(s,3,sourceKind,-1,SQLITE_TRANSIENT);
-            sqlite3_bind_text(s,4,text.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,3,kind.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,4,note.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,5,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+            sqlite3_bind_text(s,6,note.c_str(),-1,SQLITE_TRANSIENT);
             sqlite3_step(s);
         }
         sqlite3_finalize(s);
@@ -4936,9 +4974,6 @@ private:
             runtime_->trainer.AppendDialogueTurn(
                 session->id,"SYSTEM",
                 "Applied the reviewed Behavior preview to the saved persona profile.");
-            RecordLearnedPersonaNote(
-                "TRAINER REVIEWED BEHAVIOR PREVIEW APPLIED",
-                "trainer_behavior_preview");
             statusText_=L"Reviewed Behavior preview applied to "+Widen(simSettings_.persona.name);
         } catch(const std::exception& e) {
             statusText_=L"Behavior preview could not be applied: "+Widen(e.what());

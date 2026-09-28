@@ -535,6 +535,7 @@ std::string ConversationMemoryStore::RecallLearnedPersonaNotes(
         "SELECT source_kind,note_text,created_utc "
         "FROM persona_learned_notes "
         "WHERE persona_name=? "
+        "AND source_kind IN ('reactive_persona_claim','proactive_persona_claim') "
         "ORDER BY created_utc DESC,id DESC LIMIT ?",
         -1,&s,nullptr),db,"prepare learned persona notes");
     sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
@@ -547,6 +548,20 @@ std::string ConversationMemoryStore::RecallLearnedPersonaNotes(
         const auto text=ColumnText(s,1);
         if(text.empty()) continue;
         const auto normalized=Lower(text);
+        const bool firstPerson=
+            normalized.rfind("i ",0)==0 ||
+            normalized.rfind("i'm ",0)==0 ||
+            normalized.rfind("im ",0)==0 ||
+            normalized.rfind("my ",0)==0 ||
+            normalized.rfind("we ",0)==0 ||
+            normalized.rfind("our ",0)==0 ||
+            normalized.find(" i ")!=std::string::npos ||
+            normalized.find(" i'm ")!=std::string::npos ||
+            normalized.find(" im ")!=std::string::npos ||
+            normalized.find(" my ")!=std::string::npos ||
+            normalized.find(" we ")!=std::string::npos ||
+            normalized.find(" our ")!=std::string::npos;
+        if(!firstPerson) continue;
         if(!seen.insert(normalized).second) continue;
         notes.push_back({kind,text,ColumnText(s,2)});
     }
