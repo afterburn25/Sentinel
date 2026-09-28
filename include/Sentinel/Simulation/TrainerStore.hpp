@@ -79,6 +79,8 @@ public:
     std::optional<ModelFoundation> GetFoundation(std::string_view id) const;
     bool ApproveFoundation(std::string_view id);
     bool ActivateFoundation(std::string_view id);
+    std::optional<ModelFoundation> PreviousFoundation() const;
+    bool RollbackFoundation();
     ModelFoundation CreateFork(std::string_view name,std::string_view parentId,std::string_view sourceModel,std::string_view trainableSourcePath,std::string_view runtimeGgufPath = {});
     PersonaLoraBinding BindPersonaLora(std::string_view personaName,std::string_view foundationId,std::string_view loraName,std::string_view loraPath,double weight = 1.0);
     std::optional<PersonaLoraBinding> ResolvePersonaLora(std::string_view personaName) const;

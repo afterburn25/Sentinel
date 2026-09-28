@@ -236,6 +236,18 @@ void TestTrainerFoundationAndJobs()
     const auto priorBase=trainer.GetFoundation(foundations.front().id);
     Require(priorBase.has_value() && priorBase->status=="APPROVED",
         "previous active foundation was not preserved as approved");
+    const auto previous=trainer.PreviousFoundation();
+    Require(previous.has_value() && previous->id==foundations.front().id,
+        "foundation activation history did not preserve previous runtime");
+    Require(trainer.RollbackFoundation(),"foundation rollback failed");
+    const auto rolledBackBase=trainer.GetFoundation(foundations.front().id);
+    const auto rolledBackFork=trainer.GetFoundation(fork.id);
+    Require(rolledBackBase.has_value() && rolledBackBase->status=="ACTIVE",
+        "foundation rollback did not reactivate the previous base");
+    Require(rolledBackFork.has_value() && rolledBackFork->status=="APPROVED",
+        "foundation rollback did not preserve the replaced fork");
+    Require(trainer.ActivateFoundation(fork.id),
+        "foundation could not be reactivated after rollback");
 
     const auto job=trainer.QueueJob(
         sentinel::simulation::TrainingMode::FoundationSft,

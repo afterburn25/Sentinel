@@ -151,9 +151,23 @@ bool TrainerStore::ActivateFoundation(std::string_view id) {
     if(id.empty()) return false;
     auto target=GetFoundation(id);
     if(!target || (target->status!="APPROVED" && target->status!="ACTIVE")) return false;
+    if(target->status=="ACTIVE") return true;
+
+    std::string previousId;
+    {
+        auto* db=db_.Handle();
+        sqlite3_stmt* current{};
+        Check(sqlite3_prepare_v2(db,
+            "SELECT id FROM model_foundations WHERE status='ACTIVE' ORDER BY updated_utc DESC LIMIT 1",
+            -1,&current,nullptr),db,"prepare active foundation lookup");
+        if(sqlite3_step(current)==SQLITE_ROW) previousId=Col(current,0);
+        sqlite3_finalize(current);
+    }
 
     SqliteTransaction tx(db_);
-    auto* db=db_.Handle(); sqlite3_stmt* s{};
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
     Check(sqlite3_prepare_v2(db,
         "UPDATE model_foundations SET status='APPROVED',updated_utc=CURRENT_TIMESTAMP "
         "WHERE status='ACTIVE' AND id<>?",
@@ -169,9 +183,46 @@ bool TrainerStore::ActivateFoundation(std::string_view id) {
     Check(sqlite3_step(s),db,"activate foundation");
     const bool changed=sqlite3_changes(db)>0;
     sqlite3_finalize(s);
+
+    if(changed && previousId!=id) {
+        Check(sqlite3_prepare_v2(db,
+            "INSERT INTO foundation_activation_history(from_foundation_id,to_foundation_id) VALUES(?,?)",
+            -1,&s,nullptr),db,"prepare foundation activation history");
+        sqlite3_bind_text(s,1,previousId.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,2,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+        Check(sqlite3_step(s),db,"insert foundation activation history");
+        sqlite3_finalize(s);
+    }
+
     tx.Commit();
     return changed;
 }
+
+std::optional<ModelFoundation> TrainerStore::PreviousFoundation() const {
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT h.from_foundation_id "
+        "FROM foundation_activation_history h "
+        "WHERE h.to_foundation_id=("
+        "  SELECT id FROM model_foundations WHERE status='ACTIVE' ORDER BY updated_utc DESC LIMIT 1"
+        ") AND h.from_foundation_id<>'' "
+        "ORDER BY h.id DESC LIMIT 1",
+        -1,&s,nullptr),db,"prepare previous foundation lookup");
+    std::string previousId;
+    if(sqlite3_step(s)==SQLITE_ROW) previousId=Col(s,0);
+    sqlite3_finalize(s);
+    if(previousId.empty()) return std::nullopt;
+    return GetFoundation(previousId);
+}
+
+bool TrainerStore::RollbackFoundation() {
+    auto previous=PreviousFoundation();
+    if(!previous) return false;
+    if(previous->status!="APPROVED" && previous->status!="ACTIVE") return false;
+    return ActivateFoundation(previous->id);
+}
+
 
 
 ModelFoundation TrainerStore::CreateFork(std::string_view name,std::string_view parentId,std::string_view sourceModel,std::string_view trainableSourcePath,std::string_view runtimeGgufPath) {
