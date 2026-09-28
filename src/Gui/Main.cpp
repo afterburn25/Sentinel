@@ -70,7 +70,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs, ModelLabEvaluation, ModelLabDeployment };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
@@ -1213,6 +1213,8 @@ public:
             case Page::ModelLabPersonas: DrawPersonasLoras(w,h); break;
             case Page::ModelLabFoundations: DrawFoundationForks(w,h); break;
             case Page::ModelLabJobs: DrawJobs(w,h); break;
+            case Page::ModelLabEvaluation: DrawEvaluation(w,h); break;
+            case Page::ModelLabDeployment: DrawDeployment(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -1225,7 +1227,7 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs) {
+            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment) {
                 const float startY=(float)kHeader+18.0f;
                 const float firstRowY=startY+42.0f;
                 const int idx=(int)((y-firstRowY)/44.0f);
@@ -1236,8 +1238,8 @@ public:
                     else if(idx==3) page_=Page::ModelLabPersonas;
                     else if(idx==4) page_=Page::ModelLabFoundations;
                     else if(idx==5) page_=Page::ModelLabJobs;
-                    else if(idx==6) statusText_=L"Evaluation workspace remains quarantined until its backend is selectively restored";
-                    else if(idx==7) statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
+                    else if(idx==6) page_=Page::ModelLabEvaluation;
+                    else if(idx==7) page_=Page::ModelLabDeployment;
                     ApplyPageControls();
                     InvalidateRect(hwnd_,nullptr,FALSE);
                     return;
@@ -1300,8 +1302,8 @@ public:
             else if (b.id==L"ml_datasets") { page_=Page::ModelLabDatasets; ApplyPageControls(); }
             else if (b.id==L"ml_foundations") { page_=Page::ModelLabFoundations; ApplyPageControls(); }
             else if (b.id==L"ml_jobs") { page_=Page::ModelLabJobs; ApplyPageControls(); }
-            else if (b.id==L"ml_evaluation") statusText_=L"Evaluation workspace will be restored after the Trainer passes visual regression";
-            else if (b.id==L"ml_deployment") statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
+            else if (b.id==L"ml_evaluation") { page_=Page::ModelLabEvaluation; ApplyPageControls(); }
+            else if (b.id==L"ml_deployment") { page_=Page::ModelLabDeployment; ApplyPageControls(); }
             else if (b.id==L"persona_save") SaveProfileEditors();
             else if (b.id==L"persona_load") LoadSelectedPersonaProfile();
             else if (b.id==L"persona_delete") DeleteSelectedPersonaProfile();
@@ -1318,6 +1320,7 @@ public:
             else if (b.id==L"model_approve") ApproveSelectedRegistryModel();
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
+            else if (b.id==L"model_retire") RetireSelectedRegistryModel();
             else if (b.id==L"training_stage") StageLatestTrainingExample();
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
@@ -2053,7 +2056,7 @@ private:
     }
 
     void DrawSidebar() {
-        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs) {
+        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment) {
             const wchar_t* names[]={
                 L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
                 L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
@@ -2068,7 +2071,9 @@ private:
                 page_==Page::Trainer?1:
                 page_==Page::ModelLabDatasets?2:
                 page_==Page::ModelLabPersonas?3:
-                page_==Page::ModelLabFoundations?4:5;
+                page_==Page::ModelLabFoundations?4:
+                page_==Page::ModelLabJobs?5:
+                page_==Page::ModelLabEvaluation?6:7;
 
             TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
             TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
@@ -2077,7 +2082,7 @@ private:
             for(int i=0;i<8;i++) {
                 const float y=startY+42.0f+i*rowH;
                 const bool selected=i==active;
-                const bool restored=i<6;
+                const bool restored=true;
                 if(selected) {
                     target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
                     target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
@@ -2123,7 +2128,7 @@ private:
     }
 
     void DrawHeader(float w) {
-        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs;
+        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs || page_==Page::ModelLabEvaluation || page_==Page::ModelLabDeployment;
         if(modelLabShell) {
             Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
             Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
@@ -2131,7 +2136,9 @@ private:
                 page_==Page::ModelLabDatasets?L"DATASETS":
                 page_==Page::ModelLabPersonas?L"PERSONAS":
                 page_==Page::ModelLabFoundations?L"FOUNDATIONS":
-                page_==Page::ModelLabJobs?L"JOBS":L"OVERVIEW";
+                page_==Page::ModelLabJobs?L"JOBS":
+                page_==Page::ModelLabEvaluation?L"EVALUATION":
+                page_==Page::ModelLabDeployment?L"DEPLOYMENT":L"OVERVIEW";
             Text(labSection,kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
             TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
                 kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -5143,6 +5150,17 @@ private:
         statusText_=L"Model rollback completed";
     }
 
+
+    void RetireSelectedRegistryModel() {
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) {
+            statusText_=L"Select a registered model first";
+            return;
+        }
+        modelRegistry_.Retire((size_t)selectedRegistryModel_);
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        statusText_=L"Selected model retired";
+    }
+
     void StageLatestTrainingExample() {
         try {
             auto staged=runtime_->trainingReviews.StageLatestReply(currentConversationId_);
@@ -6264,6 +6282,304 @@ private:
             const float actionY=bodyY+bodyH-42.0f;
             AddButton(L"job_run_selected",L"Run Selected",detailX+16,actionY,110,30,job.state=="QUEUED");
             AddButton(L"job_open_trainer",L"Open Trainer",detailX+134,actionY,104,30,false);
+        }
+    }
+
+
+    void DrawEvaluation(float w,float h) {
+        PageTitle(
+            L"Model Lab / Evaluation",
+            L"Evaluate registered candidates against the recovered 1.0.15 persona and policy checks before approval");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==6;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        auto& models=modelRegistry_.Models();
+        if(!models.empty() && (selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()))
+            selectedRegistryModel_=0;
+
+        size_t candidates=0,approved=0,active=0;
+        int bestScore=0;
+        for(const auto& model:models) {
+            if(model.stage==sentinel::simulation::ModelStage::Candidate) ++candidates;
+            else if(model.stage==sentinel::simulation::ModelStage::Approved) ++approved;
+            else if(model.stage==sentinel::simulation::ModelStage::Active) ++active;
+            bestScore=std::max(bestScore,model.evaluationScore);
+        }
+
+        const float summaryY=y+48.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct EvalMetric { const wchar_t* label; std::wstring value; const wchar_t* sub; ID2D1Brush* accent; };
+        EvalMetric metrics[]={
+            {L"Candidates",std::to_wstring(candidates),L"Awaiting evaluation",brush_.yellow.Get()},
+            {L"Approved",std::to_wstring(approved),L"Eligible to activate",brush_.green.Get()},
+            {L"Active",std::to_wstring(active),L"Current runtime",brush_.cyan.Get()},
+            {L"Best Score",std::to_wstring(bestScore),L"Latest registry scores",brush_.blue.Get()}
+        };
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,summaryY,cardW,78,brush_.panel.Get(),brush_.border.Get(),9);
+            target_->FillRectangle(D2D1::RectF(cx+14,summaryY+16,cx+18,summaryY+58),metrics[i].accent);
+            TextLine(metrics[i].label,cx+30,summaryY+10,cardW-44,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,cx+30,summaryY+28,cardW-44,28,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+30,summaryY+56,cardW-44,16,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=summaryY+90.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.62f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Registered Candidates",x+16,bodyY+12,250,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"model_register",L"Register Current",x+listW-132,bodyY+12,116,28,false);
+
+        TextLine(L"MODEL",x+18,bodyY+58,160,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STAGE",x+190,bodyY+58,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+292,bodyY+58,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"LATENCY",x+374,bodyY+58,78,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+464,bodyY+58,listW-482,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rowY=bodyY+80.0f;
+        if(models.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No models are registered. Configure a model in Simulation Lab and choose Register Current.",
+                x+26,rowY+10,listW-52,40,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<models.size();++i) {
+                const auto& model=models[i];
+                const bool selected=(int)i==selectedRegistryModel_;
+                ID2D1Brush* stageBrush=
+                    model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():
+                    model.stage==sentinel::simulation::ModelStage::Approved?brush_.cyan.Get():
+                    model.stage==sentinel::simulation::ModelStage::Retired?brush_.muted.Get():
+                    brush_.yellow.Get();
+
+                Rounded(x+14,rowY,listW-28,48,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(model.modelName),x+24,rowY+5,154,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(model.stage)),x+190,rowY+5,90,18,tinyFmt_.Get(),stageBrush);
+                TextLine(std::to_wstring(model.evaluationScore),x+292,rowY+5,70,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(std::to_wstring(model.latencyMs)+L" ms",x+374,rowY+5,78,18,tinyFmt_.Get(),brush_.muted.Get());
+
+                std::wstring endpoint=Widen(model.endpoint);
+                if(endpoint.size()>36) endpoint=endpoint.substr(0,33)+L"...";
+                TextLine(endpoint,x+464,rowY+5,listW-482,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(L"ID "+Widen(model.id),x+24,rowY+27,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+48},L"regmodel:"+std::to_wstring(i)});
+                rowY+=54.0f;
+                if(rowY+48>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Evaluation Inspector",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()) {
+            TextLine(L"Select a registered model to evaluate it.",
+                detailX+16,bodyY+54,detailW-32,40,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& model=models[(size_t)selectedRegistryModel_];
+            TextLine(Widen(model.modelName),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(sentinel::simulation::ToString(model.stage)),
+                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
+                model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.muted.Get());
+
+            const float scoreY=bodyY+116.0f;
+            Rounded(detailX+14,scoreY,106,76,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Score",detailX+26,scoreY+9,82,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(model.evaluationScore),
+                detailX+26,scoreY+29,82,32,bigFmt_.Get(),
+                model.evaluationScore>=80?brush_.green.Get():
+                model.evaluationScore>=50?brush_.yellow.Get():brush_.text.Get());
+
+            Rounded(detailX+132,scoreY,detailW-146,76,brush_.sidebar.Get(),brush_.border.Get(),8);
+            TextLine(L"Latency",detailX+144,scoreY+9,detailW-170,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(model.latencyMs)+L" ms",
+                detailX+144,scoreY+31,detailW-170,24,smallFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Last response checks",detailX+16,bodyY+214,detailW-32,22,smallFmt_.Get(),brush_.text.Get());
+            TextLine(L"Policy",detailX+16,bodyY+246,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(lastEvaluation_.policyAllowed?L"Allowed":L"Blocked / not evaluated",
+                detailX+100,bodyY+243,detailW-116,22,tinyFmt_.Get(),
+                lastEvaluation_.policyAllowed?brush_.green.Get():brush_.yellow.Get());
+
+            TextLine(L"Persona",detailX+16,bodyY+276,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(lastEvaluation_.personaConsistent?L"Consistent":L"Warning",
+                detailX+100,bodyY+273,detailW-116,22,tinyFmt_.Get(),
+                lastEvaluation_.personaConsistent?brush_.green.Get():brush_.yellow.Get());
+
+            if(!lastEvaluation_.warnings.empty()) {
+                TextLine(L"Warning",detailX+16,bodyY+310,74,18,tinyFmt_.Get(),brush_.muted.Get());
+                Text(Widen(lastEvaluation_.warnings.front()),
+                    detailX+16,bodyY+332,detailW-32,62,tinyFmt_.Get(),brush_.yellow.Get());
+            }
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"model_eval",L"Evaluate",detailX+16,actionY,86,30,true);
+            AddButton(L"model_approve",L"Approve",detailX+110,actionY,82,30,false);
+            AddButton(L"model_activate",L"Activate",detailX+200,actionY,80,30,false);
+        }
+    }
+
+    void DrawDeployment(float w,float h) {
+        PageTitle(
+            L"Model Lab / Deployment",
+            L"Activate approved registry models and roll back safely using the trusted SARA 1.0.15 runtime registry");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==7;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        auto& models=modelRegistry_.Models();
+        const int activeIndex=modelRegistry_.ActiveIndex();
+        if(!models.empty() && (selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()))
+            selectedRegistryModel_=activeIndex>=0?activeIndex:0;
+
+        const float heroY=y+48.0f;
+        Rounded(x,heroY,contentW,96,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Active Runtime",x+18,heroY+12,220,26,h1Fmt_.Get(),brush_.text.Get());
+
+        if(activeIndex>=0 && activeIndex<(int)models.size()) {
+            const auto& active=models[(size_t)activeIndex];
+            StatusDot(x+22,heroY+58,5,brush_.green.Get());
+            TextLine(Widen(active.modelName),x+38,heroY+45,280,26,smallFmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(active.endpoint),x+330,heroY+46,contentW-530,24,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(L"Score "+std::to_wstring(active.evaluationScore),
+                x+contentW-180,heroY+46,150,24,smallFmt_.Get(),brush_.green.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+        } else {
+            TextLine(L"No registry model is currently active.",
+                x+18,heroY+50,contentW-36,24,smallFmt_.Get(),brush_.yellow.Get());
+        }
+
+        const float bodyY=heroY+108.0f;
+        const float bodyH=std::max(400.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.62f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Runtime Registry",x+16,bodyY+12,220,28,h1Fmt_.Get(),brush_.text.Get());
+
+        TextLine(L"MODEL",x+18,bodyY+58,170,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STAGE",x+200,bodyY+58,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"SCORE",x+302,bodyY+58,70,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"ENDPOINT",x+384,bodyY+58,listW-402,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rowY=bodyY+80.0f;
+        if(models.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No registered models are available for deployment.",
+                x+26,rowY+12,listW-52,28,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(size_t i=0;i<models.size();++i) {
+                const auto& model=models[i];
+                const bool selected=(int)i==selectedRegistryModel_;
+                ID2D1Brush* stageBrush=
+                    model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():
+                    model.stage==sentinel::simulation::ModelStage::Approved?brush_.cyan.Get():
+                    model.stage==sentinel::simulation::ModelStage::Retired?brush_.muted.Get():
+                    brush_.yellow.Get();
+
+                Rounded(x+14,rowY,listW-28,48,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(model.modelName),x+24,rowY+5,164,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(model.stage)),x+200,rowY+5,90,18,tinyFmt_.Get(),stageBrush);
+                TextLine(std::to_wstring(model.evaluationScore),x+302,rowY+5,70,18,tinyFmt_.Get(),brush_.text.Get());
+                std::wstring endpoint=Widen(model.endpoint);
+                if(endpoint.size()>46) endpoint=endpoint.substr(0,43)+L"...";
+                TextLine(endpoint,x+384,rowY+5,listW-402,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(L"ID "+Widen(model.id),x+24,rowY+27,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+48},L"regmodel:"+std::to_wstring(i)});
+                rowY+=54.0f;
+                if(rowY+48>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Deployment Control",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)models.size()) {
+            TextLine(L"Select a registered model to manage deployment.",
+                detailX+16,bodyY+54,detailW-32,40,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& model=models[(size_t)selectedRegistryModel_];
+            TextLine(Widen(model.modelName),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(sentinel::simulation::ToString(model.stage)),
+                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
+                model.stage==sentinel::simulation::ModelStage::Active?brush_.green.Get():brush_.muted.Get());
+
+            TextLine(L"Endpoint",detailX+16,bodyY+116,74,18,tinyFmt_.Get(),brush_.muted.Get());
+            Text(Widen(model.endpoint),detailX+16,bodyY+138,detailW-32,44,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Evaluation score",detailX+16,bodyY+196,110,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(model.evaluationScore),
+                detailX+134,bodyY+193,detailW-150,24,smallFmt_.Get(),
+                model.evaluationScore>=80?brush_.green.Get():brush_.yellow.Get());
+
+            TextLine(L"Latency",detailX+16,bodyY+226,110,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(model.latencyMs)+L" ms",
+                detailX+134,bodyY+223,detailW-150,24,smallFmt_.Get(),brush_.text.Get());
+
+            Rounded(detailX+14,bodyY+268,detailW-28,100,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"Safe deployment rule",detailX+26,bodyY+280,detailW-52,22,smallFmt_.Get(),brush_.cyan.Get());
+            Text(L"Only APPROVED or ACTIVE registry models can be activated. Activation preserves the prior active model for one-step rollback.",
+                detailX+26,bodyY+310,detailW-52,50,tinyFmt_.Get(),brush_.muted.Get());
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"model_activate",L"Activate",detailX+16,actionY,82,30,true);
+            AddButton(L"model_rollback",L"Rollback",detailX+106,actionY,82,30,false);
+            AddButton(L"model_retire",L"Retire",detailX+196,actionY,72,30,false);
         }
     }
 
