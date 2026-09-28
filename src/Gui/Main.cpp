@@ -12,6 +12,7 @@
 #include "Sentinel/Simulation/SettingsStore.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
@@ -90,6 +91,13 @@ std::string Narrow(const std::wstring& s) {
     int n = WideCharToMultiByte(CP_UTF8,0,s.data(),(int)s.size(),nullptr,0,nullptr,nullptr);
     std::string out(n,'\0');
     WideCharToMultiByte(CP_UTF8,0,s.data(),(int)s.size(),out.data(),n,nullptr,nullptr);
+    return out;
+}
+
+std::vector<std::byte> AuditMetadata(std::string_view text) {
+    std::vector<std::byte> out;
+    out.reserve(text.size());
+    for(unsigned char ch:text) out.push_back(static_cast<std::byte>(ch));
     return out;
 }
 
@@ -1169,6 +1177,10 @@ public:
         evaluationRuns_.Load(runtime_->root/"evaluation-runs.tsv");
         if(!evaluationRuns_.Runs().empty())
             selectedEvaluationRun_=(int)evaluationRuns_.Runs().size()-1;
+        deploymentRegistry_.Load(runtime_->root/"deployment-registry.tsv");
+        selectedDeployment_=deploymentRegistry_.ActiveIndex();
+        if(selectedDeployment_<0 && !deploymentRegistry_.Packages().empty())
+            selectedDeployment_=(int)deploymentRegistry_.Packages().size()-1;
 
         AutoInitializeLocalAi();
         ResumeOrCreateConversation();
@@ -1329,6 +1341,15 @@ public:
             else if (b.id==L"model_activate") ActivateSelectedRegistryModel();
             else if (b.id==L"model_rollback") RollbackRegistryModel();
             else if (b.id==L"model_retire") RetireSelectedRegistryModel();
+            else if (b.id==L"deployment_prepare") PrepareDeploymentPackage();
+            else if (b.id==L"deployment_activate") ActivateSelectedDeploymentPackage();
+            else if (b.id==L"deployment_rollback") RollbackDeploymentPackage();
+            else if (b.id==L"deployment_lock") ToggleDeploymentLock();
+            else if (b.id==L"deployment_export") ExportDeploymentManifest();
+            else if (b.id.rfind(L"deployment_select:",0)==0) {
+                selectedDeployment_=(int)std::stol(b.id.substr(18));
+                statusText_=L"Deployment package selected";
+            }
             else if (b.id==L"training_stage") StageLatestTrainingExample();
             else if (b.id==L"training_approve") ReviewStagedTrainingExample(true);
             else if (b.id==L"training_reject") ReviewStagedTrainingExample(false);
@@ -1394,6 +1415,13 @@ public:
                 SendMessageW(trainerModeCombo_,CB_SETCURSEL,3,0);
                 page_=Page::Trainer;
                 ApplyPageControls();
+            }
+            else if (b.id==L"foundation_approve_selected") {
+                if(selectedModelLabFoundationId_.empty()) statusText_=L"Select a foundation first";
+                else if(runtime_->trainer.ApproveFoundation(selectedModelLabFoundationId_)) {
+                    RefreshTrainerFoundationList(selectedModelLabFoundationId_);
+                    statusText_=L"Foundation approved for activation/deployment";
+                } else statusText_=L"Foundation could not be approved from its current state";
             }
             else if (b.id==L"foundation_new_fork") {
                 RefreshTrainerFoundationList(selectedModelLabFoundationId_);
@@ -1716,6 +1744,8 @@ private:
     sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
     int selectedEvaluationRun_{-1};
     int comparisonEvaluationRun_{-1};
+    sentinel::simulation::DeploymentRegistry deploymentRegistry_;
+    int selectedDeployment_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
     sentinel::agency::AgencySyncQueue agencyQueue_;
     std::wstring policyStatus_=L"Policy ready";
