@@ -260,6 +260,10 @@ Every future feature restoration must follow this exact sequence:
 - Subjects & Identity workflow: RESTORED / VALIDATED (Windows Build #754)
 - Canonical subject / identity schema reconciliation: PASS
 - Channels & Messaging operational adapter view: RESTORED / VALIDATED (Windows Build #759)
+- Supervisor & Approvals takeover controls: RESTORED / VALIDATED (Windows Build #761)
+- Evidence verification and Audit & Compliance: RESTORED / VALIDATED (Windows Build #764)
+- Audit-v2 metadata binding: RESTORED / VALIDATED (Windows Build #768)
+- Agency Server offline persistence: RESTORED / VALIDATED (Windows Build #770)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -307,6 +311,10 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] local SARA simulation transport bridged into the canonical adapter registry
 - [x] channel readiness matrix and human-approved routing gate added without enabling third-party transports
 - [x] draft jurisdiction profiles render as auto-send locked rather than operationally ready
+- [x] persistent investigator takeover and separate approve/reject supervisor controls
+- [x] evidence current-byte verification with audited PASS/FAIL integrity state
+- [x] audit-v2 metadata digest binding while preserving legacy audit-v1 verification
+- [x] Agency Server configuration and sync queue persist locally without enabling network transport
 
 ### Still genuinely later-only / not yet restored
 
@@ -381,3 +389,7 @@ No later application shell, startup implementation, splash implementation, or in
 - packaged Windows build/tests/startup/installer checkpoint: PASS
 - Subjects & Identity canonical persistence and packaged UI checkpoint: PASS — run #754 / commit `cb934c5349e1666b1c64092b7ebaf1cb4a853ada`
 - Channels & Messaging adapter-registry and packaged UI checkpoint: PASS — run #759 / commit `eb0709b4cd64ae705453aed99a172756caaa9855`
+- Supervisor takeover checkpoint: PASS — run #761 / commit `f9d849e271bf707570eb681836e91dd18a3405d2`
+- Evidence/Audit checkpoint: PASS — run #764 / commit `e686dd6dc73155c40828c7c9330ac959aba61b39`
+- Audit-v2 metadata checkpoint: PASS — run #768 / commit `842ac592a1b39fba241dd5b566dd764274a2a024`
+- Agency Server offline persistence checkpoint: PASS — run #770 / commit `d25c117e531f28fd873ea163ad9e771521f03f66`

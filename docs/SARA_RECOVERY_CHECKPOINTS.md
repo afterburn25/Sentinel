@@ -318,3 +318,48 @@ Artifact digests from run #768:
 - UI screenshots: `sha256:b1441521282fbcce133931720c37f66b57992e14bfe90b41ca8fdff5e282da2b`
 
 This is the validated rollback point for the recovered shell through metadata-bound audit provenance.
+
+## Checkpoint 07 — Agency Server offline persistence validated
+
+Validated commit:
+
+`d25c117e531f28fd873ea163ad9e771521f03f66`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #770
+- Run ID: `36423600498`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- real packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Agency Server recovery proven by this checkpoint:
+
+- Agency Server configuration persists locally across application restarts
+- endpoint, agency ID, workstation ID and enabled/disabled configuration state are stored in SQLite
+- enabling Agency configuration does not establish or imply a network connection
+- persistent sync-queue items survive process restart
+- pending work counts are read from durable storage rather than only process memory
+- queued audit snapshots remain local until a future authenticated transport explicitly acknowledges them
+- the Agency page clearly states transport is inactive and local-first
+- the operating-jurisdiction selector remains visible and reference profiles remain DRAFT unless legally reviewed/activated
+- no live Agency Server network transport or credentials were introduced by this checkpoint
+
+Artifact digests from run #770:
+
+- Windows package: `sha256:ea5d7b53045b85d01bc0ea5cd34965eef2a783d489e127121e6c6c5c78c2c7f0`
+- Setup artifact: `sha256:0fec3c675715853ddbc0542d7d2ece289ea46d62052e07566ddd0e58b627afe5`
+- UI screenshots: `sha256:f88184dad6fccd91c151e1b0ffeb128483eddfed0851fed477f35e502fbae3fc`
+
+This is the validated rollback point for the recovered investigative shell through persistent offline Agency Server staging.
