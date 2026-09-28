@@ -1523,6 +1523,8 @@ public:
                 statusText_=L"Persona LoRA version selected";
             }
             else if (b.id==L"persona_lora_activate") ActivateSelectedPersonaLoraVersion();
+            else if (b.id==L"persona_lora_rollback") RollbackSelectedPersonaLoraVersion();
+            else if (b.id==L"persona_lora_compare") CompareSelectedPersonaLoraVersion();
             else if (b.id==L"persona_lora_export") ExportSelectedPersonaLoraManifest();
             else if (b.id==L"persona_use_selected") {
                 if(selectedModelLabPersonaName_.empty()) {
@@ -8374,6 +8376,68 @@ private:
         statusText_=L"Activated LoRA version: "+Widen(binding->loraName);
     }
 
+    void RollbackSelectedPersonaLoraVersion() {
+        const std::string persona=
+            selectedModelLabPersonaName_.empty()
+                ? simSettings_.persona.name
+                : selectedModelLabPersonaName_;
+        auto previous=runtime_->trainer.PreviousPersonaLora(persona);
+        if(!previous) {
+            statusText_=L"No previous LoRA activation is available for "+Widen(persona);
+            return;
+        }
+        if(!runtime_->trainer.RollbackPersonaLora(persona)) {
+            statusText_=L"Persona LoRA rollback failed";
+            return;
+        }
+
+        selectedModelLabLoraId_=previous->id;
+        if(persona==simSettings_.persona.name)
+            ApplyPersonaRuntimeBinding();
+
+        statusText_=L"LoRA rollback restored: "+Widen(previous->loraName);
+    }
+
+    void CompareSelectedPersonaLoraVersion() {
+        if(selectedModelLabLoraId_<=0) {
+            statusText_=L"Select a LoRA version first";
+            return;
+        }
+        auto selected=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+        if(!selected) {
+            statusText_=L"Selected LoRA version no longer exists";
+            return;
+        }
+        auto active=runtime_->trainer.ResolvePersonaLora(selected->personaName);
+        if(!active) {
+            statusText_=L"No active LoRA exists for comparison";
+            return;
+        }
+
+        const auto foundationName=[&](const std::string& id) {
+            auto foundation=runtime_->trainer.GetFoundation(id);
+            return foundation
+                ? Widen(foundation->name)+L" v"+std::to_wstring(foundation->version)
+                : Widen(id);
+        };
+
+        const std::wstring message=
+            L"ACTIVE\n"+
+            Widen(active->loraName)+L" [#"+std::to_wstring(active->id)+L"]"+
+            L"\nFoundation: "+foundationName(active->foundationId)+
+            L"\nWeight: "+std::to_wstring(active->weight)+
+            L"\nPath: "+Widen(active->loraPath)+
+            L"\n\nSELECTED\n"+
+            Widen(selected->loraName)+L" [#"+std::to_wstring(selected->id)+L"]"+
+            L"\nFoundation: "+foundationName(selected->foundationId)+
+            L"\nWeight: "+std::to_wstring(selected->weight)+
+            L"\nPath: "+Widen(selected->loraPath);
+
+        MessageBoxW(hwnd_,message.c_str(),L"Persona LoRA Comparison",MB_OK|MB_ICONINFORMATION);
+        statusText_=L"LoRA comparison opened";
+    }
+
+
     void ExportSelectedPersonaLoraManifest() {
         if(selectedModelLabLoraId_<=0) {
             statusText_=L"Select a LoRA version first";
@@ -8634,10 +8698,18 @@ private:
             }
 
             const float actionY=bodyY+bodyH-42.0f;
+            const auto previousLora=runtime_->trainer.PreviousPersonaLora(p.name);
             if(selectedModelLabLoraId_>0) {
-                AddButton(L"persona_lora_activate",L"Activate Version",detailX+16,actionY-36,118,28,false);
-                AddButton(L"persona_lora_export",L"Export Metadata",detailX+142,actionY-36,118,28,false);
+                auto selectedLora=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+                if(selectedLora && !selectedLora->active)
+                    AddButton(L"persona_lora_activate",L"Activate",detailX+16,actionY-36,72,28,false);
+                if(activeLora && selectedLora && activeLora->id!=selectedLora->id)
+                    AddButton(L"persona_lora_compare",L"Compare",detailX+96,actionY-36,72,28,false);
+                AddButton(L"persona_lora_export",L"Export",detailX+176,actionY-36,72,28,false);
             }
+            if(previousLora)
+                AddButton(L"persona_lora_rollback",L"Rollback",detailX+16,actionY-72,78,28,false);
+
             AddButton(L"persona_use_selected",L"Use Persona",detailX+16,actionY,92,30,true);
             AddButton(L"persona_edit_selected",L"Edit",detailX+116,actionY,66,30,false);
             AddButton(L"persona_train_selected",L"Train LoRA",detailX+190,actionY,88,30,false);

@@ -139,6 +139,19 @@ foreach ($token in $evaluationGateTokens) {
     }
 }
 
+$loraWorkflowTokens = @(
+    'persona_lora_activate',
+    'persona_lora_rollback',
+    'persona_lora_compare',
+    'PreviousPersonaLora(',
+    'RollbackPersonaLora('
+)
+foreach ($token in $loraWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Persona LoRA lifecycle is missing: $token"
+    }
+}
+
 $foundationWorkflowTokens = @(
     'foundation_activate_selected',
     'foundation_rollback',
