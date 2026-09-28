@@ -7002,9 +7002,10 @@ private:
                 TextLine(std::to_wstring(job.progress)+L"%",
                     x+listW-102,rowY+5,84,18,tinyFmt_.Get(),stateBrush,DWRITE_TEXT_ALIGNMENT_TRAILING);
 
-                std::wstring dataset=Widen(job.datasetPath);
-                if(dataset.size()>74) dataset=dataset.substr(0,71)+L"...";
-                TextLine(dataset,x+24,rowY+26,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+                std::wstring secondLine=Widen(job.createdUtc);
+                if(!job.datasetPath.empty()) secondLine+=L"  |  "+Widen(job.datasetPath);
+                if(secondLine.size()>88) secondLine=secondLine.substr(0,85)+L"...";
+                TextLine(secondLine,x+24,rowY+26,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
 
                 buttons_.push_back({{x+14,rowY,x+listW-14,rowY+48},L"job_row:"+Widen(job.id)});
                 rowY+=54.0f;
@@ -7044,15 +7045,33 @@ private:
             TextLine(foundation?Widen(foundation->name):Widen(job.foundationId),
                 detailX+100,bodyY+173,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
 
-            TextLine(L"Dataset",detailX+16,bodyY+210,76,18,tinyFmt_.Get(),brush_.muted.Get());
-            Rounded(detailX+14,bodyY+230,detailW-28,56,brush_.sidebar.Get(),brush_.border.Get(),6);
-            Text(Widen(job.datasetPath.empty()?"Not specified":job.datasetPath),
-                detailX+24,bodyY+238,detailW-48,40,tinyFmt_.Get(),brush_.text.Get());
+            TextLine(L"Created",detailX+16,bodyY+210,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.createdUtc),detailX+100,bodyY+207,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
 
-            TextLine(L"Output",detailX+16,bodyY+300,76,18,tinyFmt_.Get(),brush_.muted.Get());
-            Rounded(detailX+14,bodyY+320,detailW-28,56,brush_.sidebar.Get(),brush_.border.Get(),6);
+            TextLine(L"Started",detailX+16,bodyY+236,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(job.startedUtc.empty()?L"-":Widen(job.startedUtc),
+                detailX+100,bodyY+233,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Finished",detailX+16,bodyY+262,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(job.completedUtc.empty()?L"-":Widen(job.completedUtc),
+                detailX+100,bodyY+259,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Dataset",detailX+16,bodyY+292,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+312,detailW-28,42,brush_.sidebar.Get(),brush_.border.Get(),6);
+            Text(Widen(job.datasetPath.empty()?"Not specified":job.datasetPath),
+                detailX+24,bodyY+319,detailW-48,28,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Output",detailX+16,bodyY+362,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+382,detailW-28,42,brush_.sidebar.Get(),brush_.border.Get(),6);
             Text(Widen(job.outputPath.empty()?"Not specified":job.outputPath),
-                detailX+24,bodyY+328,detailW-48,40,tinyFmt_.Get(),brush_.text.Get());
+                detailX+24,bodyY+389,detailW-48,28,tinyFmt_.Get(),brush_.text.Get());
+
+            if(!job.errorText.empty() && bodyH>500.0f) {
+                std::wstring error=Widen(job.errorText);
+                if(error.size()>120) error=error.substr(0,117)+L"...";
+                TextLine(L"Worker error",detailX+16,bodyY+432,detailW-32,18,tinyFmt_.Get(),brush_.red.Get());
+                Text(error,detailX+16,bodyY+452,detailW-32,48,tinyFmt_.Get(),brush_.red.Get());
+            }
 
             const float actionY=bodyY+bodyH-42.0f;
             AddButton(L"job_run_selected",L"Run Selected",detailX+16,actionY,110,30,job.state=="QUEUED");
