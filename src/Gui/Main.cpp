@@ -2088,26 +2088,19 @@ private:
     }
 
     void DrawBrand() {
-        // Render the exact approved SARA 1.0.15 logo asset. Its wordmark is
-        // dark, so place the untouched asset on a light brand plate rather
-        // than recoloring or recreating it.
+        // The approved SARA 1.0.15 PNG already contains transparency.
+        // Render it directly on the dark shell; never add a white/light plate.
         if(brandBitmap_) {
-            const float plateX=12.0f;
-            const float plateY=6.0f;
-            const float plateW=(float)kSidebar-24.0f;
-            const float plateH=(float)kHeader-12.0f;
-            Rounded(plateX,plateY,plateW,plateH,brush_.text.Get(),brush_.cyan.Get(),9);
-
             const auto sz=brandBitmap_->GetSize();
-            const float maxW=plateW-14.0f;
-            const float maxH=plateH-8.0f;
+            const float maxW=(float)kSidebar-28.0f;
+            const float maxH=(float)kHeader-8.0f;
             const float scale=std::min(
                 maxW/std::max(1.0f,sz.width),
                 maxH/std::max(1.0f,sz.height));
             const float w=sz.width*scale;
             const float h=sz.height*scale;
-            const float x=plateX+(plateW-w)*0.5f;
-            const float y=plateY+(plateH-h)*0.5f;
+            const float x=((float)kSidebar-w)*0.5f;
+            const float y=((float)kHeader-h)*0.5f;
             target_->DrawBitmap(
                 brandBitmap_.Get(),D2D1::RectF(x,y,x+w,y+h),1.0f,
                 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
@@ -5982,19 +5975,18 @@ private:
         // Hero / current context.
         Rounded(x,dashY,contentW,76,brush_.panel.Get(),brush_.cyan.Get(),11);
         if(brandBitmap_) {
-            Rounded(x+12,dashY+8,64,60,brush_.text.Get(),brush_.cyan.Get(),8);
             const auto sz=brandBitmap_->GetSize();
-            const float logoH=52.0f;
+            const float logoH=56.0f;
             const float logoW=logoH*(sz.width/std::max(1.0f,sz.height));
             target_->DrawBitmap(
                 brandBitmap_.Get(),
-                D2D1::RectF(x+44-logoW*0.5f,dashY+12,x+44+logoW*0.5f,dashY+12+logoH),
+                D2D1::RectF(x+16,dashY+10,x+16+logoW,dashY+10+logoH),
                 1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         }
-        TextLine(L"Model Lab Control Center",x+88,dashY+10,330,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Model Lab Control Center",x+90,dashY+10,330,28,h1Fmt_.Get(),brush_.text.Get());
         TextLine(
             L"Active persona: "+Widen(simSettings_.persona.name)+L"   |   Runtime: "+trainerRuntimeStatus_,
-            x+88,dashY+40,contentW-390,22,smallFmt_.Get(),brush_.muted.Get());
+            x+90,dashY+40,contentW-392,22,smallFmt_.Get(),brush_.muted.Get());
         StatusDot(x+contentW-164,dashY+23,5,brush_.green.Get());
         TextLine(L"LOCAL / READY",x+contentW-150,dashY+11,132,24,tinyFmt_.Get(),brush_.green.Get());
 
@@ -6163,20 +6155,19 @@ private:
         const float heroH=76.0f;
         Rounded(x,heroY,contentW,heroH,brush_.panel.Get(),brush_.cyan.Get(),11);
 
-        // Use the exact approved packaged SARA logo inside the real Trainer UI.
+        // The exact approved logo is transparent; render it directly.
         if(brandBitmap_) {
-            Rounded(x+12,heroY+8,64,60,brush_.text.Get(),brush_.cyan.Get(),8);
             const auto sz=brandBitmap_->GetSize();
-            const float logoH=52.0f;
+            const float logoH=56.0f;
             const float logoW=logoH*(sz.width/std::max(1.0f,sz.height));
             target_->DrawBitmap(
                 brandBitmap_.Get(),
-                D2D1::RectF(x+44-logoW*0.5f,heroY+12,x+44+logoW*0.5f,heroY+12+logoH),
+                D2D1::RectF(x+16,heroY+10,x+16+logoW,heroY+10+logoH),
                 1.0f,D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         }
-        TextLine(L"Train Smarter. Together.",x+88,heroY+10,360,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Train Smarter. Together.",x+90,heroY+10,360,28,h1Fmt_.Get(),brush_.text.Get());
         TextLine(L"Teach SARA through reviewed conversation, persona tuning, LoRAs, and foundation forks.",
-            x+88,heroY+39,contentW-422,22,smallFmt_.Get(),brush_.muted.Get());
+            x+90,heroY+39,contentW-424,22,smallFmt_.Get(),brush_.muted.Get());
         StatusDot(x+contentW-154,heroY+22,5,brush_.green.Get());
         TextLine(L"TRAINER LIVE",x+contentW-140,heroY+10,122,26,tinyFmt_.Get(),brush_.green.Get());
 
