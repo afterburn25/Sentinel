@@ -544,6 +544,21 @@ void TestPersonaScopedConversationMemory()
     Require(nikkiQuestions.find("pets")==std::string::npos,
         "Nikki question history leaked Samantha questions");
 
+    db.Execute(
+        "INSERT INTO persona_learned_notes(persona_name,conversation_id,source_kind,note_text) VALUES"
+        "('Samantha','" + samanthaOld + "','persona_claim','I always pick strawberry ice cream.'),"
+        "('Nikki','" + nikkiOld + "','persona_claim','I always pick mint ice cream.');");
+    const auto samanthaLearned=memory.RecallLearnedPersonaNotes("Samantha",20);
+    Require(samanthaLearned.find("strawberry")!=std::string::npos,
+        "Samantha learned-note recall missed persona continuity");
+    Require(samanthaLearned.find("mint")==std::string::npos,
+        "Samantha learned-note recall leaked Nikki continuity");
+    const auto nikkiLearned=memory.RecallLearnedPersonaNotes("Nikki",20);
+    Require(nikkiLearned.find("mint")!=std::string::npos,
+        "Nikki learned-note recall missed persona continuity");
+    Require(nikkiLearned.find("strawberry")==std::string::npos,
+        "Nikki learned-note recall leaked Samantha continuity");
+
     sentinel::simulation::ModelContext loaded;
     Require(memory.Load(samanthaOld,loaded),"failed to load Samantha conversation");
     Require(loaded.personaSummary.find("Samantha")!=std::string::npos,

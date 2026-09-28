@@ -523,4 +523,44 @@ std::string ConversationMemoryStore::RecallQuestionHistory(
     return out.str();
 }
 
+std::string ConversationMemoryStore::RecallLearnedPersonaNotes(
+    std::string_view personaName,
+    size_t maxNotes) const
+{
+    if(personaName.empty()) return {};
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT source_kind,note_text,created_utc "
+        "FROM persona_learned_notes "
+        "WHERE persona_name=? "
+        "ORDER BY created_utc DESC,id DESC LIMIT ?",
+        -1,&s,nullptr),db,"prepare learned persona notes");
+    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,2,(int)std::min<size_t>(maxNotes,64));
+
+    std::vector<std::tuple<std::string,std::string,std::string>> notes;
+    std::set<std::string> seen;
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        const auto kind=ColumnText(s,0);
+        const auto text=ColumnText(s,1);
+        if(text.empty()) continue;
+        const auto normalized=Lower(text);
+        if(!seen.insert(normalized).second) continue;
+        notes.push_back({kind,text,ColumnText(s,2)});
+    }
+    sqlite3_finalize(s);
+
+    if(notes.empty()) return {};
+    std::reverse(notes.begin(),notes.end());
+
+    std::ostringstream out;
+    out<<"Benign continuity notes previously established by this same persona while Learning Mode was enabled. "
+          "Treat them as persona canon and preserve consistency. Do not turn these notes into claims about the other person:\n";
+    for(const auto& [kind,text,when]:notes)
+        out<<"["<<when<<" | "<<kind<<"] "<<text<<"\n";
+    return out.str();
+}
+
 }

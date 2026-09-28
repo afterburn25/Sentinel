@@ -72,6 +72,10 @@ public:
         std::string_view currentConversationId,
         size_t maxQuestions=16) const;
 
+    std::string RecallLearnedPersonaNotes(
+        std::string_view personaName,
+        size_t maxNotes=16) const;
+
 private:
     SqliteDatabase& db_;
 };

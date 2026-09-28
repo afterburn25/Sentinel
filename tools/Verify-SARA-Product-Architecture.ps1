@@ -122,6 +122,17 @@ foreach ($token in $typingWorkflowTokens) {
     }
 }
 
+$learningContinuityTokens = @(
+    'RecallLearnedPersonaNotes(',
+    'Benign continuity notes previously established',
+    'learnedNotes'
+)
+foreach ($token in $learningContinuityTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Learning Mode continuity workflow is missing: $token"
+    }
+}
+
 $memoryWorkflowTokens = @(
     'RecallQuestionHistory(',
     'Questions this same persona already asked',

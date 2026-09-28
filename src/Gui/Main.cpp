@@ -1720,6 +1720,12 @@ public:
                     if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
                     simContext_.recalledMemory+=questionHistory;
                 }
+                const auto learnedNotes=runtime_->conversationMemory.RecallLearnedPersonaNotes(
+                    simSettings_.persona.name,16);
+                if(!learnedNotes.empty()) {
+                    if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+                    simContext_.recalledMemory+=learnedNotes;
+                }
 
                 auto initiative=model_->GenerateSyntheticInitiative(simContext_);
                 if(!initiative.empty()) {
@@ -5674,6 +5680,12 @@ private:
         if(!questionHistory.empty()) {
             if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
             simContext_.recalledMemory+=questionHistory;
+        }
+        const auto learnedNotes=runtime_->conversationMemory.RecallLearnedPersonaNotes(
+            simSettings_.persona.name,16);
+        if(!learnedNotes.empty()) {
+            if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+            simContext_.recalledMemory+=learnedNotes;
         }
         LogPersonaConversationEvent("inbound",utf8,{},0,0);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});
