@@ -3,6 +3,8 @@ param()
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $mainPath = Join-Path $repo "src\Gui\Main.cpp"
+$memoryPath = Join-Path $repo "src\Simulation\ConversationMemory.cpp"
+$fallbackModelPath = Join-Path $repo "src\Simulation\RuleBasedTestModel.cpp"
 $contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
 
 if (-not (Test-Path $contractPath)) {
@@ -11,8 +13,16 @@ if (-not (Test-Path $contractPath)) {
 if (-not (Test-Path $mainPath)) {
     throw "SARA GUI source is missing: $mainPath"
 }
+if (-not (Test-Path $memoryPath)) {
+    throw "SARA conversation-memory source is missing: $memoryPath"
+}
+if (-not (Test-Path $fallbackModelPath)) {
+    throw "SARA fallback-model source is missing: $fallbackModelPath"
+}
 
 $src = Get-Content $mainPath -Raw
+$memorySrc = Get-Content $memoryPath -Raw
+$fallbackModelSrc = Get-Content $fallbackModelPath -Raw
 
 $begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
 $end = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_END")
@@ -134,26 +144,45 @@ foreach ($token in $learningReviewTokens) {
     }
 }
 
-$learningContinuityTokens = @(
+$learningContinuityMainTokens = @(
     'RecallLearnedPersonaNotes(',
-    'Benign continuity notes previously established',
     'learnedNotes'
 )
-foreach ($token in $learningContinuityTokens) {
+foreach ($token in $learningContinuityMainTokens) {
     if (-not $src.Contains($token)) {
-        throw "Protected Learning Mode continuity workflow is missing: $token"
+        throw "Protected Learning Mode continuity wiring is missing: $token"
+    }
+}
+$learningContinuityMemoryTokens = @(
+    'ConversationMemoryStore::RecallLearnedPersonaNotes',
+    'Benign continuity notes previously established'
+)
+foreach ($token in $learningContinuityMemoryTokens) {
+    if (-not $memorySrc.Contains($token)) {
+        throw "Protected Learning Mode continuity memory is missing: $token"
     }
 }
 
-$memoryWorkflowTokens = @(
+$memoryWorkflowMainTokens = @(
     'RecallQuestionHistory(',
-    'Questions this same persona already asked',
     'questionHistory'
 )
-foreach ($token in $memoryWorkflowTokens) {
+foreach ($token in $memoryWorkflowMainTokens) {
     if (-not $src.Contains($token)) {
-        throw "Protected conversation-memory anti-repeat workflow is missing: $token"
+        throw "Protected conversation-memory anti-repeat wiring is missing: $token"
     }
+}
+$memoryWorkflowStoreTokens = @(
+    'ConversationMemoryStore::RecallQuestionHistory',
+    'Questions this same persona already asked'
+)
+foreach ($token in $memoryWorkflowStoreTokens) {
+    if (-not $memorySrc.Contains($token)) {
+        throw "Protected conversation-memory anti-repeat store is missing: $token"
+    }
+}
+if (-not $fallbackModelSrc.Contains('GenerateSyntheticInitiative')) {
+    throw "Protected fallback initiative generator is missing."
 }
 
 $personaWorkflowTokens = @(
