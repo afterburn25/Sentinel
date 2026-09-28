@@ -3,6 +3,7 @@
 #include "Sentinel/Core/CaseService.hpp"
 #include "Sentinel/Evidence/EvidenceService.hpp"
 #include "Sentinel/Evidence/SevContainer.hpp"
+#include "Sentinel/Identity/SubjectIdentityStore.hpp"
 #include "Sentinel/Security/Crypto.hpp"
 #include "Sentinel/Security/KeyManager.hpp"
 #include "Sentinel/Security/SecretProtector.hpp"
@@ -601,6 +602,7 @@ struct Runtime {
     sentinel::channels::AutomationEngine automationEngine;
     sentinel::channels::ChannelAdapterRegistry channelAdapters;
     sentinel::channels::JurisdictionRuleStore jurisdictionRules;
+    sentinel::identity::SubjectIdentityStore subjectIdentity;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::simulation::TrainingReviewStore trainingReviews;
@@ -616,6 +618,7 @@ struct Runtime {
           migrations(db),
           channelCore(db),
           jurisdictionRules(db),
+          subjectIdentity(db),
           conversationMemory(db),
           personaProfiles(db),
           trainingReviews(db),
@@ -987,6 +990,20 @@ public:
         agencyEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1021,GetModuleHandleW(nullptr),nullptr);
         agencyIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1022,GetModuleHandleW(nullptr),nullptr);
         operatingStateCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1033,GetModuleHandleW(nullptr),nullptr);
+
+        subjectDisplayEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1060,GetModuleHandleW(nullptr),nullptr);
+        subjectLegalEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1061,GetModuleHandleW(nullptr),nullptr);
+        subjectAliasesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1062,GetModuleHandleW(nullptr),nullptr);
+        subjectUsernamesEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1063,GetModuleHandleW(nullptr),nullptr);
+        subjectContactsEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1064,GetModuleHandleW(nullptr),nullptr);
+        subjectNotesEdit_=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL,0,0,0,0,hwnd_,(HMENU)1065,GetModuleHandleW(nullptr),nullptr);
+
+        identitySourceTypeEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1066,GetModuleHandleW(nullptr),nullptr);
+        identitySourceRefEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1067,GetModuleHandleW(nullptr),nullptr);
+        identityLeadValueEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1068,GetModuleHandleW(nullptr),nullptr);
+        identityConfidenceEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1069,GetModuleHandleW(nullptr),nullptr);
+        identityProvenanceEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1070,GetModuleHandleW(nullptr),nullptr);
+
         personaCommunicationCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
         personaCognitiveCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
         personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
@@ -1012,7 +1029,9 @@ public:
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
             responseRuleTriggerEdit_,responseRuleResponseEdit_,
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_,
-            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_};
+            scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
+            subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,subjectNotesEdit_,
+            identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -1026,7 +1045,9 @@ public:
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,
             trainerDatasetEdit_,trainerOutputEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,
-            agencyEndpointEdit_,agencyIdEdit_
+            agencyEndpointEdit_,agencyIdEdit_,
+            subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,
+            identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_
         };
         for(HWND e:centeredEdits) {
             if(!e) continue;
@@ -1073,6 +1094,17 @@ public:
         SendMessageW(trainerDatasetEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Approved training JSONL path");
         SendMessageW(trainerOutputEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Training output folder");
         SendMessageW(trainerInstructionEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Talk to SARA: describe the behavior, correction, or training goal...");
+        SendMessageW(subjectDisplayEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Subject / handle");
+        SendMessageW(subjectLegalEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Legal name if verified");
+        SendMessageW(subjectAliasesEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Aliases, separated by commas");
+        SendMessageW(subjectUsernamesEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Usernames / profile handles");
+        SendMessageW(subjectContactsEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Phone / email / identifiers where permitted");
+        SendMessageW(identitySourceTypeEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Source type");
+        SendMessageW(identitySourceRefEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Source reference / URL / record ID");
+        SendMessageW(identityLeadValueEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Identity lead / finding");
+        SendMessageW(identityConfidenceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"0-100");
+        SendMessageW(identityProvenanceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"How this lead was obtained / source context");
+        SendMessageW(subjectNotesEdit_,EM_SETLIMITTEXT,12000,0);
         HWND trainerEdits[]={
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,
             trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_
@@ -1720,6 +1752,8 @@ private:
     HWND personaGenderCombo_{},personaPronounsCombo_{},personaRelationshipCombo_{},personaPersonalityCombo_{},personaSocialCombo_{},personaConfidenceCombo_{};
     HWND scenarioNameEdit_{},scenarioObjectiveEdit_{},scenarioSeedEdit_{},minDelayEdit_{},maxDelayEdit_{},ageStateCombo_{};
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
+    HWND subjectDisplayEdit_{},subjectLegalEdit_{},subjectAliasesEdit_{},subjectUsernamesEdit_{},subjectContactsEdit_{},subjectNotesEdit_{};
+    HWND identitySourceTypeEdit_{},identitySourceRefEdit_{},identityLeadValueEdit_{},identityConfidenceEdit_{},identityProvenanceEdit_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
     HWND trainerModeCombo_{},trainerFoundationCombo_{};
@@ -1772,6 +1806,8 @@ private:
     std::wstring aiDiagnostics_=L"Not run";
     std::wstring jurisdictionStatus_=L"No operating jurisdiction selected";
     std::string operatingStateCode_;
+    std::string selectedSubjectId_;
+    std::string selectedIdentityLeadId_;
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
     int simPendingPersonaMediaIndex_{-1};
@@ -3011,11 +3047,20 @@ private:
         if(operatingStateCombo_) ShowWindow(operatingStateCombo_,show?SW_SHOW:SW_HIDE);
     }
 
+    void ShowSubjectEditors(bool show) {
+        HWND controls[]={
+            subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,subjectNotesEdit_,
+            identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_
+        };
+        for(HWND control:controls) if(control) ShowWindow(control,show?SW_SHOW:SW_HIDE);
+    }
+
     void ApplyPageControls() {
         ShowCaseEditors(page_==Page::Cases);
         ShowChatEditor(page_==Page::Simulation);
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
+        ShowSubjectEditors(page_==Page::Subjects);
         if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
         if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,page_==Page::ModelLab?SW_SHOW:SW_HIDE);
 
@@ -3073,6 +3118,44 @@ private:
             MoveControl(modelEndpointEdit_,(int)(rx+16),(int)(y+124),(int)(sideW-32),32,TRUE);
             MoveControl(modelCombo_,(int)(rx+16),(int)(y+222),(int)(sideW-32),170,TRUE);
             MoveControl(modelNameEdit_,(int)(rx+16),(int)(y+278),(int)(sideW-122),30,TRUE);
+        }
+
+        if(page_==Page::Subjects) {
+            const float x=kSidebar+28.0f;
+            const float y=kHeader+94.0f;
+            const float contentW=w-x-28.0f;
+            const float gap=14.0f;
+            const float metricsH=78.0f;
+            const float bodyY=y+metricsH+12.0f;
+            const float bodyH=std::max(430.0f,(float)rc.bottom-bodyY-24.0f);
+            const float leftW=std::clamp(contentW*0.34f,248.0f,286.0f);
+            const float rightX=x+leftW+gap;
+            const float rightW=contentW-leftW-gap;
+            const float detailH=238.0f;
+            const float leadComposerY=bodyY+bodyH-214.0f;
+
+            const float halfGap=10.0f;
+            const float halfW=(rightW-32.0f-halfGap)/2.0f;
+            const float fieldLeft=rightX+16.0f;
+            const float fieldRight=fieldLeft+halfW+halfGap;
+
+            MoveControl(subjectDisplayEdit_,(int)fieldLeft,(int)(bodyY+62),(int)halfW,28,TRUE);
+            MoveControl(subjectLegalEdit_,(int)fieldRight,(int)(bodyY+62),(int)halfW,28,TRUE);
+            MoveControl(subjectAliasesEdit_,(int)fieldLeft,(int)(bodyY+110),(int)halfW,28,TRUE);
+            MoveControl(subjectUsernamesEdit_,(int)fieldRight,(int)(bodyY+110),(int)halfW,28,TRUE);
+            MoveControl(subjectContactsEdit_,(int)fieldLeft,(int)(bodyY+158),(int)(rightW-32.0f),28,TRUE);
+            MoveControl(subjectNotesEdit_,(int)fieldLeft,(int)(bodyY+202),(int)(rightW-32.0f),42,TRUE);
+
+            const int leadFieldX=(int)(x+92.0f);
+            const int leadFieldW=(int)(leftW-108.0f);
+            MoveControl(identitySourceTypeEdit_,leadFieldX,(int)(leadComposerY+34),leadFieldW,24,TRUE);
+            MoveControl(identitySourceRefEdit_,leadFieldX,(int)(leadComposerY+64),leadFieldW,24,TRUE);
+            MoveControl(identityLeadValueEdit_,leadFieldX,(int)(leadComposerY+94),leadFieldW,24,TRUE);
+            MoveControl(identityConfidenceEdit_,leadFieldX,(int)(leadComposerY+124),58,24,TRUE);
+            MoveControl(identityProvenanceEdit_,leadFieldX,(int)(leadComposerY+154),leadFieldW,24,TRUE);
+
+            RECT notesRect{8,6,std::max(24,(int)(rightW-48.0f)),34};
+            SendMessageW(subjectNotesEdit_,EM_SETRECTNP,0,(LPARAM)&notesRect);
         }
 
         if(page_==Page::Persona) {
@@ -8346,6 +8429,8 @@ private:
     void SelectCase(size_t i) {
         if (i>=cases_.size()) return;
         selectedCase_=i; selectedEvidence_=0;
+        selectedSubjectId_.clear();
+        selectedIdentityLeadId_.clear();
         try { evidence_=runtime_->Evidence(cases_[i].id); } catch (...) { evidence_.clear(); }
     }
 
