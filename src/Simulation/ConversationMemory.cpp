@@ -465,4 +465,62 @@ std::string ConversationMemoryStore::RecallPersonaClaims(
     return out.str();
 }
 
+std::string ConversationMemoryStore::RecallQuestionHistory(
+    std::string_view currentConversationId,
+    size_t maxQuestions) const
+{
+    if(currentConversationId.empty()) return {};
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT m.body,c.updated_utc "
+        "FROM simulation_messages m "
+        "JOIN simulation_conversations c ON c.id=m.conversation_id "
+        "WHERE m.speaker=? "
+        "AND c.persona_name=("
+        "  SELECT persona_name FROM simulation_conversations WHERE id=?"
+        ") "
+        "ORDER BY CASE WHEN m.conversation_id=? THEN 0 ELSE 1 END, m.row_id DESC "
+        "LIMIT 1000",
+        -1,&s,nullptr),db,"prepare persona question history");
+    sqlite3_bind_int(s,1,(int)ChatTurn::Speaker::SyntheticSubject);
+    sqlite3_bind_text(s,2,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+
+    std::vector<std::pair<std::string,std::string>> questions;
+    std::set<std::string> seen;
+    while(sqlite3_step(s)==SQLITE_ROW) {
+        const auto body=ColumnText(s,0);
+        if(body.find('?')==std::string::npos) continue;
+
+        std::string normalized;
+        bool pendingSpace=false;
+        for(unsigned char ch:body) {
+            if(std::isalnum(ch)) {
+                if(pendingSpace && !normalized.empty()) normalized.push_back(' ');
+                normalized.push_back((char)std::tolower(ch));
+                pendingSpace=false;
+            } else if(std::isspace(ch)) {
+                pendingSpace=true;
+            }
+        }
+        if(normalized.empty() || !seen.insert(normalized).second) continue;
+
+        questions.push_back({ColumnText(s,1),body});
+        if(questions.size()>=std::min<size_t>(maxQuestions,64)) break;
+    }
+    sqlite3_finalize(s);
+
+    if(questions.empty()) return {};
+    std::reverse(questions.begin(),questions.end());
+
+    std::ostringstream out;
+    out<<"Questions this same persona already asked in this or earlier conversations. "
+          "Do not ask these questions again or ask a near-duplicate unless the other person explicitly reopens the topic:\n";
+    for(const auto& [when,body]:questions)
+        out<<"["<<when<<"] "<<body<<"\n";
+    return out.str();
+}
+
 }

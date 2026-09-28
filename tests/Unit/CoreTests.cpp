@@ -484,6 +484,8 @@ void TestPersonaScopedConversationMemory()
         "My favorite gemstone is cobalt.");
     memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
         "okay i remember cobalt");
+    memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "Do you have any pets?");
 
     const auto samanthaCurrent=memory.StartConversation(
         "Samantha current","Samantha","Samantha, age 13, playful","Neutral");
@@ -496,6 +498,8 @@ void TestPersonaScopedConversationMemory()
         "My favorite gemstone is amber.");
     memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
         "okay i remember amber");
+    memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "What kind of music do you like?");
 
     const auto nikkiCurrent=memory.StartConversation(
         "Nikki current","Nikki","Nikki, age 16, confident","Neutral");
@@ -528,12 +532,33 @@ void TestPersonaScopedConversationMemory()
     Require(nikkiRecall.find("cobalt")==std::string::npos,
         "Nikki recall leaked Samantha memory");
 
+    const auto samanthaQuestions=memory.RecallQuestionHistory(samanthaCurrent,20);
+    Require(samanthaQuestions.find("pets")!=std::string::npos,
+        "Samantha question history missed a previously asked question");
+    Require(samanthaQuestions.find("music")==std::string::npos,
+        "Samantha question history leaked Nikki questions");
+
+    const auto nikkiQuestions=memory.RecallQuestionHistory(nikkiCurrent,20);
+    Require(nikkiQuestions.find("music")!=std::string::npos,
+        "Nikki question history missed a previously asked question");
+    Require(nikkiQuestions.find("pets")==std::string::npos,
+        "Nikki question history leaked Samantha questions");
+
     sentinel::simulation::ModelContext loaded;
     Require(memory.Load(samanthaOld,loaded),"failed to load Samantha conversation");
     Require(loaded.personaSummary.find("Samantha")!=std::string::npos,
         "loaded persona summary lost persona identity");
     Require(loaded.personaSummary.find("playful")!=std::string::npos,
         "loaded persona summary lost persona details");
+
+    auto fallback=sentinel::simulation::CreateRuleBasedTestModel();
+    sentinel::simulation::ModelContext initiativeContext;
+    initiativeContext.recalledMemory=
+        "Questions this same persona already asked:\nDo you have any pets?\n";
+    initiativeContext.variationSeed=2;
+    const auto initiative=fallback->GenerateSyntheticInitiative(initiativeContext);
+    Require(initiative.find("pets")==std::string::npos,
+        "fallback initiative repeated a previously asked pets question");
 
     db.Close();
     std::filesystem::remove_all(root);

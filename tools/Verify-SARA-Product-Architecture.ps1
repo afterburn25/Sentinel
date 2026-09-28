@@ -110,6 +110,17 @@ foreach ($token in $requiredWorkflowNames) {
     }
 }
 
+$memoryWorkflowTokens = @(
+    'RecallQuestionHistory(',
+    'Questions this same persona already asked',
+    'questionHistory'
+)
+foreach ($token in $memoryWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected conversation-memory anti-repeat workflow is missing: $token"
+    }
+}
+
 $personaWorkflowTokens = @(
     'L"Rules & Learning"',
     'L"persona_tab_rules"',

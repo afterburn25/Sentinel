@@ -1714,6 +1714,12 @@ public:
                     if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
                     simContext_.recalledMemory+=personaClaims;
                 }
+                const auto questionHistory=runtime_->conversationMemory.RecallQuestionHistory(
+                    currentConversationId_,16);
+                if(!questionHistory.empty()) {
+                    if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+                    simContext_.recalledMemory+=questionHistory;
+                }
 
                 auto initiative=model_->GenerateSyntheticInitiative(simContext_);
                 if(!initiative.empty()) {
@@ -5624,6 +5630,12 @@ private:
         if(!personaClaims.empty()) {
             if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
             simContext_.recalledMemory+=personaClaims;
+        }
+        const auto questionHistory=runtime_->conversationMemory.RecallQuestionHistory(
+            currentConversationId_,16);
+        if(!questionHistory.empty()) {
+            if(!simContext_.recalledMemory.empty()) simContext_.recalledMemory+="\n";
+            simContext_.recalledMemory+=questionHistory;
         }
         LogPersonaConversationEvent("inbound",utf8,{},0,0);
         simContext_.history.push_back({sentinel::simulation::ChatTurn::Speaker::Investigator,utf8});

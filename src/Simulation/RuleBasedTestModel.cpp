@@ -418,15 +418,42 @@ public:
     std::string GenerateSyntheticInitiative(
         const ModelContext& context) override
     {
-        const auto turn=InvestigatorTurnCount(context);
-        const std::string prompts[]={
-            "Random question—what kind of music do you usually listen to?",
-            "What do you usually do when you actually have free time?",
-            "Do you have any pets?",
-            "What's something you can watch over and over without getting tired of it?",
-            "What kind of food do you always end up craving?"
+        struct Initiative {
+            const char* message;
+            std::initializer_list<const char*> topicTerms;
         };
-        return prompts[turn%5];
+        const Initiative prompts[]={
+            {"Random question - what kind of music do you usually listen to?",{"music","listen","song"}},
+            {"What do you usually do when you actually have free time?",{"free time","hobby","hobbies"}},
+            {"Do you have any pets?",{"pet","pets","dog","cat"}},
+            {"What's something you can watch over and over without getting tired of it?",{"watch","movie","movies","show","shows"}},
+            {"What kind of food do you always end up craving?",{"food","craving","eat","snack"}},
+            {"Are you more of a morning person or a night person?",{"morning person","night person","sleep schedule"}},
+            {"What's one thing that can instantly improve your mood?",{"improve your mood","cheer you up","good mood"}}
+        };
+
+        std::string used=Lower(context.recalledMemory);
+        for(const auto& turn:context.history) {
+            if(turn.speaker!=ChatTurn::Speaker::SyntheticSubject) continue;
+            if(!used.empty()) used+="\n";
+            used+=Lower(turn.text);
+        }
+
+        const size_t count=std::size(prompts);
+        const size_t start=(InvestigatorTurnCount(context)+context.variationSeed)%count;
+        for(size_t offset=0;offset<count;++offset) {
+            const auto& candidate=prompts[(start+offset)%count];
+            bool alreadyUsed=false;
+            for(const auto* term:candidate.topicTerms) {
+                if(used.find(term)!=std::string::npos) {
+                    alreadyUsed=true;
+                    break;
+                }
+            }
+            if(!alreadyUsed) return candidate.message;
+        }
+
+        return "Random thought, today has felt weirdly long lol.";
     }
 
     std::string GenerateBehaviorProfile(
