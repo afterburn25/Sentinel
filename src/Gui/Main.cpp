@@ -1282,6 +1282,10 @@ public:
             else if (b.id==L"dashboard_channels") { page_=Page::Messaging; ApplyPageControls(); }
             else if (b.id==L"dashboard_supervisor") { page_=Page::Supervisor; ApplyPageControls(); }
             else if (b.id==L"dashboard_evidence") { page_=Page::Evidence; ApplyPageControls(); }
+            else if (b.id==L"case_subjects") { page_=Page::Subjects; ApplyPageControls(); }
+            else if (b.id==L"case_simulation") { page_=Page::Simulation; ApplyPageControls(); }
+            else if (b.id==L"case_evidence") { page_=Page::Evidence; ApplyPageControls(); }
+            else if (b.id==L"case_audit") { page_=Page::Audit; ApplyPageControls(); }
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_emoji") OpenEmojiPicker();
             else if (b.id==L"sim_attach") AttachImageToConversation();
@@ -2528,7 +2532,7 @@ private:
     }
 
     void DrawCases(float w,float h) {
-        PageTitle(L"Cases",L"Manage investigations, review evidence, and track case progress");
+        PageTitle(L"Cases",L"Manage investigations, subject context, Simulation Chat, evidence, compliance, and case progress");
         float x=kSidebar+28,y=kHeader+102;
         Text(L"Case Number",x,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Title",x+180,y-24,130,20,smallFmt_.Get(),brush_.muted.Get());
@@ -2564,8 +2568,11 @@ private:
             Text(Widen(c.id.ToString()),x+100,detail+96,330,22,smallFmt_.Get(),brush_.text.Get());
             Text(L"Evidence",x+450,detail+98,90,20,smallFmt_.Get(),brush_.muted.Get());
             Text(std::to_wstring(evidence_.size())+L" items",x+520,detail+96,120,22,bodyFmt_.Get(),brush_.text.Get());
-            AddButton(L"import",L"Add Evidence",w-360,detail+26,140,42,true);
-            AddButton(L"verify",L"Verify Evidence",w-205,detail+26,150,42,false);
+            const float actionY=detail+112.0f;
+            AddButton(L"case_subjects",L"Subjects",x+20,actionY,108,34,false);
+            AddButton(L"case_simulation",L"Simulation Chat",x+138,actionY,132,34,true);
+            AddButton(L"case_evidence",L"Evidence",x+280,actionY,104,34,false);
+            AddButton(L"case_audit",L"Audit & Compliance",x+394,actionY,150,34,false);
         } else {
             Text(L"No cases yet. Enter a case number and title above, then create the first case.",x+20,detail+40,w-x-80,50,bodyFmt_.Get(),brush_.muted.Get());
         }
@@ -2775,7 +2782,12 @@ private:
     }
 
     void DrawSimulation(float w,float h) {
-        PageTitle(L"Simulation Chat",L"Investigator-controlled synthetic conversation, persona memory, media, and transcript capture");
+        std::wstring simulationSubtitle=
+            L"Investigator-controlled synthetic conversation, persona memory, media, and transcript capture";
+        if(!cases_.empty()) {
+            simulationSubtitle+=L" | Case "+Widen(cases_[selectedCase_].caseNumber);
+        }
+        PageTitle(L"Simulation Chat",simulationSubtitle);
         const float x=kSidebar+28.0f;
         const float y=kHeader+102.0f;
         const float gap=14.0f;
