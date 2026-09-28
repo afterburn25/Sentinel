@@ -183,3 +183,46 @@ Artifact digests from run #759:
 - UI screenshots: `sha256:6933fd7302dcf7c73e1d8fea1e50088d4bd7e524747dccc180dc03578a5c907e`
 
 This is the validated rollback point for the investigative shell, canonical Subjects & Identity workflow, and operational Channels & Messaging adapter-readiness workflow.
+
+## Checkpoint 04 — Supervisor, approvals, and investigator takeover validated
+
+Validated commit:
+
+`f9d849e271bf707570eb681836e91dd18a3405d2`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #761
+- Run ID: `36416759650`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- real packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Supervisor & Approvals recovery proven by this checkpoint:
+
+- pending, approved, and rejected approval states are exposed as distinct operator controls
+- approve-next and reject-next workflows are separate human actions
+- approval ledger keeps the exact reviewed-action hash visible
+- investigator takeover state is persisted instead of being a display-only placeholder
+- takeover is scoped to an open case and remains off when no case is active
+- takeover activation/deactivation is represented in the audit lifecycle
+- the permanent SARA shell remains unchanged
+
+Artifact digests from run #761:
+
+- Windows package: `sha256:40509d1d45efb2a330ef4ff598b253b0b509f3efca4e6e29a8d3c6c9f391083b`
+- Setup artifact: `sha256:da28b1a90d2d27c0af55f9faab51701350869c4f01032fd5431608c27531de2b`
+- UI screenshots: `sha256:338a7178dc17d673134a1b4493725ec52d2b8cc6ceedb30d9d2462b9790c4e53`
+
+This is the validated rollback point for the operational shell, canonical Subjects & Identity, Channels & Messaging, and persistent human takeover/approval controls.
