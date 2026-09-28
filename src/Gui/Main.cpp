@@ -8549,27 +8549,27 @@ private:
             x,y,metricW,
             L"Adapters",
             std::to_wstring(adapters.size()),
-            L"Provider-neutral registry",
+            L"Registry",
             brush_.cyan.Get(),IconKind::Chat);
         Metric(
             x+metricW+gap,y,metricW,
             L"Connected",
             std::to_wstring(connectedAdapters),
-            L"Available transports",
+            L"Online",
             connectedAdapters?brush_.green.Get():brush_.yellow.Get(),
             IconKind::Check);
         Metric(
             x+2.0f*(metricW+gap),y,metricW,
             L"Approvals",
             std::to_wstring(pendingApprovals),
-            L"Human review queue",
+            L"Pending",
             pendingApprovals?brush_.yellow.Get():brush_.green.Get(),
             IconKind::Shield);
         Metric(
             x+3.0f*(metricW+gap),y,metricW,
             L"Approved Queue",
             std::to_wstring(msgs.size()),
-            L"Local simulation",
+            L"Local",
             brush_.blue.Get(),IconKind::Document);
 
         const float mainY=y+126.0f;
@@ -8638,6 +8638,27 @@ private:
             if(!caseSubjects.empty()) subjectLabel=Widen(caseSubjects.front().displayName);
         }
 
+        std::wstring jurisdictionLabel=L"No operating jurisdiction";
+        bool jurisdictionReady=false;
+        if(!operatingStateCode_.empty()) {
+            const auto profile=runtime_->jurisdictionRules.LatestProfile(
+                sentinel::channels::RuleLayerType::State,"US",operatingStateCode_);
+            if(profile) {
+                const wchar_t* review=L"DRAFT";
+                if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::LegallyReviewed)
+                    review=L"REVIEWED";
+                else if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::Active)
+                    review=L"ACTIVE";
+                else if(profile->reviewStatus==sentinel::channels::LegalReviewStatus::Expired)
+                    review=L"EXPIRED";
+                jurisdictionReady=profile->AutomationLegallyActive();
+                jurisdictionLabel=Widen(operatingStateCode_)+L" | "+review;
+                if(!jurisdictionReady) jurisdictionLabel+=L" | auto-send locked";
+            } else {
+                jurisdictionLabel=Widen(operatingStateCode_)+L" | no rules profile";
+            }
+        }
+
         struct GateRow {
             const wchar_t* label;
             std::wstring value;
@@ -8646,7 +8667,7 @@ private:
         GateRow gates[]={
             {L"Case",caseLabel,!cases_.empty()},
             {L"Subject",subjectLabel,subjectLabel!=L"No subject selected"},
-            {L"Jurisdiction",jurisdictionStatus_,jurisdictionStatus_.find(L"No operating")==std::wstring::npos},
+            {L"Jurisdiction",jurisdictionLabel,jurisdictionReady},
             {L"Outbound",L"Human approval required",true}
         };
 
@@ -8715,7 +8736,7 @@ private:
         }
 
         TextLine(
-            L"Provider support is capability-driven; adding a transport does not bypass jurisdiction or supervisor gates.",
+            L"Adapters never bypass jurisdiction or supervisor gates.",
             x+18,bottomY+bottomH-30,readinessW-36,18,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(queueX,bottomY,queueW,bottomH,brush_.panel.Get(),brush_.border.Get(),10);
