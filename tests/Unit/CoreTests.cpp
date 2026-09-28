@@ -8,6 +8,7 @@
 #include "Sentinel/Core/CaseRepository.hpp"
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/JurisdictionRules.hpp"
+#include "Sentinel/Simulation/TrainingReviewStore.hpp"
 
 #include <array>
 #include <cassert>
@@ -32,6 +33,48 @@ void TestIdsAndHashes()
     assert(h.has_value());
     assert(h->ToHex() == std::string(64, '0'));
 }
+
+
+void TestTrainingReviewRecentList()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-review-list-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"reviews.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    db.Execute(
+        "INSERT INTO training_review_items("
+        "id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,status"
+        ") VALUES"
+        "('review-old','source-old','conversation-1','Samantha','model-a','old input','old output',1),"
+        "('review-new','source-new','conversation-2','Nikki','model-b','new input','new output',0);");
+
+    sentinel::simulation::TrainingReviewStore reviews(db);
+    const auto all=reviews.ListRecent(10);
+    Require(all.size()==2,"recent training review list count mismatch");
+    Require(all.front().id=="review-new","recent training review ordering mismatch");
+
+    const auto pending=reviews.ListRecent(
+        10,sentinel::simulation::TrainingReviewStatus::Pending);
+    Require(pending.size()==1,"pending training review filter count mismatch");
+    Require(pending.front().id=="review-new","pending training review filter returned wrong item");
+
+    const auto approved=reviews.ListRecent(
+        10,sentinel::simulation::TrainingReviewStatus::Approved);
+    Require(approved.size()==1,"approved training review filter count mismatch");
+    Require(approved.front().id=="review-old","approved training review filter returned wrong item");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
@@ -262,6 +305,9 @@ int main()
         std::cout << "[core] ids/hashes..." << std::endl;
         TestIdsAndHashes();
         std::cout << "[core] ids/hashes PASS" << std::endl;
+        std::cout << "[core] training review recent list..." << std::endl;
+        TestTrainingReviewRecentList();
+        std::cout << "[core] training review recent list PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
