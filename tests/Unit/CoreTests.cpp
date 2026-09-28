@@ -226,6 +226,8 @@ void TestTrainerFoundationAndJobs()
         "SARA Foundation 2",foundations.front().id,
         foundations.front().sourceModel,"trainable-source","");
     Require(fork.parentId==foundations.front().id,"foundation fork parent mismatch");
+    Require(fork.version==foundations.front().version+1,
+        "foundation fork version should increment from its parent");
     Require(fork.status=="DRAFT","new foundation fork should be draft");
     Require(trainer.ApproveFoundation(fork.id),"foundation approval failed");
     Require(trainer.ActivateFoundation(fork.id),"approved foundation activation failed");

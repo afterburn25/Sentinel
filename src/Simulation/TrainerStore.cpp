@@ -226,13 +226,25 @@ bool TrainerStore::RollbackFoundation() {
 
 
 ModelFoundation TrainerStore::CreateFork(std::string_view name,std::string_view parentId,std::string_view sourceModel,std::string_view trainableSourcePath,std::string_view runtimeGgufPath) {
-    const auto id=NewId("foundation"); auto* db=db_.Handle(); sqlite3_stmt* s{};
+    const auto id=NewId("foundation");
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+
+    int version=1;
+    if(!parentId.empty()) {
+        auto parent=GetFoundation(parentId);
+        if(!parent) throw std::runtime_error("foundation parent does not exist");
+        version=std::max(1,parent->version+1);
+    }
+
     Check(sqlite3_prepare_v2(db,
         "INSERT INTO model_foundations(id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes) "
-        "VALUES(?,?,?,?,?,?,1,'DRAFT','Fork created in SARA Trainer')",-1,&s,nullptr),db,"prepare foundation fork");
+        "VALUES(?,?,?,?,?,?,?,'DRAFT','Fork created in SARA Trainer')",-1,&s,nullptr),db,"prepare foundation fork");
     const std::string values[]={id,std::string(name),std::string(parentId),std::string(sourceModel),std::string(trainableSourcePath),std::string(runtimeGgufPath)};
     for(int i=0;i<6;i++) sqlite3_bind_text(s,i+1,values[i].c_str(),-1,SQLITE_TRANSIENT);
-    Check(sqlite3_step(s),db,"insert foundation fork"); sqlite3_finalize(s);
+    sqlite3_bind_int(s,7,version);
+    Check(sqlite3_step(s),db,"insert foundation fork");
+    sqlite3_finalize(s);
     return *GetFoundation(id);
 }
 
