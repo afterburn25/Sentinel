@@ -305,6 +305,18 @@ try {
     Click-SaraClient -Window $main -X 100 -Y 286
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-personas-loras.png")
 
+    Click-SaraClient -Window $main -X 100 -Y 330
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "09-foundation-forks.png")
+
+    Click-SaraClient -Window $main -X 100 -Y 374
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "10-jobs.png")
+
+    Click-SaraClient -Window $main -X 100 -Y 418
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "11-evaluation.png")
+
+    Click-SaraClient -Window $main -X 100 -Y 462
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "12-deployment.png")
+
     @"
 SARA 1.0.15 RECOVERY UI CAPTURE
 Executable: $AppPath
