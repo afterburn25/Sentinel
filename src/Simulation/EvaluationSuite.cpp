@@ -500,6 +500,27 @@ int DimensionScore(const EvaluationRun& run,EvaluationDimension dimension) {
     return -1;
 }
 
+bool EvaluationPassedApprovalGate(const EvaluationRun& run)
+{
+    const EvaluationDimension required[]={
+        EvaluationDimension::PersonaConsistency,
+        EvaluationDimension::PolicyCompliance,
+        EvaluationDimension::StyleConsistency,
+        EvaluationDimension::MemoryRecall,
+        EvaluationDimension::TriggerRegression,
+        EvaluationDimension::ResponseDiversity
+    };
+
+    for(auto dimension:required) {
+        auto it=std::find_if(run.dimensions.begin(),run.dimensions.end(),[&](const auto& item){
+            return item.dimension==dimension;
+        });
+        if(it==run.dimensions.end() || !it->passed)
+            return false;
+    }
+    return true;
+}
+
 std::string BuildEvaluationRunReport(const EvaluationRun& run)
 {
     std::ostringstream out;

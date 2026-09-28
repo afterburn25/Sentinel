@@ -123,6 +123,9 @@ int DimensionScore(
     const EvaluationRun& run,
     EvaluationDimension dimension);
 
+bool EvaluationPassedApprovalGate(
+    const EvaluationRun& run);
+
 std::string BuildEvaluationRunReport(
     const EvaluationRun& run);
 

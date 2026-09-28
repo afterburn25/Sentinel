@@ -449,6 +449,8 @@ void TestPersistentEvaluationSuite()
         {personaScore,policyScore,styleScore,memoryScore,triggerScore,diversityScore});
     Require(first.overallScore>0,"evaluation run overall score missing");
     Require(first.previousOverallScore==-1,"first evaluation run should not have a previous score");
+    Require(sentinel::simulation::EvaluationPassedApprovalGate(first),
+        "complete passing evaluation did not satisfy approval gate");
 
     auto weaker=diversityScore;
     weaker.score=20;
@@ -463,6 +465,8 @@ void TestPersistentEvaluationSuite()
         "evaluation run did not link previous candidate score");
     Require(second.regressionDelta==second.overallScore-first.overallScore,
         "evaluation run regression delta mismatch");
+    Require(!sentinel::simulation::EvaluationPassedApprovalGate(second),
+        "failed evaluation dimension incorrectly passed approval gate");
 
     const auto root=std::filesystem::temp_directory_path()/("sara-eval-"+sentinel::Uuid::Random().ToString());
     std::filesystem::create_directories(root);
