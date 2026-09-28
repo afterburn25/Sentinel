@@ -361,7 +361,14 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT m.body,c.updated_utc "
+        "SELECT m.body,c.updated_utc,"
+        "COALESCE(("
+        "  SELECT q.body FROM simulation_messages q "
+        "  WHERE q.conversation_id=m.conversation_id "
+        "  AND q.speaker=? AND q.row_id<m.row_id "
+        "  AND instr(q.body,'?')>0 "
+        "  ORDER BY q.row_id DESC LIMIT 1"
+        "),'') "
         "FROM simulation_messages m "
         "JOIN simulation_conversations c ON c.id=m.conversation_id "
         "WHERE m.speaker=? AND ("
@@ -369,20 +376,20 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
         "c.persona_name=(SELECT persona_name FROM simulation_conversations WHERE id=?)) "
         "ORDER BY CASE WHEN m.conversation_id=? THEN 0 ELSE 1 END, m.row_id DESC LIMIT 500",
         -1,&s,nullptr),db,"prepare participant fact recall");
-    sqlite3_bind_int(s,1,(int)ChatTurn::Speaker::Investigator);
-    sqlite3_bind_text(s,2,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(s,1,(int)ChatTurn::Speaker::SyntheticSubject);
+    sqlite3_bind_int(s,2,(int)ChatTurn::Speaker::Investigator);
     sqlite3_bind_text(s,3,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,4,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,5,std::string(currentConversationId).c_str(),-1,SQLITE_TRANSIENT);
 
     std::vector<std::pair<std::string,std::string>> facts;
+    std::set<std::string> seen;
     while(sqlite3_step(s)==SQLITE_ROW) {
         const auto body=ColumnText(s,0);
         const auto lower=Lower(body);
+        const auto previousQuestion=ColumnText(s,2);
 
-        // Prefer statements that are likely to contain stable personal facts or
-        // answers. This is deliberately heuristic and does not infer facts that
-        // were never actually said.
-        const bool likelyFact =
+        const bool explicitFact =
             lower.find("i am ")!=std::string::npos ||
             lower.find("i'm ")!=std::string::npos ||
             lower.find("im ")!=std::string::npos ||
@@ -395,17 +402,31 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
             lower.find("i have")!=std::string::npos ||
             lower.find("i got")!=std::string::npos ||
             lower.find("i usually")!=std::string::npos ||
-            lower.find("i mostly")!=std::string::npos ||
-            lower.find("yes") == 0 ||
-            lower.find("no") == 0;
+            lower.find("i mostly")!=std::string::npos;
 
-        if(!likelyFact) continue;
+        const bool yesNoAnswer=
+            lower.rfind("yes",0)==0 ||
+            lower.rfind("yeah",0)==0 ||
+            lower.rfind("yep",0)==0 ||
+            lower.rfind("no",0)==0 ||
+            lower.rfind("nope",0)==0;
 
-        bool duplicate=false;
-        for(const auto& existing:facts) {
-            if(Lower(existing.second)==lower) { duplicate=true; break; }
-        }
-        if(!duplicate) facts.push_back({ColumnText(s,1),body});
+        const bool contextualShortAnswer=
+            !previousQuestion.empty() &&
+            !body.empty() &&
+            body.size()<=160 &&
+            body.find('?')==std::string::npos;
+
+        if(!explicitFact && !yesNoAnswer && !contextualShortAnswer) continue;
+
+        std::string remembered=body;
+        if(!previousQuestion.empty() && (!explicitFact || yesNoAnswer))
+            remembered="Answer to prior question \""+previousQuestion+"\": "+body;
+
+        const auto normalized=Lower(remembered);
+        if(!seen.insert(normalized).second) continue;
+
+        facts.push_back({ColumnText(s,1),remembered});
         if(facts.size()>=std::min<size_t>(maxMessages,40)) break;
     }
     sqlite3_finalize(s);
@@ -415,7 +436,8 @@ std::string ConversationMemoryStore::RecallParticipantFacts(
 
     std::ostringstream out;
     out<<"Known facts/answers from the other person, including the current conversation and earlier conversations with this same persona. "
-          "Treat them as remembered conversation facts. Do not ask for the same information again unless there is a genuine contradiction or reason to clarify:\n";
+          "Short answers are paired with the persona question that gave them meaning. "
+          "Treat these as remembered conversation facts. Do not ask for the same information again unless there is a genuine contradiction or reason to clarify:\n";
     for(const auto& [when,body]:facts)
         out<<"["<<when<<"] "<<body<<"\n";
     return out.str();

@@ -486,6 +486,10 @@ void TestPersonaScopedConversationMemory()
         "okay i remember cobalt");
     memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
         "Do you have any pets?");
+    memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "What's your favorite color?");
+    memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::Investigator,
+        "purple");
 
     const auto samanthaCurrent=memory.StartConversation(
         "Samantha current","Samantha","Samantha, age 13, playful","Neutral");
@@ -500,6 +504,10 @@ void TestPersonaScopedConversationMemory()
         "okay i remember amber");
     memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
         "What kind of music do you like?");
+    memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "What's your favorite food?");
+    memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::Investigator,
+        "tacos");
 
     const auto nikkiCurrent=memory.StartConversation(
         "Nikki current","Nikki","Nikki, age 16, confident","Neutral");
@@ -531,6 +539,20 @@ void TestPersonaScopedConversationMemory()
         "Nikki recall missed Nikki memory");
     Require(nikkiRecall.find("cobalt")==std::string::npos,
         "Nikki recall leaked Samantha memory");
+
+    const auto samanthaFacts=memory.RecallParticipantFacts(samanthaCurrent,20);
+    Require(samanthaFacts.find("favorite color")!=std::string::npos &&
+            samanthaFacts.find("purple")!=std::string::npos,
+        "Samantha short answer lost the question that gave it meaning");
+    Require(samanthaFacts.find("tacos")==std::string::npos,
+        "Samantha participant facts leaked Nikki short answers");
+
+    const auto nikkiFacts=memory.RecallParticipantFacts(nikkiCurrent,20);
+    Require(nikkiFacts.find("favorite food")!=std::string::npos &&
+            nikkiFacts.find("tacos")!=std::string::npos,
+        "Nikki short answer lost the question that gave it meaning");
+    Require(nikkiFacts.find("purple")==std::string::npos,
+        "Nikki participant facts leaked Samantha short answers");
 
     const auto samanthaQuestions=memory.RecallQuestionHistory(samanthaCurrent,20);
     Require(samanthaQuestions.find("pets")!=std::string::npos,
