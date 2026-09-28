@@ -517,6 +517,58 @@ bool BundledAiPrerequisitesPresent() {
     return false;
 }
 
+enum class LocalModelMarkerState {
+    ModelMissing,
+    MarkerMissing,
+    MarkerMismatch,
+    MarkerCurrent
+};
+
+LocalModelMarkerState LocalModelVerificationMarkerState() {
+    static constexpr const char* kExpectedModelSha256=
+        "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8";
+
+    const auto model=
+        ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf";
+    const auto marker=
+        ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf.sha256";
+
+    if(!std::filesystem::exists(model))
+        return LocalModelMarkerState::ModelMissing;
+    if(!std::filesystem::exists(marker))
+        return LocalModelMarkerState::MarkerMissing;
+
+    std::ifstream in(marker,std::ios::binary);
+    if(!in) return LocalModelMarkerState::MarkerMissing;
+
+    std::string value;
+    std::getline(in,value);
+    while(!value.empty() &&
+          (value.back()=='\r' || value.back()=='\n' ||
+           value.back()==' ' || value.back()=='\t'))
+        value.pop_back();
+    std::transform(value.begin(),value.end(),value.begin(),
+        [](unsigned char ch){ return (char)std::tolower(ch); });
+
+    return value==kExpectedModelSha256
+        ? LocalModelMarkerState::MarkerCurrent
+        : LocalModelMarkerState::MarkerMismatch;
+}
+
+std::wstring LocalModelVerificationMarkerLabel(LocalModelMarkerState state) {
+    switch(state) {
+        case LocalModelMarkerState::ModelMissing:
+            return L"Model not installed";
+        case LocalModelMarkerState::MarkerMissing:
+            return L"Model present; verification marker missing";
+        case LocalModelMarkerState::MarkerMismatch:
+            return L"Verification marker does not match protected model hash";
+        case LocalModelMarkerState::MarkerCurrent:
+            return L"Installer SHA-256 verification marker is current";
+    }
+    return L"Unknown";
+}
+
 bool RunBundledAiSetup(std::wstring* failure=nullptr) {
     const auto setup=ExeDir()/L"Setup-Sentinel-AI.cmd";
     if(!std::filesystem::exists(setup)) {
@@ -9305,6 +9357,9 @@ private:
             }
         }
         report << L"Local GGUF: " << (modelFileFound?L"FOUND":L"MISSING") << L"\n";
+        report << L"Installer verification: "
+               << LocalModelVerificationMarkerLabel(LocalModelVerificationMarkerState())
+               << L"\n";
 
         try {
             auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
@@ -9350,61 +9405,93 @@ private:
     }
 
     void DrawSettings(float w,float h) {
-        PageTitle(L"Settings",L"Secure storage, application information, and update status");
+        PageTitle(L"Settings",L"Secure storage, application information, model integrity, and update status");
         const float x=kSidebar+28.0f;
         const float y=kHeader+104.0f;
         const float contentW=w-x-28.0f;
         const float gap=14.0f;
-        const float leftW=(contentW-gap)*0.60f;
+        const float leftW=(contentW-gap)*0.58f;
         const float rightW=contentW-gap-leftW;
         const float rx=x+leftW+gap;
 
-        Rounded(x,y,leftW,230,brush_.panel.Get(),brush_.border.Get(),10);
+        const auto markerState=LocalModelVerificationMarkerState();
+        const bool aiPrerequisites=BundledAiPrerequisitesPresent();
+        const bool markerCurrent=markerState==LocalModelMarkerState::MarkerCurrent;
+
+        Rounded(x,y,leftW,244,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Secure Local Store",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Location",x+20,y+62,90,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(runtime_->root.wstring(),x+118,y+60,leftW-138,30,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Location",x+20,y+58,90,24,tinyFmt_.Get(),brush_.muted.Get());
+        Text(runtime_->root.wstring(),x+118,y+56,leftW-138,34,tinyFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Encryption",x+20,y+102,90,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"AES-256-GCM",x+118,y+100,leftW-138,30,smallFmt_.Get(),brush_.green.Get());
+        TextLine(L"Encryption",x+20,y+98,90,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"AES-256-GCM",x+118,y+96,leftW-138,26,smallFmt_.Get(),brush_.green.Get());
 
-        TextLine(L"Key protection",x+20,y+142,90,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Windows DPAPI workstation master key",x+118,y+140,leftW-138,30,smallFmt_.Get(),brush_.text.Get());
+        TextLine(L"Key protection",x+20,y+136,90,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Windows DPAPI workstation master key",x+118,y+134,leftW-138,26,smallFmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Mode",x+20,y+182,90,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(agencyConfig_.enabled?L"Offline-first + agency sync configuration":L"Offline-first / local-only",
-            x+118,y+180,leftW-138,30,smallFmt_.Get(),brush_.cyan.Get());
+        TextLine(L"Schema",x+20,y+174,90,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            L"Migration v"+std::to_wstring(runtime_->migrations.CurrentVersion()),
+            x+118,y+172,leftW-138,26,smallFmt_.Get(),brush_.cyan.Get());
 
-        Rounded(rx,y,rightW,230,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Application",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Mode",x+20,y+210,90,24,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            agencyConfig_.enabled?L"Offline-first + agency sync staging":L"Offline-first / local-only",
+            x+118,y+208,leftW-138,26,smallFmt_.Get(),brush_.cyan.Get());
 
-        TextLine(L"Version",rx+20,y+62,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(std::wstring(L"SARA ")+Widen(SARA_VERSION_STR),rx+104,y+60,rightW-124,30,bodyFmt_.Get(),brush_.text.Get());
+        Rounded(rx,y,rightW,244,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Application & Local AI",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
-        TextLine(L"Build",rx+20,y+102,78,26,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Development Release",rx+104,y+100,rightW-124,30,smallFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Version",rx+20,y+54,76,22,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(std::wstring(L"SARA ")+Widen(SARA_VERSION_STR),rx+104,y+52,rightW-124,24,bodyFmt_.Get(),brush_.text.Get());
 
-        AddButton(L"check_updates",L"Check for Updates",rx+20,y+146,150,38,false);
-        AddButton(L"ai_diagnostics",L"AI Diagnostics",rx+180,y+146,140,38,true);
-        TextLine(updateStatus_,rx+20,y+190,rightW-40,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(modelStatus_,rx+20,y+208,rightW-40,18,tinyFmt_.Get(),
-            modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
+        TextLine(L"Build",rx+20,y+84,76,22,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Development Release",rx+104,y+82,rightW-124,24,smallFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x,y+246,contentW,294,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Release Security",x+18,y+258,260,30,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Local AI",rx+20,y+114,76,22,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(
+            aiPrerequisites?L"Model + runtime installed":L"Install / repair required",
+            rx+104,y+112,rightW-124,24,smallFmt_.Get(),
+            aiPrerequisites?brush_.green.Get():brush_.yellow.Get());
 
-        const wchar_t* rows[][2]={
-            {L"Evidence integrity",L"SHA-256 + AES-GCM authentication"},
-            {L"Audit integrity",L"Hash-linked ledger; new records bind metadata (audit-v2)"},
-            {L"Update transport",L"HTTPS-only manifest checking"},
-            {L"Outbound messaging",L"Human approval required"},
-            {L"Code signing",L"Pipeline ready; trusted signing identity not configured"}
+        TextLine(L"Verification",rx+20,y+144,76,22,tinyFmt_.Get(),brush_.muted.Get());
+        Text(
+            LocalModelVerificationMarkerLabel(markerState),
+            rx+104,y+142,rightW-124,32,tinyFmt_.Get(),
+            markerCurrent?brush_.green.Get():brush_.yellow.Get());
+
+        AddButton(L"check_updates",L"Check for Updates",rx+20,y+184,142,34,false);
+        AddButton(L"ai_diagnostics",L"AI Diagnostics",rx+172,y+184,rightW-192,34,true);
+        Text(
+            updateStatus_,
+            rx+20,y+220,rightW-40,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float securityY=y+260.0f;
+        const float securityH=std::max(280.0f,h-securityY-24.0f);
+        Rounded(x,securityY,contentW,securityH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Release Security",x+18,securityY+12,260,30,h1Fmt_.Get(),brush_.text.Get());
+
+        struct SecurityRow {
+            const wchar_t* label;
+            std::wstring value;
+            ID2D1Brush* brush;
         };
-        float yy=y+304;
-        for(auto& row:rows) {
-            TextLine(row[0],x+22,yy,160,26,tinyFmt_.Get(),brush_.muted.Get());
-            TextLine(row[1],x+194,yy,contentW-216,26,smallFmt_.Get(),brush_.text.Get());
-            yy+=42;
+        SecurityRow rows[]={
+            {L"Evidence integrity",L"SHA-256 + AES-GCM authentication",brush_.text.Get()},
+            {L"Audit integrity",L"Hash-linked ledger; new records bind metadata (audit-v2)",brush_.text.Get()},
+            {L"Model installer",L"Protected SHA-256 + marker-assisted upgrade verification",brush_.text.Get()},
+            {L"Update transport",L"HTTPS-only manifest checking",brush_.text.Get()},
+            {L"Outbound messaging",L"Human approval required",brush_.text.Get()},
+            {L"Code signing",L"Pipeline ready; trusted signing identity not configured",brush_.muted.Get()}
+        };
+
+        float yy=securityY+54.0f;
+        for(const auto& row:rows) {
+            if(yy+26.0f>securityY+securityH-10.0f) break;
+            TextLine(row.label,x+22,yy,150,26,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(row.value,x+184,yy,contentW-206,26,smallFmt_.Get(),row.brush);
+            yy+=36.0f;
         }
     }
 
