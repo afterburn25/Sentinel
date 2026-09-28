@@ -8522,8 +8522,7 @@ private:
     }
 
     void DrawMessaging(float w,float h) {
-        PageTitle(
-            L"Channels & Messaging",
+        PageTitle(L"Channels & Messaging",
             L"Provider-neutral adapter readiness, human-approved routing, attachments, and channel handoff");
 
         const float x=kSidebar+28.0f;
