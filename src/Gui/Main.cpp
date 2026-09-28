@@ -2382,13 +2382,14 @@ private:
             L"Encrypted case objects",
             brush_.green.Get(),IconKind::Database);
 
-        const float mainY=y+130.0f;
+        const float mainY=y+126.0f;
+        const float mainH=236.0f;
         const float leftW=(contentW-gap)*0.59f;
         const float rightW=contentW-gap-leftW;
         const float rightX=x+leftW+gap;
 
         // Current operational context.
-        Rounded(x,mainY,leftW,282,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(x,mainY,leftW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Current Operational Context",x+18,mainY+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         const std::wstring caseName=cases_.empty()
@@ -2411,7 +2412,7 @@ private:
             {L"Jurisdiction",jurisdictionStatus_,jurisdictionStatus_.find(L"No operating")!=std::wstring::npos?brush_.yellow.Get():brush_.cyan.Get()}
         };
 
-        float rowY=mainY+58.0f;
+        float rowY=mainY+46.0f;
         for(const auto& row:rows) {
             TextLine(row.label,x+20,rowY,92,24,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(row.value,x+120,rowY-2,leftW-140,28,smallFmt_.Get(),row.valueBrush);
@@ -2419,15 +2420,18 @@ private:
                 D2D1::Point2F(x+20,rowY+30),
                 D2D1::Point2F(x+leftW-20,rowY+30),
                 brush_.border.Get(),0.8f);
-            rowY+=39.0f;
+            rowY+=30.0f;
         }
 
-        AddButton(L"dashboard_simulation",L"Open Simulation Chat",x+20,mainY+242,164,30,true);
-        AddButton(L"dashboard_subjects",L"Subjects & Identity",x+194,mainY+242,154,30,false);
-        AddButton(L"dashboard_channels",L"Channels & Messaging",x+358,mainY+242,168,30,false);
+        const float contextActionGap=8.0f;
+        const float contextActionW=(leftW-40.0f-contextActionGap*2.0f)/3.0f;
+        const float contextActionY=mainY+198.0f;
+        AddButton(L"dashboard_simulation",L"Simulation Chat",x+20,contextActionY,contextActionW,28,true);
+        AddButton(L"dashboard_subjects",L"Subjects",x+20+contextActionW+contextActionGap,contextActionY,contextActionW,28,false);
+        AddButton(L"dashboard_channels",L"Messaging",x+20+(contextActionW+contextActionGap)*2.0f,contextActionY,contextActionW,28,false);
 
         // Readiness/status board.
-        Rounded(rightX,mainY,rightW,282,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(rightX,mainY,rightW,mainH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Operational Readiness",rightX+18,mainY+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         const bool auditOk=runtime_->audit.VerifyChain();
@@ -2450,7 +2454,7 @@ private:
             {L"Agency sync",agencyOn,L"Enabled",L"Local-only mode"}
         };
 
-        float readyY=mainY+58.0f;
+        float readyY=mainY+46.0f;
         for(const auto& item:ready) {
             StatusDot(
                 rightX+26,readyY+11,4,
@@ -2461,22 +2465,23 @@ private:
                 rightX+rightW*0.52f,readyY,rightW*0.42f,24,tinyFmt_.Get(),
                 item.ok?brush_.green.Get():brush_.yellow.Get(),
                 DWRITE_TEXT_ALIGNMENT_TRAILING);
-            readyY+=39.0f;
+            readyY+=30.0f;
         }
 
         Rounded(
-            rightX+18,mainY+232,rightW-36,34,
+            rightX+18,mainY+196,rightW-36,30,
             brush_.sidebar.Get(),brush_.border.Get(),7);
         TextLine(
             pendingApprovals
                 ? std::to_wstring(pendingApprovals)+L" action(s) waiting for human approval"
                 : L"No pending supervisor approvals",
-            rightX+30,mainY+235,rightW-60,28,tinyFmt_.Get(),
+            rightX+30,mainY+198,rightW-60,24,tinyFmt_.Get(),
             pendingApprovals?brush_.yellow.Get():brush_.green.Get());
 
         // Recent auditable activity.
-        const float bottomY=mainY+296.0f;
-        Rounded(x,bottomY,leftW,196,brush_.panel.Get(),brush_.border.Get(),10);
+        const float bottomY=mainY+mainH+12.0f;
+        const float bottomH=std::clamp(h-bottomY-18.0f,150.0f,180.0f);
+        Rounded(x,bottomY,leftW,bottomH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Recent Auditable Activity",x+18,bottomY+12,leftW-36,28,h1Fmt_.Get(),brush_.text.Get());
 
         std::vector<std::wstring> activity;
@@ -2500,35 +2505,35 @@ private:
         if(activity.empty())
             activity.push_back(L"Secure local investigator workspace initialized");
 
-        float activityY=bottomY+52.0f;
-        for(size_t i=0;i<activity.size() && i<4;i++) {
+        float activityY=bottomY+46.0f;
+        for(size_t i=0;i<activity.size() && i<3;i++) {
             DrawIcon(
                 i==0?IconKind::Document:IconKind::Check,
                 x+20,activityY+1,18,
                 i==0?brush_.cyan.Get():brush_.green.Get());
             TextLine(activity[i],x+48,activityY,leftW-68,22,smallFmt_.Get(),brush_.text.Get());
-            activityY+=34.0f;
+            activityY+=32.0f;
         }
 
         // Operational quick actions.
-        Rounded(rightX,bottomY,rightW,196,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(rightX,bottomY,rightW,bottomH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Operational Quick Actions",rightX+18,bottomY+12,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
 
-        const float actionGap=10.0f;
-        const float actionW=(rightW-46.0f-actionGap)/2.0f;
-        const float actionH=36.0f;
+        const float actionGap=8.0f;
+        const float actionW=(rightW-44.0f-actionGap)/2.0f;
+        const float actionH=30.0f;
         const float ax=rightX+18.0f;
         const float bx=ax+actionW+actionGap;
-        const float ay=bottomY+54.0f;
+        const float ay=bottomY+46.0f;
 
         AddButton(L"dashboard_cases",L"Cases",ax,ay,actionW,actionH,true);
         AddButton(L"dashboard_subjects",L"Subjects",bx,ay,actionW,actionH,false);
 
-        AddButton(L"dashboard_simulation",L"Simulation Chat",ax,ay+46,actionW,actionH,false);
-        AddButton(L"dashboard_channels",L"Messaging",bx,ay+46,actionW,actionH,false);
+        AddButton(L"dashboard_simulation",L"Simulation Chat",ax,ay+38,actionW,actionH,false);
+        AddButton(L"dashboard_channels",L"Messaging",bx,ay+38,actionW,actionH,false);
 
-        AddButton(L"dashboard_evidence",L"Evidence",ax,ay+92,actionW,actionH,false);
-        AddButton(L"dashboard_supervisor",L"Approvals",bx,ay+92,actionW,actionH,false);
+        AddButton(L"dashboard_evidence",L"Evidence",ax,ay+76,actionW,actionH,false);
+        AddButton(L"dashboard_supervisor",L"Approvals",bx,ay+76,actionW,actionH,false);
     }
 
     void DrawCases(float w,float h) {
