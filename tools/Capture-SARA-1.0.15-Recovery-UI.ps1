@@ -42,6 +42,9 @@ public static class SaraRecoveryUiNative {
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
     [DllImport("user32.dll")]
+    public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+
+    [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
@@ -281,41 +284,96 @@ try {
     Start-Sleep -Milliseconds 500
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "02-dashboard.png")
 
-    # 1.0.15 sidebar: kHeader=78, first row starts at 94, row height=44.
-    # Simulation index 5, Persona index 6, Model Lab index 7, Trainer index 8.
-    Click-SaraClient -Window $main -X 100 -Y 328
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "03-simulation.png")
+    # Permanent SARA product navigation.
+    # kHeader=78; first main row starts at y=94; row height=44.
+    $mainNavY = @(
+        109, # Dashboard
+        153, # Cases
+        197, # Subjects & Identity
+        241, # Simulation Chat
+        285, # Personas
+        329, # Channels & Messaging
+        373, # Supervisor & Approvals
+        417, # Evidence
+        461, # Audit & Compliance
+        505, # Model Lab
+        549, # Agency Server
+        593  # Settings
+    )
 
-    Click-SaraClient -Window $main -X 100 -Y 372
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04-persona-policy.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[1]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "03-cases.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 416
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "05-model-lab.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[2]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04-subjects-identity.png")
 
-    # Once Model Lab is active, its dedicated sidebar begins at y=138.
-    # Train is the second Model Lab row, centered near y=186.
-    Click-SaraClient -Window $main -X 100 -Y 186
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-trainer.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[3]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "05-simulation-chat.png")
 
-    # Datasets is the third Model Lab row, centered near y=242.
-    Click-SaraClient -Window $main -X 100 -Y 242
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-datasets.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[4]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-personas.png")
 
-    # Personas & LoRAs is the fourth Model Lab row, centered near y=286.
-    Click-SaraClient -Window $main -X 100 -Y 286
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-personas-loras.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[5]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-channels-messaging.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 330
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "09-foundation-forks.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[6]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-supervisor-approvals.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 374
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "10-jobs.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[7]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "09-evidence.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 418
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "11-evaluation.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[8]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "10-audit-compliance.png")
 
-    Click-SaraClient -Window $main -X 100 -Y 462
-    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "12-deployment.png")
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[9]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "11-model-lab-overview.png")
+
+    # Model Lab is a contained workspace. Its internal tabs are across the top,
+    # while the permanent SARA sidebar remains visible.
+    [SaraRecoveryUiNative+RECT]$client = New-Object SaraRecoveryUiNative+RECT
+    if (-not [SaraRecoveryUiNative]::GetClientRect($main, [ref]$client)) {
+        throw "GetClientRect failed while calculating Model Lab tab positions"
+    }
+    $clientWidth = $client.Right - $client.Left
+    $tabBaseX = 248.0
+    $tabGap = 6.0
+    $contentWidth = $clientWidth - $tabBaseX - 28.0
+    $tabWidth = ($contentWidth - ($tabGap * 7.0)) / 8.0
+    $tabY = 190
+
+    function Click-ModelLabTab {
+        param([int]$Index)
+        $x = [int]($tabBaseX + ($Index * ($tabWidth + $tabGap)) + ($tabWidth / 2.0))
+        Click-SaraClient -Window $main -X $x -Y $tabY
+    }
+
+    Click-ModelLabTab -Index 1
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "12-model-lab-train.png")
+
+    Click-ModelLabTab -Index 2
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "13-model-lab-datasets.png")
+
+    Click-ModelLabTab -Index 3
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "14-model-lab-personas-loras.png")
+
+    Click-ModelLabTab -Index 4
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "15-model-lab-foundations.png")
+
+    Click-ModelLabTab -Index 5
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "16-model-lab-jobs.png")
+
+    Click-ModelLabTab -Index 6
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "17-model-lab-evaluation.png")
+
+    Click-ModelLabTab -Index 7
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "18-model-lab-deployment.png")
+
+    # Return to the permanent shell and prove the remaining operational pages.
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[10]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "19-agency-server.png")
+
+    Click-SaraClient -Window $main -X 100 -Y $mainNavY[11]
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "20-settings.png")
 
     @"
 SARA 1.0.15 RECOVERY UI CAPTURE
@@ -324,6 +382,11 @@ PID: $($proc.Id)
 Captured: $([DateTime]::UtcNow.ToString("o"))
 The screenshots came from the compiled packaged SARA.exe.
 The main-window capture is also a startup-hang regression test.
+The capture sequence verifies the permanent investigative SARA shell:
+Dashboard, Cases, Subjects & Identity, Simulation Chat, Personas,
+Channels & Messaging, Supervisor & Approvals, Evidence,
+Audit & Compliance, Model Lab, Agency Server, and Settings.
+Model Lab subpages are captured through internal top tabs while the SARA sidebar remains global.
 "@ | Set-Content -Encoding utf8 (Join-Path $OutputDir "README.txt")
 }
 finally {
