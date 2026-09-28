@@ -14,6 +14,7 @@
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
+#include "Sentinel/Simulation/TrainingData.hpp"
 
 #include <array>
 #include <cassert>
@@ -441,6 +442,57 @@ void TestDeploymentRegistryLifecycle()
 }
 
 
+
+void TestVersionedDatasetSnapshots()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::simulation::TrainingDataRegistry data;
+    auto& example=data.Capture(
+        "Samantha","foundation-1","adapter-1","conversation-1",
+        "hello","hey","make it shorter","hey","Behavior");
+    example.reviewer="unit-test";
+    data.SetState(0,sentinel::simulation::TrainingExampleState::Approved);
+
+    auto& first=data.CreateSnapshot("dataset-1");
+    Require(first.exampleIds.size()==1,"dataset snapshot did not include approved example");
+    Require(first.parentId.empty(),"first dataset snapshot should have no parent");
+
+    auto& second=data.CreateSnapshot("dataset-2");
+    Require(second.parentId==first.id,"dataset snapshot lineage did not link prior snapshot");
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-dataset-versioning-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto registryPath=root/"training-data.tsv";
+    const auto exchangePath=root/"dataset.sara-dataset";
+
+    data.Save(registryPath);
+    data.ExportSnapshot(1,exchangePath);
+    Require(std::filesystem::exists(exchangePath),"dataset snapshot export file missing");
+
+    sentinel::simulation::TrainingDataRegistry loaded;
+    loaded.Load(registryPath);
+    Require(loaded.Examples().size()==1,"dataset registry example persistence mismatch");
+    Require(loaded.Snapshots().size()==2,"dataset registry snapshot persistence mismatch");
+    Require(loaded.Snapshots()[1].parentId==loaded.Snapshots()[0].id,
+        "dataset snapshot parent persistence mismatch");
+
+    sentinel::simulation::TrainingDataRegistry imported;
+    imported.ImportSnapshot(exchangePath);
+    imported.ImportSnapshot(exchangePath);
+    Require(imported.Snapshots().size()==2,"repeated snapshot import count mismatch");
+    Require(imported.Examples().size()==2,"repeated snapshot import example count mismatch");
+    Require(imported.Snapshots()[0].id!=imported.Snapshots()[1].id,
+        "repeated snapshot import did not de-duplicate snapshot ID");
+    Require(imported.Examples()[0].id!=imported.Examples()[1].id,
+        "repeated snapshot import did not de-duplicate example ID");
+
+    std::filesystem::remove_all(root);
+}
+
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -691,6 +743,9 @@ int main()
         std::cout << "[core] deployment registry lifecycle..." << std::endl;
         TestDeploymentRegistryLifecycle();
         std::cout << "[core] deployment registry lifecycle PASS" << std::endl;
+        std::cout << "[core] versioned dataset snapshots..." << std::endl;
+        TestVersionedDatasetSnapshots();
+        std::cout << "[core] versioned dataset snapshots PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
