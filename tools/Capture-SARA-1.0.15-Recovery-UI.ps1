@@ -297,6 +297,10 @@ try {
     Click-SaraClient -Window $main -X 100 -Y 186
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06-trainer.png")
 
+    # Datasets is the third Model Lab row, centered near y=242.
+    Click-SaraClient -Window $main -X 100 -Y 242
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-datasets.png")
+
     @"
 SARA 1.0.15 RECOVERY UI CAPTURE
 Executable: $AppPath
