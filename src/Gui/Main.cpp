@@ -2644,8 +2644,11 @@ private:
             operatingStateCode_.empty()?brush_.yellow.Get():brush_.cyan.Get(),
             IconKind::Shield);
 
-        float ty=y+126;
-        Rounded(x,ty,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
+        const float ty=y+126.0f;
+        const float integrityH=104.0f;
+        const float bottomMargin=24.0f;
+        const float tableH=std::max(220.0f,h-ty-integrityH-bottomMargin-12.0f);
+        Rounded(x,ty,w-x-28,tableH,brush_.panel.Get(),brush_.border.Get(),8);
         Text(L"Timestamp",x+18,ty+12,180,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Action",x+230,ty+12,220,20,smallFmt_.Get(),brush_.muted.Get());
         Text(L"Target",x+520,ty+12,240,20,smallFmt_.Get(),brush_.muted.Get());
@@ -2655,7 +2658,8 @@ private:
         if (sqlite3_prepare_v2(runtime_->db.Handle(),"SELECT timestamp,action,target_type,target_id FROM audit_records ORDER BY sequence DESC LIMIT 8",-1,&s,nullptr)==SQLITE_OK) {
             int row=0;
             while (sqlite3_step(s)==SQLITE_ROW) {
-                float yy=ty+42+row*42;
+                const float yy=ty+42+row*42.0f;
+                if(yy+24.0f>ty+tableH-10.0f) break;
                 const char* ts=(const char*)sqlite3_column_text(s,0);
                 int action=sqlite3_column_int(s,1);
                 const char* type=(const char*)sqlite3_column_text(s,2);
@@ -2669,12 +2673,14 @@ private:
         }
         sqlite3_finalize(s);
 
-        float by=ty+408;
-        Rounded(x,by,w-x-28,120,brush_.panel.Get(),brush_.border.Get(),8);
-        Text(L"Audit Chain Integrity",x+18,by+14,260,28,h1Fmt_.Get(),brush_.text.Get());
-        Text(runtime_->audit.VerifyChain()?L"Chain verified - no tampering detected":L"WARNING  Audit chain validation failed",x+20,by+55,w-x-250,32,bodyFmt_.Get(),runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
-        AddButton(L"verification_center",L"Verification Center",w-398,by+38,164,42,false);
-        AddButton(L"integrity",L"Verify Audit Chain",w-220,by+38,165,42,true);
+        const float by=ty+tableH+12.0f;
+        Rounded(x,by,w-x-28,integrityH,brush_.panel.Get(),brush_.border.Get(),8);
+        Text(L"Audit Chain Integrity",x+18,by+12,260,26,h1Fmt_.Get(),brush_.text.Get());
+        Text(runtime_->audit.VerifyChain()?L"Chain verified - no tampering detected":L"WARNING  Audit chain validation failed",
+            x+20,by+48,w-x-450,28,bodyFmt_.Get(),
+            runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get());
+        AddButton(L"verification_center",L"Verification Center",w-398,by+34,164,38,false);
+        AddButton(L"integrity",L"Verify Audit Chain",w-220,by+34,165,38,true);
     }
 
     void DrawVerification(float w,float h) {
@@ -3194,7 +3200,7 @@ private:
             const float leftW=(contentW-gap)*0.58f;
             MoveControl(agencyEndpointEdit_,(int)(x+142),(int)(y+62),(int)(leftW-164),32);
             MoveControl(agencyIdEdit_,(int)(x+142),(int)(y+108),(int)(leftW-164),32);
-            MoveControl(operatingStateCombo_,(int)(x+142),(int)(y+304),(int)(leftW-164),220);
+            MoveControl(operatingStateCombo_,(int)(x+142),(int)(y+304),(int)(leftW-164),180);
         }
     }
 
@@ -8111,47 +8117,49 @@ private:
         const float rightW=contentW-gap-leftW;
         const float rx=x+leftW+gap;
 
-        Rounded(x,y,leftW,278,brush_.panel.Get(),brush_.border.Get(),10);
+        const float topH=244.0f;
+        Rounded(x,y,leftW,topH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Agency Connection",x+18,y+12,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
 
         TextLine(L"Server endpoint",x+20,y+62,116,30,tinyFmt_.Get(),brush_.muted.Get());
-
         TextLine(L"Agency ID",x+20,y+108,116,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+20,y+162,150,38,true);
-        StatusDot(x+194,y+181,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
+        AddButton(L"agency_toggle",agencyConfig_.enabled?L"Disable Sync":L"Enable Sync",x+20,y+154,150,36,true);
+        StatusDot(x+194,y+172,4,agencyConfig_.enabled?brush_.green.Get():brush_.yellow.Get());
         TextLine(agencyConfig_.enabled?L"Configuration enabled":L"Offline / local-only",
-            x+206,y+163,leftW-226,36,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
+            x+206,y+155,leftW-226,34,smallFmt_.Get(),agencyConfig_.enabled?brush_.green.Get():brush_.muted.Get());
 
-        Text(L"Transport remains inactive until an agency endpoint and authentication contract are actually implemented.",
-            x+20,y+218,leftW-40,42,tinyFmt_.Get(),brush_.muted.Get());
+        Text(L"Transport remains inactive until an agency endpoint and authentication contract are implemented.",
+            x+20,y+202,leftW-40,30,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(rx,y,rightW,278,brush_.panel.Get(),brush_.border.Get(),10);
+        Rounded(rx,y,rightW,topH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Sync Queue",rx+18,y+12,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-
         TextLine(L"Pending work items",rx+20,y+64,132,24,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(std::to_wstring(agencyQueue_.PendingCount()),rx+158,y+56,90,38,bigFmt_.Get(),brush_.cyan.Get());
+        AddButton(L"agency_enqueue",L"Queue Audit Snapshot",rx+20,y+112,190,36,false);
 
-        AddButton(L"agency_enqueue",L"Queue Audit Snapshot",rx+20,y+116,190,38,false);
-
-        Rounded(rx+20,y+172,rightW-40,72,brush_.sidebar.Get(),brush_.border.Get(),8);
-        TextLine(L"Offline-first",rx+34,y+182,rightW-68,22,bodyFmt_.Get(),brush_.green.Get());
+        Rounded(rx+20,y+160,rightW-40,64,brush_.sidebar.Get(),brush_.border.Get(),8);
+        TextLine(L"Offline-first",rx+34,y+168,rightW-68,22,bodyFmt_.Get(),brush_.green.Get());
         Text(L"Case and evidence access stays available even when no agency server is configured.",
-            rx+34,y+207,rightW-68,30,tinyFmt_.Get(),brush_.muted.Get());
+            rx+34,y+193,rightW-68,26,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x,y+294,leftW,148,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Operating Jurisdiction",x+18,y+306,leftW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"State",x+20,y+348,100,28,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"jurisdiction_apply",L"Apply Rules Profile",x+20,y+390,156,34,true);
-        TextLine(jurisdictionStatus_,x+188,y+386,leftW-208,42,tinyFmt_.Get(),brush_.cyan.Get());
+        const float jurisdictionY=y+258.0f;
+        const float jurisdictionH=132.0f;
+        Rounded(x,jurisdictionY,leftW,jurisdictionH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Operating Jurisdiction",x+18,jurisdictionY+12,leftW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"State",x+20,jurisdictionY+50,100,24,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"jurisdiction_apply",L"Apply Rules Profile",x+20,jurisdictionY+86,156,32,true);
+        TextLine(jurisdictionStatus_,x+188,jurisdictionY+82,leftW-208,38,tinyFmt_.Get(),brush_.cyan.Get());
 
-        Rounded(rx,y+294,rightW,148,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Rules Enforcement",rx+18,y+306,rightW-36,30,h1Fmt_.Get(),brush_.text.Get());
-        Text(L"State rules sit above every provider adapter. Unreviewed, missing, or expired profiles force human review even if a channel supports automation.",
-            rx+20,y+348,rightW-40,72,tinyFmt_.Get(),brush_.muted.Get());
+        Rounded(rx,jurisdictionY,rightW,jurisdictionH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Rules Enforcement",rx+18,jurisdictionY+12,rightW-36,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(L"State rules sit above every provider adapter. Missing, expired, or unreviewed profiles force human review.",
+            rx+20,jurisdictionY+50,rightW-40,58,tinyFmt_.Get(),brush_.muted.Get());
 
-        Rounded(x,y+456,contentW,174,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Planned Server Responsibilities",x+18,y+468,320,30,h1Fmt_.Get(),brush_.text.Get());
+        const float responsibilitiesY=y+404.0f;
+        const float responsibilitiesH=std::max(132.0f,h-responsibilitiesY-24.0f);
+        Rounded(x,responsibilitiesY,contentW,responsibilitiesH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Agency Server Responsibilities",x+18,responsibilitiesY+12,340,28,h1Fmt_.Get(),brush_.text.Get());
 
         const wchar_t* items[]={
             L"Encrypted case and evidence synchronization",
@@ -8159,11 +8167,12 @@ private:
             L"Workstation registration and role administration",
             L"Multi-investigator coordination and redundant backup"
         };
-        float iy=y+516;
+        float iy=responsibilitiesY+50.0f;
         for(auto* item:items) {
+            if(iy+22.0f>responsibilitiesY+responsibilitiesH-10.0f) break;
             StatusDot(x+28,iy+10,3,brush_.cyan.Get());
             TextLine(item,x+42,iy,contentW-64,22,smallFmt_.Get(),brush_.text.Get());
-            iy+=38;
+            iy+=30.0f;
         }
     }
 
