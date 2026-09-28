@@ -123,6 +123,18 @@ foreach ($token in $personaWorkflowTokens) {
     }
 }
 
+$evaluationGateTokens = @(
+    'EvaluationPassedApprovalGate(',
+    'EvaluationMatchesCurrentRuntime(',
+    'Run Evaluation / Test before approving this model',
+    'reevaluate before preparing deployment'
+)
+foreach ($token in $evaluationGateTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected evaluation/deployment gate is missing: $token"
+    }
+}
+
 $foundationWorkflowTokens = @(
     'foundation_activate_selected',
     'foundation_rollback',

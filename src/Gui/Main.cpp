@@ -6899,11 +6899,66 @@ private:
         statusText_=L"Evaluation comparison exported";
     }
 
+    std::pair<std::string,std::string> CurrentEvaluationRuntimeIds() const {
+        std::string foundationId;
+        std::string adapterId;
+
+        auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
+        if(binding) {
+            foundationId=binding->foundationId;
+            adapterId=std::to_string(binding->id);
+            return {foundationId,adapterId};
+        }
+
+        const auto foundations=runtime_->trainer.ListFoundations();
+        auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& foundation){
+            return foundation.status=="ACTIVE";
+        });
+        if(active!=foundations.end()) foundationId=active->id;
+        return {foundationId,adapterId};
+    }
+
+    bool EvaluationMatchesCurrentRuntime(
+        const sentinel::simulation::EvaluationRun& run) const
+    {
+        const auto [foundationId,adapterId]=CurrentEvaluationRuntimeIds();
+        return run.foundationId==foundationId && run.adapterId==adapterId;
+    }
+
     void ApproveSelectedRegistryModel() {
-        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) return;
+        if(selectedRegistryModel_<0 || selectedRegistryModel_>=(int)modelRegistry_.Models().size()) {
+            statusText_=L"Select a registered model first";
+            return;
+        }
+
+        auto& item=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
+        const int evalIndex=evaluationRuns_.LatestIndexForCandidate(item.id);
+        if(evalIndex<0) {
+            statusText_=L"Run Evaluation / Test before approving this model";
+            return;
+        }
+
+        const auto& run=evaluationRuns_.Runs()[(size_t)evalIndex];
+        if(!sentinel::simulation::EvaluationPassedApprovalGate(run)) {
+            statusText_=L"Latest evaluation did not pass every required dimension";
+            return;
+        }
+
+        if(!EvaluationMatchesCurrentRuntime(run)) {
+            statusText_=L"Foundation or LoRA changed since evaluation; run Evaluation / Test again";
+            return;
+        }
+
         modelRegistry_.Approve((size_t)selectedRegistryModel_);
+        if(item.stage!=sentinel::simulation::ModelStage::Approved &&
+           item.stage!=sentinel::simulation::ModelStage::Active)
+        {
+            statusText_=L"Candidate model could not be approved from its current state";
+            return;
+        }
+
         modelRegistry_.Save(runtime_->root/"model-registry.tsv");
-        statusText_=L"Candidate model approved";
+        statusText_=L"Candidate approved from passing evaluation "+Widen(run.id);
     }
 
     void ActivateSelectedRegistryModel() {
@@ -6969,6 +7024,16 @@ private:
             return;
         }
         const auto& eval=evaluationRuns_.Runs()[(size_t)evalIndex];
+
+        if(!sentinel::simulation::EvaluationPassedApprovalGate(eval)) {
+            statusText_=L"Latest evaluation does not pass the deployment approval gate";
+            return;
+        }
+
+        if(!EvaluationMatchesCurrentRuntime(eval)) {
+            statusText_=L"Runtime stack changed since evaluation; reevaluate before preparing deployment";
+            return;
+        }
 
         if(!eval.foundationId.empty()) {
             auto foundation=runtime_->trainer.GetFoundation(eval.foundationId);
