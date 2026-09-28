@@ -334,6 +334,39 @@ void TestTrainerFoundationAndJobs()
     Require(jobs.front().mode==sentinel::simulation::TrainingMode::FoundationSft,
         "trainer job mode mismatch");
 
+    Require(trainer.CancelQueuedJob(job.id),
+        "queued trainer job could not be cancelled");
+    auto cancelledJob=trainer.GetJob(job.id);
+    Require(cancelledJob.has_value() && cancelledJob->state=="CANCELLED",
+        "cancelled trainer job state mismatch");
+    Require(!cancelledJob->completedUtc.empty(),
+        "cancelled trainer job completion timestamp missing");
+    Require(!trainer.CancelQueuedJob(job.id),
+        "cancelled trainer job should not cancel twice");
+
+    Require(trainer.RetryJob(job.id),
+        "cancelled trainer job could not be retried");
+    auto retriedJob=trainer.GetJob(job.id);
+    Require(retriedJob.has_value() && retriedJob->state=="QUEUED",
+        "retried trainer job did not return to queue");
+    Require(retriedJob->progress==0 && retriedJob->startedUtc.empty() &&
+            retriedJob->completedUtc.empty() && retriedJob->errorText.empty(),
+        "retried trainer job did not reset worker state");
+
+    db.Execute(
+        "UPDATE trainer_jobs SET state='FAILED',progress=64,"
+        "started_utc=CURRENT_TIMESTAMP,completed_utc=CURRENT_TIMESTAMP,"
+        "error_text='unit failure' WHERE id='"+job.id+"';");
+    Require(trainer.RetryJob(job.id),
+        "failed trainer job could not be retried");
+    auto failedRetry=trainer.GetJob(job.id);
+    Require(failedRetry.has_value() && failedRetry->state=="QUEUED" &&
+            failedRetry->progress==0 && failedRetry->errorText.empty() &&
+            failedRetry->startedUtc.empty() && failedRetry->completedUtc.empty(),
+        "failed trainer job retry did not reset state");
+    Require(!trainer.RetryJob(job.id),
+        "queued trainer job should not be retryable");
+
     const auto dialogue=trainer.EnsureDialogueSession(
         "Samantha",sentinel::simulation::TrainingMode::Behavior);
     Require(!dialogue.id.empty(),"trainer dialogue session id missing");

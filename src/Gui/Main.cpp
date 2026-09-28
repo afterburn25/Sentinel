@@ -1586,6 +1586,8 @@ public:
                 statusText_=L"Training job selected";
             }
             else if (b.id==L"job_run_selected") RunSelectedTrainerJob();
+            else if (b.id==L"job_cancel_selected") CancelSelectedTrainerJob();
+            else if (b.id==L"job_retry_selected") RetrySelectedTrainerJob();
             else if (b.id==L"job_open_trainer") {
                 page_=Page::Trainer;
                 ApplyPageControls();
@@ -1883,6 +1885,7 @@ public:
     }
 
 private:
+    struct PersonaResponseRuleView;
     struct Button { RectF rect; std::wstring id; };
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
@@ -4660,6 +4663,13 @@ private:
             statusText_=L"Only queued training jobs can be launched";
             return;
         }
+        if((it->mode==sentinel::simulation::TrainingMode::PersonaLora ||
+            it->mode==sentinel::simulation::TrainingMode::FoundationSft) &&
+           !TrainerEnvironmentReady())
+        {
+            statusText_=L"Trainer environment is not ready; use Prepare Env before running this weight-training job";
+            return;
+        }
 
         const auto script=ExeDir()/L"trainer"/L"Run-SARA-Training.ps1";
         if(!std::filesystem::exists(script)) {
@@ -4684,6 +4694,31 @@ private:
 
         statusText_=L"Trainer worker launched for "+Widen(it->id);
     }
+
+    void CancelSelectedTrainerJob() {
+        if(selectedModelLabJobId_.empty()) {
+            statusText_=L"Select a queued training job first";
+            return;
+        }
+        if(runtime_->trainer.CancelQueuedJob(selectedModelLabJobId_)) {
+            statusText_=L"Queued training job cancelled before worker launch";
+        } else {
+            statusText_=L"Only queued jobs can be cancelled from SARA";
+        }
+    }
+
+    void RetrySelectedTrainerJob() {
+        if(selectedModelLabJobId_.empty()) {
+            statusText_=L"Select a failed or cancelled training job first";
+            return;
+        }
+        if(runtime_->trainer.RetryJob(selectedModelLabJobId_)) {
+            statusText_=L"Training job reset and returned to the queue";
+        } else {
+            statusText_=L"Only failed or cancelled jobs can be retried";
+        }
+    }
+
 
     void ApplyBehaviorProfileToEditors(const std::string& result) {
         auto apply=[&](HWND combo,const std::string& key){
@@ -9025,12 +9060,13 @@ private:
             if(!selectedExists) selectedModelLabJobId_=jobs.front().id;
         } else selectedModelLabJobId_.clear();
 
-        size_t queued=0,running=0,completed=0,failed=0;
+        size_t queued=0,running=0,completed=0,failed=0,cancelled=0;
         for(const auto& job:jobs) {
             if(job.state=="QUEUED") ++queued;
             else if(job.state=="RUNNING") ++running;
             else if(job.state=="COMPLETED") ++completed;
             else if(job.state=="FAILED") ++failed;
+            else if(job.state=="CANCELLED") ++cancelled;
         }
 
         const float summaryY=y+48.0f;
@@ -9040,7 +9076,7 @@ private:
             {L"Queued",queued,L"Waiting to run",brush_.yellow.Get()},
             {L"Running",running,L"Worker active",brush_.cyan.Get()},
             {L"Completed",completed,L"Finished jobs",brush_.green.Get()},
-            {L"Failed",failed,L"Needs attention",brush_.red.Get()}
+            {L"Failed / Cancelled",failed+cancelled,L"Retryable history",brush_.red.Get()}
         };
         for(int i=0;i<4;i++) {
             const float cx=x+i*(cardW+gap);
@@ -9078,6 +9114,7 @@ private:
                 ID2D1Brush* stateBrush=
                     job.state=="COMPLETED"?brush_.green.Get():
                     job.state=="FAILED"?brush_.red.Get():
+                    job.state=="CANCELLED"?brush_.muted.Get():
                     job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get();
 
                 Rounded(x+14,rowY,listW-28,48,
@@ -9162,8 +9199,17 @@ private:
             }
 
             const float actionY=bodyY+bodyH-42.0f;
-            AddButton(L"job_run_selected",L"Run Selected",detailX+16,actionY,110,30,job.state=="QUEUED");
-            AddButton(L"job_open_trainer",L"Open Trainer",detailX+134,actionY,104,30,false);
+            float jobActionX=detailX+16.0f;
+            if(job.state=="QUEUED") {
+                AddButton(L"job_run_selected",L"Run",jobActionX,actionY,62,30,true);
+                jobActionX+=70.0f;
+                AddButton(L"job_cancel_selected",L"Cancel",jobActionX,actionY,66,30,false);
+                jobActionX+=74.0f;
+            } else if(job.state=="FAILED" || job.state=="CANCELLED") {
+                AddButton(L"job_retry_selected",L"Retry",jobActionX,actionY,66,30,true);
+                jobActionX+=74.0f;
+            }
+            AddButton(L"job_open_trainer",L"Trainer",jobActionX,actionY,72,30,false);
         }
     }
 

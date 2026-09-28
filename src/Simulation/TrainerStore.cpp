@@ -478,6 +478,64 @@ TrainerJobRecord TrainerStore::QueueJob(TrainingMode mode,std::string_view targe
     Check(sqlite3_step(s),db,"insert trainer job"); sqlite3_finalize(s); return out;
 }
 
+std::optional<TrainerJobRecord> TrainerStore::GetJob(std::string_view id) const {
+    if(id.empty()) return std::nullopt;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "SELECT id,training_mode,target_name,persona_name,foundation_id,dataset_path,base_model_path,output_path,"
+        "state,progress,created_utc,COALESCE(started_utc,''),COALESCE(completed_utc,''),error_text "
+        "FROM trainer_jobs WHERE id=? LIMIT 1",
+        -1,&s,nullptr),db,"prepare trainer job get");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+
+    std::optional<TrainerJobRecord> out;
+    if(sqlite3_step(s)==SQLITE_ROW) {
+        TrainerJobRecord j;
+        j.id=Col(s,0); j.mode=TrainingModeFromString(Col(s,1)); j.targetName=Col(s,2);
+        j.personaName=Col(s,3); j.foundationId=Col(s,4); j.datasetPath=Col(s,5);
+        j.baseModelPath=Col(s,6); j.outputPath=Col(s,7); j.state=Col(s,8);
+        j.progress=sqlite3_column_int(s,9); j.createdUtc=Col(s,10);
+        j.startedUtc=Col(s,11); j.completedUtc=Col(s,12); j.errorText=Col(s,13);
+        out=std::move(j);
+    }
+    sqlite3_finalize(s);
+    return out;
+}
+
+bool TrainerStore::CancelQueuedJob(std::string_view id) {
+    if(id.empty()) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_jobs "
+        "SET state='CANCELLED',completed_utc=CURRENT_TIMESTAMP,"
+        "error_text='Cancelled before worker launch' "
+        "WHERE id=? AND state='QUEUED'",
+        -1,&s,nullptr),db,"prepare trainer job cancel");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"cancel queued trainer job");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
+bool TrainerStore::RetryJob(std::string_view id) {
+    if(id.empty()) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE trainer_jobs "
+        "SET state='QUEUED',progress=0,started_utc=NULL,completed_utc=NULL,error_text='' "
+        "WHERE id=? AND state IN ('FAILED','CANCELLED')",
+        -1,&s,nullptr),db,"prepare trainer job retry");
+    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"retry trainer job");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
 std::vector<TrainerJobRecord> TrainerStore::ListJobs(size_t limit) const {
     std::vector<TrainerJobRecord> out; auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,

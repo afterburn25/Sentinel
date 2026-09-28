@@ -183,6 +183,19 @@ foreach ($token in $trainerWorkflowTokens) {
     }
 }
 
+$jobWorkflowTokens = @(
+    'job_cancel_selected',
+    'job_retry_selected',
+    'CancelQueuedJob(',
+    'RetryJob(',
+    'Only queued jobs can be cancelled from SARA'
+)
+foreach ($token in $jobWorkflowTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Trainer Jobs recovery workflow is missing: $token"
+    }
+}
+
 $labTabs = @(
     'L"Overview"', 'L"Train"', 'L"Datasets"', 'L"Personas & LoRAs"',
     'L"Foundation Forks"', 'L"Jobs"', 'L"Evaluation"', 'L"Deployment"'
