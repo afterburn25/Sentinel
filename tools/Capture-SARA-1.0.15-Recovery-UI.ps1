@@ -301,6 +301,10 @@ try {
     Click-SaraClient -Window $main -X 100 -Y 242
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-datasets.png")
 
+    # Personas & LoRAs is the fourth Model Lab row, centered near y=286.
+    Click-SaraClient -Window $main -X 100 -Y 286
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "08-personas-loras.png")
+
     @"
 SARA 1.0.15 RECOVERY UI CAPTURE
 Executable: $AppPath
