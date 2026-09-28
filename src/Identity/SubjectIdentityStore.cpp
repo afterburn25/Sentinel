@@ -99,13 +99,13 @@ void SubjectIdentityStore::SaveSubject(const SubjectRecord& subject) {
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     const char* sql=
-        "INSERT INTO investigation_subjects("
-        "id,case_id,display_name,legal_name,aliases,usernames,contact_identifiers,notes,identity_status"
+        "INSERT INTO subjects("
+        "id,case_id,display_name,legal_name,aliases,usernames,contact_identifiers,notes,status"
         ") VALUES(?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "case_id=excluded.case_id,display_name=excluded.display_name,legal_name=excluded.legal_name,"
         "aliases=excluded.aliases,usernames=excluded.usernames,contact_identifiers=excluded.contact_identifiers,"
-        "notes=excluded.notes,identity_status=excluded.identity_status,updated_utc=CURRENT_TIMESTAMP";
+        "notes=excluded.notes,status=excluded.status,updated_utc=CURRENT_TIMESTAMP";
 
     CheckPrepare(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare subject save");
     Bind(s,1,subject.id.ToString());
@@ -131,8 +131,8 @@ std::optional<SubjectRecord> SubjectIdentityStore::GetSubject(const SubjectId& i
     sqlite3_stmt* s{};
     const char* sql=
         "SELECT id,case_id,display_name,legal_name,aliases,usernames,contact_identifiers,notes,"
-        "identity_status,created_utc,updated_utc "
-        "FROM investigation_subjects WHERE id=? LIMIT 1";
+        "status,created_utc,updated_utc "
+        "FROM subjects WHERE id=? LIMIT 1";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return std::nullopt;
     Bind(s,1,id.ToString());
     std::optional<SubjectRecord> out;
@@ -147,8 +147,8 @@ std::vector<SubjectRecord> SubjectIdentityStore::ListForCase(const CaseId& caseI
     sqlite3_stmt* s{};
     const char* sql=
         "SELECT id,case_id,display_name,legal_name,aliases,usernames,contact_identifiers,notes,"
-        "identity_status,created_utc,updated_utc "
-        "FROM investigation_subjects WHERE case_id=? "
+        "status,created_utc,updated_utc "
+        "FROM subjects WHERE case_id=? "
         "ORDER BY updated_utc DESC,display_name COLLATE NOCASE LIMIT ?";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return out;
     Bind(s,1,caseId.ToString());
@@ -160,12 +160,25 @@ std::vector<SubjectRecord> SubjectIdentityStore::ListForCase(const CaseId& caseI
 
 bool SubjectIdentityStore::DeleteSubject(const SubjectId& id) {
     auto* db=db_.Handle();
-    sqlite3_stmt* s{};
-    if(sqlite3_prepare_v2(db,"DELETE FROM investigation_subjects WHERE id=?",-1,&s,nullptr)!=SQLITE_OK)
+    SqliteTransaction tx(db_);
+
+    sqlite3_stmt* identities{};
+    if(sqlite3_prepare_v2(db,"DELETE FROM subject_identities WHERE subject_id=?",-1,&identities,nullptr)!=SQLITE_OK)
         return false;
-    Bind(s,1,id.ToString());
-    const bool ok=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
-    sqlite3_finalize(s);
+    Bind(identities,1,id.ToString());
+    if(sqlite3_step(identities)!=SQLITE_DONE) {
+        sqlite3_finalize(identities);
+        return false;
+    }
+    sqlite3_finalize(identities);
+
+    sqlite3_stmt* subject{};
+    if(sqlite3_prepare_v2(db,"DELETE FROM subjects WHERE id=?",-1,&subject,nullptr)!=SQLITE_OK)
+        return false;
+    Bind(subject,1,id.ToString());
+    const bool ok=sqlite3_step(subject)==SQLITE_DONE && sqlite3_changes(db)>0;
+    sqlite3_finalize(subject);
+    if(ok) tx.Commit();
     return ok;
 }
 
@@ -173,7 +186,7 @@ bool SubjectIdentityStore::SetSubjectStatus(const SubjectId& id,SubjectIdentityS
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     if(sqlite3_prepare_v2(db,
-        "UPDATE investigation_subjects SET identity_status=?,updated_utc=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE subjects SET status=?,updated_utc=CURRENT_TIMESTAMP WHERE id=?",
         -1,&s,nullptr)!=SQLITE_OK) return false;
     sqlite3_bind_int(s,1,(int)status);
     Bind(s,2,id.ToString());
@@ -205,18 +218,25 @@ IdentityLead SubjectIdentityStore::AddLead(
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     const char* sql=
-        "INSERT INTO subject_identity_leads("
-        "id,subject_id,source_type,source_reference,lead_value,confidence,status,provenance"
-        ") VALUES(?,?,?,?,?,?,?,?)";
+        "INSERT INTO subject_identities("
+        "id,subject_id,identity_type,provider,external_id,display_value,link_state,confidence,source_event_id,"
+        "source_reference,provenance,reviewed_by,review_notes,reviewed_utc"
+        ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
     CheckPrepare(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare identity lead insert");
     Bind(s,1,lead.id.ToString());
     Bind(s,2,subjectId.ToString());
-    Bind(s,3,lead.sourceType);
-    Bind(s,4,lead.sourceReference);
-    Bind(s,5,lead.leadValue);
-    sqlite3_bind_int(s,6,lead.confidence);
+    Bind(s,3,lead.sourceType.empty()?"investigator-lead":lead.sourceType);
+    Bind(s,4,"sara-case");
+    Bind(s,5,lead.id.ToString());
+    Bind(s,6,lead.leadValue);
     sqlite3_bind_int(s,7,(int)lead.status);
-    Bind(s,8,lead.provenance);
+    sqlite3_bind_double(s,8,(double)lead.confidence/100.0);
+    Bind(s,9,"");
+    Bind(s,10,lead.sourceReference);
+    Bind(s,11,lead.provenance);
+    Bind(s,12,lead.reviewer);
+    Bind(s,13,lead.reviewNotes);
+    Bind(s,14,lead.reviewedUtc);
     if(sqlite3_step(s)!=SQLITE_DONE) {
         const std::string error=sqlite3_errmsg(db);
         sqlite3_finalize(s);
@@ -233,9 +253,10 @@ std::optional<IdentityLead> SubjectIdentityStore::GetLead(const SubjectIdentityI
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     const char* sql=
-        "SELECT id,subject_id,source_type,source_reference,lead_value,confidence,status,provenance,"
-        "reviewer,review_notes,created_utc,reviewed_utc "
-        "FROM subject_identity_leads WHERE id=? LIMIT 1";
+        "SELECT id,subject_id,identity_type,source_reference,display_value,"
+        "CAST(ROUND(confidence*100.0) AS INTEGER),link_state,provenance,"
+        "reviewed_by,review_notes,created_utc,reviewed_utc "
+        "FROM subject_identities WHERE id=? LIMIT 1";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return std::nullopt;
     Bind(s,1,id.ToString());
     std::optional<IdentityLead> out;
@@ -249,10 +270,11 @@ std::vector<IdentityLead> SubjectIdentityStore::ListLeads(const SubjectId& subje
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     const char* sql=
-        "SELECT id,subject_id,source_type,source_reference,lead_value,confidence,status,provenance,"
-        "reviewer,review_notes,created_utc,reviewed_utc "
-        "FROM subject_identity_leads WHERE subject_id=? "
-        "ORDER BY status ASC,confidence DESC,created_utc DESC LIMIT ?";
+        "SELECT id,subject_id,identity_type,source_reference,display_value,"
+        "CAST(ROUND(confidence*100.0) AS INTEGER),link_state,provenance,"
+        "reviewed_by,review_notes,created_utc,reviewed_utc "
+        "FROM subject_identities WHERE subject_id=? "
+        "ORDER BY link_state ASC,confidence DESC,created_utc DESC LIMIT ?";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return out;
     Bind(s,1,subjectId.ToString());
     sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,500));
@@ -270,13 +292,19 @@ bool SubjectIdentityStore::ReviewLead(
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     const char* sql=
-        "UPDATE subject_identity_leads SET status=?,reviewer=?,review_notes=?,"
-        "reviewed_utc=CURRENT_TIMESTAMP WHERE id=?";
+        "UPDATE subject_identities SET link_state=?,reviewed_by=?,review_notes=?,"
+        "reviewed_utc=CURRENT_TIMESTAMP,"
+        "confirmed_by=CASE WHEN ?=1 THEN ? ELSE NULL END,"
+        "confirmed_utc=CASE WHEN ?=1 THEN CURRENT_TIMESTAMP ELSE NULL END "
+        "WHERE id=?";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return false;
     sqlite3_bind_int(s,1,(int)status);
     Bind(s,2,reviewer);
     Bind(s,3,reviewNotes);
-    Bind(s,4,id.ToString());
+    sqlite3_bind_int(s,4,(int)status);
+    Bind(s,5,reviewer);
+    sqlite3_bind_int(s,6,(int)status);
+    Bind(s,7,id.ToString());
     const bool ok=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
     sqlite3_finalize(s);
     return ok;
@@ -288,12 +316,12 @@ SubjectIdentityCounts SubjectIdentityStore::CountsForCase(const CaseId& caseId) 
     sqlite3_stmt* s{};
     const char* sql=
         "SELECT "
-        "(SELECT COUNT(*) FROM investigation_subjects WHERE case_id=?),"
-        "(SELECT COUNT(*) FROM subject_identity_leads l "
-        " JOIN investigation_subjects s2 ON s2.id=l.subject_id WHERE s2.case_id=?),"
-        "(SELECT COUNT(*) FROM subject_identity_leads l "
-        " JOIN investigation_subjects s3 ON s3.id=l.subject_id WHERE s3.case_id=? AND l.status=1),"
-        "(SELECT COUNT(*) FROM investigation_subjects WHERE case_id=? AND identity_status=2)";
+        "(SELECT COUNT(*) FROM subjects WHERE case_id=?),"
+        "(SELECT COUNT(*) FROM subject_identities l "
+        " JOIN subjects s2 ON s2.id=l.subject_id WHERE s2.case_id=?),"
+        "(SELECT COUNT(*) FROM subject_identities l "
+        " JOIN subjects s3 ON s3.id=l.subject_id WHERE s3.case_id=? AND l.link_state=1),"
+        "(SELECT COUNT(*) FROM subjects WHERE case_id=? AND status=2)";
     if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return counts;
     const std::string id=caseId.ToString();
     for(int i=1;i<=4;i++) Bind(s,i,id);
