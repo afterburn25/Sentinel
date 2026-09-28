@@ -11,6 +11,7 @@
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
 #include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/ConversationMemory.hpp"
 
 #include <array>
 #include <cassert>
@@ -196,6 +197,85 @@ void TestModelRegistryLifecycle()
     Require(registry.Models()[1].stage==sentinel::simulation::ModelStage::Retired,
         "model retirement failed");
 }
+
+
+void TestPersonaScopedConversationMemory()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-persona-memory-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"memory.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::simulation::ConversationMemoryStore memory(db);
+
+    const auto samanthaOld=memory.StartConversation(
+        "Samantha old","Samantha","Samantha, age 13, playful","Neutral");
+    memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::Investigator,
+        "My favorite gemstone is cobalt.");
+    memory.Append(samanthaOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "okay i remember cobalt");
+
+    const auto samanthaCurrent=memory.StartConversation(
+        "Samantha current","Samantha","Samantha, age 13, playful","Neutral");
+    memory.Append(samanthaCurrent,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "current samantha session");
+
+    const auto nikkiOld=memory.StartConversation(
+        "Nikki old","Nikki","Nikki, age 16, confident","Neutral");
+    memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::Investigator,
+        "My favorite gemstone is amber.");
+    memory.Append(nikkiOld,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "okay i remember amber");
+
+    const auto nikkiCurrent=memory.StartConversation(
+        "Nikki current","Nikki","Nikki, age 16, confident","Neutral");
+    memory.Append(nikkiCurrent,sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
+        "current nikki session");
+
+    const auto samanthaList=memory.ListForPersona("Samantha",20);
+    Require(samanthaList.size()==2,"Samantha archive count mismatch");
+    Require(std::all_of(samanthaList.begin(),samanthaList.end(),
+        [](const auto& item){return item.personaName=="Samantha";}),
+        "Samantha archive leaked another persona");
+
+    const auto nikkiList=memory.ListForPersona("Nikki",20);
+    Require(nikkiList.size()==2,"Nikki archive count mismatch");
+    Require(std::all_of(nikkiList.begin(),nikkiList.end(),
+        [](const auto& item){return item.personaName=="Nikki";}),
+        "Nikki archive leaked another persona");
+
+    const auto samanthaRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",samanthaCurrent,"Samantha",12);
+    Require(samanthaRecall.find("cobalt")!=std::string::npos,
+        "Samantha recall missed Samantha memory");
+    Require(samanthaRecall.find("amber")==std::string::npos,
+        "Samantha recall leaked Nikki memory");
+
+    const auto nikkiRecall=memory.RecallRelevant(
+        "What gemstone did I mention before?",nikkiCurrent,"Nikki",12);
+    Require(nikkiRecall.find("amber")!=std::string::npos,
+        "Nikki recall missed Nikki memory");
+    Require(nikkiRecall.find("cobalt")==std::string::npos,
+        "Nikki recall leaked Samantha memory");
+
+    sentinel::simulation::ModelContext loaded;
+    Require(memory.Load(samanthaOld,loaded),"failed to load Samantha conversation");
+    Require(loaded.personaSummary.find("Samantha")!=std::string::npos,
+        "loaded persona summary lost persona identity");
+    Require(loaded.personaSummary.find("playful")!=std::string::npos,
+        "loaded persona summary lost persona details");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
 
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
@@ -438,6 +518,9 @@ int main()
         std::cout << "[core] model registry lifecycle..." << std::endl;
         TestModelRegistryLifecycle();
         std::cout << "[core] model registry lifecycle PASS" << std::endl;
+        std::cout << "[core] persona-scoped conversation memory..." << std::endl;
+        TestPersonaScopedConversationMemory();
+        std::cout << "[core] persona-scoped conversation memory PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
