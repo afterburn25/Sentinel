@@ -6120,6 +6120,136 @@ private:
     }
 
 
+
+    size_t SyncApprovedReviewsToVersionedData() {
+        const auto approved=runtime_->trainingReviews.ListRecent(
+            500,sentinel::simulation::TrainingReviewStatus::Approved);
+
+        size_t added=0;
+        for(const auto& item:approved) {
+            const bool exists=std::any_of(
+                trainingData_.Examples().begin(),trainingData_.Examples().end(),
+                [&](const auto& e){
+                    return e.persona==item.personaName &&
+                           e.sourceConversationId==item.conversationId &&
+                           e.input==item.inputText &&
+                           e.targetResponse==item.outputText;
+                });
+            if(exists) continue;
+
+            std::string foundationId;
+            std::string adapterId;
+            auto binding=runtime_->trainer.ResolvePersonaLora(item.personaName);
+            if(binding) {
+                foundationId=binding->foundationId;
+                adapterId=std::to_string(binding->id);
+            } else {
+                const auto foundations=runtime_->trainer.ListFoundations();
+                auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& foundation){
+                    return foundation.status=="ACTIVE";
+                });
+                if(active!=foundations.end()) foundationId=active->id;
+            }
+
+            auto& example=trainingData_.Capture(
+                item.personaName,
+                foundationId,
+                adapterId,
+                item.conversationId,
+                item.inputText,
+                item.outputText,
+                {},
+                item.outputText,
+                "Reviewed");
+            example.reviewer=item.reviewer;
+            trainingData_.SetState(
+                trainingData_.Examples().size()-1,
+                sentinel::simulation::TrainingExampleState::Approved);
+            ++added;
+        }
+
+        if(added>0) trainingData_.Save(runtime_->root/"training-data.tsv");
+        return added;
+    }
+
+    void CreateReviewedDatasetSnapshot() {
+        try {
+            const auto approved=runtime_->trainingReviews.Counts().approved;
+            if(approved<=0) {
+                statusText_=L"Approve at least one review item before creating a dataset snapshot";
+                return;
+            }
+
+            const auto added=SyncApprovedReviewsToVersionedData();
+            const std::string name=
+                "Approved Dataset "+std::to_string(trainingData_.Snapshots().size()+1);
+            auto& snapshot=trainingData_.CreateSnapshot(name);
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+            trainingData_.Save(runtime_->root/"training-data.tsv");
+            statusText_=L"Dataset snapshot created with "+
+                std::to_wstring(snapshot.exampleIds.size())+
+                L" approved examples ("+std::to_wstring(added)+L" newly synchronized)";
+        } catch(const std::exception& e) {
+            statusText_=L"Dataset snapshot creation failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Snapshot",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ImportDatasetSnapshotFile() {
+        wchar_t file[32768]{};
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=32768;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+
+        try {
+            auto& snapshot=trainingData_.ImportSnapshot(std::filesystem::path(file));
+            selectedDatasetSnapshot_=(int)trainingData_.Snapshots().size()-1;
+            trainingData_.Save(runtime_->root/"training-data.tsv");
+            statusText_=L"Imported dataset snapshot: "+Widen(snapshot.name)+
+                L" ("+std::to_wstring(snapshot.exampleIds.size())+L" examples)";
+        } catch(const std::exception& e) {
+            statusText_=L"Dataset snapshot import failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Import",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ExportSelectedDatasetSnapshot() {
+        if(selectedDatasetSnapshot_<0 ||
+           selectedDatasetSnapshot_>=(int)trainingData_.Snapshots().size()) {
+            statusText_=L"Select or create a dataset snapshot first";
+            return;
+        }
+
+        const auto& snapshot=trainingData_.Snapshots()[(size_t)selectedDatasetSnapshot_];
+        wchar_t file[MAX_PATH]{};
+        auto defaultName=Widen(snapshot.name+".sara-dataset");
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=L"SARA Dataset Snapshot\0*.sara-dataset\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-dataset";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        try {
+            trainingData_.ExportSnapshot(
+                (size_t)selectedDatasetSnapshot_,
+                std::filesystem::path(file));
+            statusText_=L"Dataset snapshot exported";
+        } catch(const std::exception& e) {
+            statusText_=L"Dataset snapshot export failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Dataset Export",MB_OK|MB_ICONERROR);
+        }
+    }
+
     void DrawDatasets(float w,float h) {
         PageTitle(
             L"Model Lab / Datasets",
