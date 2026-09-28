@@ -3504,6 +3504,8 @@ private:
         simContext_.personaSummary=BuildPersonaSummary();
         sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
         ApplyPersonaRuntimeBinding();
+        currentConversationId_.clear();
+        ResumeOrCreateConversation();
         statusText_=L"Loaded persona profile: "+Widen(name)+L" | "+trainerRuntimeStatus_;
     }
 
@@ -3939,14 +3941,14 @@ private:
 
     void ResumeOrCreateConversation() {
         try {
-            auto conversations=runtime_->conversationMemory.List(50);
+            auto conversations=runtime_->conversationMemory.ListForPersona(simSettings_.persona.name,50);
             if(conversations.empty()) {
                 sentinel::simulation::ModelContext legacy=simContext_;
                 if(sentinel::simulation::LoadSession(runtime_->root/"simulation-session.tsv",legacy)
                     && !legacy.history.empty()) {
                     const std::string title="Recovered previous conversation";
                     currentConversationId_=runtime_->conversationMemory.StartConversation(
-                        title,legacy.personaSummary,legacy.scenario);
+                        title,simSettings_.persona.name,legacy.personaSummary,legacy.scenario);
                     for(const auto& turn:legacy.history) {
                         runtime_->conversationMemory.Append(currentConversationId_,turn.speaker,turn.text);
                     }
@@ -3999,7 +4001,7 @@ private:
             ? ("Conversation with "+simSettings_.persona.name)
             : simSettings_.scenario.name;
         currentConversationId_=runtime_->conversationMemory.StartConversation(
-            title,simContext_.personaSummary,simContext_.scenario);
+            title,simSettings_.persona.name,simContext_.personaSummary,simContext_.scenario);
         currentConversationTitle_=Widen(title);
         archiveCursor_=0;
 
@@ -4027,7 +4029,7 @@ private:
 
     void LoadPreviousConversation() {
         try {
-            auto conversations=runtime_->conversationMemory.List(50);
+            auto conversations=runtime_->conversationMemory.ListForPersona(simSettings_.persona.name,50);
             if(conversations.empty()) {
                 statusText_=L"No previous conversations yet";
                 return;
@@ -4099,7 +4101,7 @@ private:
             std::hash<std::string>{}(currentConversationId_) & 0xffffffffu);
         simContext_.learningMode=simSettings_.learningMode;
         simContext_.recalledMemory=runtime_->conversationMemory.RecallRelevant(
-            utf8,currentConversationId_,12);
+            utf8,currentConversationId_,simSettings_.persona.name,12);
         const auto participantFacts=runtime_->conversationMemory.RecallParticipantFacts(
             currentConversationId_,10);
         if(!participantFacts.empty()) {
