@@ -15,6 +15,7 @@
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
+#include "Sentinel/Identity/SubjectIdentityStore.hpp"
 
 #include <array>
 #include <cassert>
@@ -503,6 +504,120 @@ void TestVersionedDatasetSnapshots()
 }
 
 
+
+void TestSubjectIdentityStore()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-subject-identity-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"subjects.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    const auto caseA=sentinel::CaseId::Random();
+    const auto caseB=sentinel::CaseId::Random();
+    const auto user=sentinel::UserId::Random();
+
+    auto insertCase=[&](const sentinel::CaseId& id,const char* number) {
+        sqlite3_stmt* s{};
+        if(sqlite3_prepare_v2(db.Handle(),
+            "INSERT INTO cases(id,case_number,title,description,status,created_by,created_at,modified_at) "
+            "VALUES(?,?,?,'',1,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+            -1,&s,nullptr)!=SQLITE_OK)
+            throw std::runtime_error("prepare test case insert failed");
+        const auto idText=id.ToString();
+        const auto userText=user.ToString();
+        sqlite3_bind_text(s,1,idText.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,2,number,-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,3,"Identity test",-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(s,4,userText.c_str(),-1,SQLITE_TRANSIENT);
+        if(sqlite3_step(s)!=SQLITE_DONE) {
+            sqlite3_finalize(s);
+            throw std::runtime_error("test case insert failed");
+        }
+        sqlite3_finalize(s);
+    };
+    insertCase(caseA,"CASE-A");
+    insertCase(caseB,"CASE-B");
+
+    sentinel::identity::SubjectIdentityStore store(db);
+    auto subject=store.CreateSubject(caseA,"Known Handle");
+    subject.legalName="Possible Legal Name";
+    subject.aliases="Alias One, Alias Two";
+    subject.usernames="@knownhandle";
+    subject.contactIdentifiers="example@example.test";
+    subject.notes="Investigator note";
+    store.SaveSubject(subject);
+
+    auto other=store.CreateSubject(caseB,"Other Case Subject");
+    Require(other.caseId==caseB,"other-case subject case id mismatch");
+
+    auto listA=store.ListForCase(caseA);
+    Require(listA.size()==1,"case A subject count mismatch");
+    Require(listA.front().displayName=="Known Handle","case A subject display name mismatch");
+    Require(listA.front().usernames=="@knownhandle","subject usernames did not persist");
+
+    auto lead=store.AddLead(
+        subject.id,
+        "public-record",
+        "record-123",
+        "Possible name/address correlation",
+        72,
+        "Retrieved from authorized public-record source during case review");
+    Require(lead.status==sentinel::identity::IdentityLeadStatus::Lead,
+        "identity lead should begin as LEAD");
+    Require(lead.confidence==72,"identity lead confidence mismatch");
+    Require(!lead.provenance.empty(),"identity lead provenance missing");
+
+    auto counts=store.CountsForCase(caseA);
+    Require(counts.subjects==1,"subject count mismatch");
+    Require(counts.leads==1,"identity lead count mismatch");
+    Require(counts.verifiedLeads==0,"unreviewed lead counted as verified");
+    Require(counts.confirmedSubjects==0,"unconfirmed subject counted as confirmed");
+
+    Require(store.ReviewLead(
+        lead.id,
+        sentinel::identity::IdentityLeadStatus::Verified,
+        "unit-investigator",
+        "source and correlation reviewed"),
+        "identity lead verification failed");
+    auto verified=store.GetLead(lead.id);
+    Require(verified.has_value(),"verified identity lead could not be reloaded");
+    Require(verified->status==sentinel::identity::IdentityLeadStatus::Verified,
+        "verified identity lead status mismatch");
+    Require(verified->reviewer=="unit-investigator","identity lead reviewer did not persist");
+
+    counts=store.CountsForCase(caseA);
+    Require(counts.verifiedLeads==1,"verified identity lead count mismatch");
+    Require(counts.confirmedSubjects==0,
+        "verifying a lead must not automatically confirm subject identity");
+
+    Require(store.SetSubjectStatus(
+        subject.id,
+        sentinel::identity::SubjectIdentityStatus::Confirmed),
+        "explicit subject identity confirmation failed");
+    auto confirmed=store.GetSubject(subject.id);
+    Require(confirmed.has_value(),"confirmed subject could not be reloaded");
+    Require(confirmed->identityStatus==sentinel::identity::SubjectIdentityStatus::Confirmed,
+        "subject confirmation state mismatch");
+
+    counts=store.CountsForCase(caseA);
+    Require(counts.confirmedSubjects==1,"confirmed subject count mismatch");
+
+    auto listB=store.ListForCase(caseB);
+    Require(listB.size()==1 && listB.front().id==other.id,
+        "case scoping leaked subjects across investigations");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -756,6 +871,9 @@ int main()
         std::cout << "[core] versioned dataset snapshots..." << std::endl;
         TestVersionedDatasetSnapshots();
         std::cout << "[core] versioned dataset snapshots PASS" << std::endl;
+        std::cout << "[core] subject identity store..." << std::endl;
+        TestSubjectIdentityStore();
+        std::cout << "[core] subject identity store PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
