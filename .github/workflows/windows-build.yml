@@ -228,6 +228,16 @@ jobs:
           timestamp-digest: SHA256
           description: SARA Installer
           description-url: https://github.com/afterburn25/Sentinel
+      - name: Verify SARA Setup Authenticode signature
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $setup = "installer\\output\\SARA-Setup-1.0.15.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          Write-Host "SARA Setup signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") {
+            throw "Signed SARA Setup.exe failed Authenticode verification"
+          }
 
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
@@ -237,10 +247,46 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload SARA Setup
+      - name: Record SARA Setup signature and SHA-256
+        shell: pwsh
+        run: |
+          $setup = "installer\\output\\SARA-Setup-1.0.15.exe"
+          if (-not (Test-Path $setup)) { throw "SARA Setup.exe missing before release-status recording" }
+
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          $signer = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "NONE" }
+
+          @"
+          SARA SETUP 1.0.15
+          SHA256=$hash
+          AUTHENTICODE_STATUS=$($signature.Status)
+          SIGNER=$signer
+          COMMIT=${{ github.sha }}
+          "@ | Set-Content -Encoding ascii "installer\\output\\SARA-Setup-1.0.15-SHA256.txt"
+
+          Write-Host "SARA Setup SHA-256: $hash"
+          Write-Host "Authenticode status: $($signature.Status)"
+          Write-Host "Signer: $signer"
+
+      - name: Upload signed SARA Setup
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: SARA-Setup-1.0.15
-          path: installer/output/SARA-Setup-1.0.15.exe
+          name: SARA-Setup-1.0.15-SIGNED
+          path: |
+            installer/output/SARA-Setup-1.0.15.exe
+            installer/output/SARA-Setup-1.0.15-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unsigned SARA Setup development build
+        if: ${{ env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '' || env.AZURE_SUBSCRIPTION_ID == '' || env.ARTIFACT_SIGNING_ENDPOINT == '' || env.ARTIFACT_SIGNING_ACCOUNT == '' || env.ARTIFACT_SIGNING_PROFILE == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-Setup-1.0.15-UNSIGNED-DEVELOPMENT
+          path: |
+            installer/output/SARA-Setup-1.0.15.exe
+            installer/output/SARA-Setup-1.0.15-SHA256.txt
           if-no-files-found: error
           retention-days: 30
