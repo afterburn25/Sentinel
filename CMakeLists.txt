@@ -31,6 +31,7 @@ add_library(sentinel_core
     src/Simulation/SettingsStore.cpp
     src/Simulation/ResponseEvaluator.cpp
     src/Simulation/ResponseRuleMatcher.cpp
+    src/Simulation/ResponseRuleMatchLog.cpp
     src/Simulation/EvaluationSuite.cpp
     src/Simulation/DeploymentRegistry.cpp
     src/Simulation/SessionStore.cpp

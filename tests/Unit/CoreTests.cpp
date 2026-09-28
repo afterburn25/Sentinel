@@ -15,6 +15,7 @@
 #include "Sentinel/Simulation/ConversationMemory.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/ResponseRuleMatcher.hpp"
+#include "Sentinel/Simulation/ResponseRuleMatchLog.hpp"
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
@@ -32,6 +33,50 @@
 
 namespace {
 
+
+
+void TestResponseRuleMatchLog()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/
+        ("sara-rule-log-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"rule-log.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    sentinel::simulation::ResponseRuleMatchLog log(db);
+    const auto first=log.Append(
+        "Samantha","conversation-a",42,"exact",100,
+        "favorite color","what is your favorite color","persona_variation","blue mostly");
+    const auto second=log.Append(
+        "Samantha","conversation-b",42,"smart",88,
+        "favorite color","whats ur fav color","persona_variation","probably blue");
+    log.Append(
+        "Nikki","conversation-c",77,"contains",95,
+        "music","what music do you like","exact","rock");
+
+    Require(first>0 && second>first,"response-rule match ids were not monotonic");
+    Require(log.CountForRule("Samantha",42)==2,
+        "response-rule match count mismatch");
+    Require(log.CountForRule("Nikki",42)==0,
+        "response-rule match count leaked across personas");
+
+    const auto recent=log.Recent("Samantha",10);
+    Require(recent.size()==2,"response-rule recent log count mismatch");
+    Require(recent.front().id==second,"response-rule recent log ordering mismatch");
+    Require(recent.front().matchScore==88,"response-rule match score mismatch");
+    Require(recent.front().outputText=="probably blue",
+        "response-rule output log mismatch");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
 
 void TestResponseRuleMatcher()
 {
@@ -1179,6 +1224,9 @@ void TestUnifiedChannelCore()
 int main()
 {
     try {
+        std::cout << "[core] response-rule match log..." << std::endl;
+        TestResponseRuleMatchLog();
+        std::cout << "[core] response-rule match log PASS" << std::endl;
         std::cout << "[core] response-rule matcher..." << std::endl;
         TestResponseRuleMatcher();
         std::cout << "[core] response-rule matcher PASS" << std::endl;
