@@ -2631,7 +2631,13 @@ private:
         Metric(x,y,card,L"Audit Chain",runtime_->audit.VerifyChain()?L"Valid":L"INVALID",L"Tamper-evident ledger",runtime_->audit.VerifyChain()?brush_.green.Get():brush_.red.Get(),IconKind::Chain);
         Metric(x+card+g,y,card,L"Total Records",std::to_wstring(runtime_->AuditCount()),L"Recorded system events",brush_.cyan.Get(),IconKind::Document);
         Metric(x+2*(card+g),y,card,L"Integrity",runtime_->audit.VerifyChain()?L"100%":L"Failed",L"Current chain status",brush_.green.Get(),IconKind::Shield);
-        Metric(x+3*(card+g),y,card,L"Secure Store",L"Online",L"Local encrypted mode",brush_.green.Get(),IconKind::Lock);
+        Metric(
+            x+3*(card+g),y,card,
+            L"Jurisdiction",
+            operatingStateCode_.empty()?L"Review":Widen(operatingStateCode_),
+            operatingStateCode_.empty()?L"Rules profile not selected":L"Operating rules selected",
+            operatingStateCode_.empty()?brush_.yellow.Get():brush_.cyan.Get(),
+            IconKind::Shield);
 
         float ty=y+126;
         Rounded(x,ty,w-x-28,390,brush_.panel.Get(),brush_.border.Get(),8);
@@ -4156,7 +4162,7 @@ private:
             return;
         }
         const auto item=personaMedia_[(size_t)selectedPersonaMedia_];
-        if(MessageBoxW(hwnd_,L"Delete this persona image from Sentinel?",L"Delete Persona Media",MB_YESNO|MB_ICONQUESTION)!=IDYES)
+        if(MessageBoxW(hwnd_,L"Delete this persona image from SARA?",L"Delete Persona Media",MB_YESNO|MB_ICONQUESTION)!=IDYES)
             return;
         sqlite3_stmt* stmt{};
         if(sqlite3_prepare_v2(runtime_->db.Handle(),"DELETE FROM persona_media WHERE id=?",-1,&stmt,nullptr)==SQLITE_OK) {
@@ -4679,7 +4685,7 @@ private:
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
                 simSettings_.endpoint,chosen,{},simSettings_.temperature,simSettings_.maxTokens);
             sentinel::simulation::ModelContext testContext;
-            testContext.scenario="Sentinel local model startup connection test";
+            testContext.scenario="SARA local model startup connection test";
             testContext.personaSummary="Startup diagnostic identity.";
             (void)candidate->GenerateInvestigatorSuggestion(testContext);
 
@@ -4747,7 +4753,7 @@ private:
             modelStatus_=L"Could not launch AI installer. ShellExecute error "+std::to_wstring(rc)+L".";
             statusText_=L"Local AI installer failed to launch";
         } else {
-            modelStatus_=L"AI installer launched. Sentinel will discover and connect the model automatically on the next start.";
+            modelStatus_=L"AI installer launched. SARA will discover and connect the model automatically on the next start.";
             statusText_=L"Local AI installation / repair started";
         }
         InvalidateRect(hwnd_,nullptr,FALSE);
@@ -5102,7 +5108,7 @@ private:
     void ApproveFirstPending() {
         for(auto& a:approvals_) {
             if(a.status==sentinel::operations::ApprovalStatus::Pending) {
-                sentinel::operations::Approve(a,"local-supervisor","Approved in Sentinel supervisor console");
+                sentinel::operations::Approve(a,"local-supervisor","Approved in SARA supervisor console");
                 const std::string prefix="message:local-sim:";
                 const std::string mediaPrefix="media:local-sim:";
                 if(a.action.rfind(prefix,0)==0 && messagingAdapter_) {
@@ -6000,7 +6006,7 @@ private:
                 : sentinel::simulation::TrainingReviewStatus::Rejected;
             if(runtime_->trainingReviews.Review(
                     selectedTrainingReviewId_,status,"local-reviewer",
-                    approve?"Approved in Sentinel Model Lab":"Rejected in Sentinel Model Lab")) {
+                    approve?"Approved in SARA Model Lab":"Rejected in SARA Model Lab")) {
                 statusText_=approve
                     ? L"Training example approved for dataset export"
                     : L"Training example rejected";
@@ -8187,7 +8193,7 @@ private:
                 auto probe=sentinel::simulation::CreateOpenAICompatibleModel(
                     simSettings_.endpoint,simSettings_.model,{},simSettings_.temperature,64);
                 sentinel::simulation::ModelContext ctx;
-                ctx.scenario="Sentinel AI diagnostic";
+                ctx.scenario="SARA AI diagnostic";
                 ctx.personaSummary="Synthetic diagnostic persona.";
                 auto response=probe->GenerateInvestigatorSuggestion(ctx);
                 report << L"Completion probe: OK";
@@ -8371,7 +8377,7 @@ private:
         bool ok=runtime_->audit.VerifyChain();
         statusText_=ok?L"Audit chain verified":L"Audit integrity failure";
         MessageBoxW(hwnd_,ok?L"Audit chain is VALID. No tampering detected.":L"Audit chain verification FAILED.",
-            L"Sentinel Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
+            L"SARA Audit Verification",MB_OK|(ok?MB_ICONINFORMATION:MB_ICONERROR));
     }
 };
 
