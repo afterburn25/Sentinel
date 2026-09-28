@@ -267,6 +267,7 @@ Every future feature restoration must follow this exact sequence:
 - Settings protected model/schema state: RESTORED / VALIDATED (Windows Build #772)
 - Persona Rules & Learning visibility and deterministic trigger precedence: RESTORED / VALIDATED (Windows Build #774)
 - Conversational Trainer persistence / review-before-apply: RESTORED / VALIDATED (Windows Build #781)
+- Integrated Model Lab lifecycle / stale-job recovery: RESTORED / VALIDATED (Windows Build #804)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -323,6 +324,14 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] deterministic response-rule precedence with Exact > Contains > Smart and newest-rule true-tie behavior
 - [x] persistent persona/mode-scoped Trainer conversations with preview-before-apply Behavior tuning
 - [x] Trainer intent captured for Dataset, Persona LoRA, Foundation Fork and Evaluation/Test modes without live weight mutation
+- [x] persona-scoped approved training export prevents cross-persona dataset leakage
+- [x] automatic reviewed-dataset and per-run output path preparation
+- [x] isolated Trainer environment with explicit CUDA QLoRA preparation
+- [x] deployable Foundation Fork GGUF generation plus activation/rollback history
+- [x] evaluation/runtime-stack gating for approval and deployment
+- [x] rule hit ledger, alternate response pools and terminal/continue behavior
+- [x] Persona LoRA exact-version activation/compare/rollback history
+- [x] trainer worker heartbeat and stale-job-only recovery
 
 ### Still genuinely later-only / not yet restored
 
@@ -404,3 +413,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Settings checkpoint: PASS — run #772 / commit `4764220f9a46fd72913d6e060d05023635389fa6`
 - Persona Rules & Learning checkpoint: PASS — run #774 / commit `dec2a20ab770572e82e5a2bdc882e07c4b1b6f6c`
 - Conversational Trainer checkpoint: PASS — run #781 / commit `c8d0fb6ba902e01880b0ec460c748b79635abc80`
+- Integrated Model Lab lifecycle checkpoint: PASS — run #804 / commit `a701d7986abf6a80447dbfca7a1ee8160298ea3c`

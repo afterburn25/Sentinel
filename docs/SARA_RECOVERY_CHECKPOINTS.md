@@ -509,3 +509,55 @@ Artifact digests from run #781:
 - UI screenshots: `sha256:faae882b11195601706004d75d01cda580f0f88b6d23300c65905661cc6bf977`
 
 This is the validated rollback point through the persistent conversational Trainer workflow.
+
+## Checkpoint 11 — Integrated Model Lab lifecycle and stale-job recovery validated
+
+Validated commit:
+
+`a701d7986abf6a80447dbfca7a1ee8160298ea3c`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #804
+- Run ID: `36461946383`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- full packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Integrated recovery proven by this checkpoint:
+
+- approved review exports can be scoped to one persona so one persona's training data cannot leak into another persona's dataset
+- Trainer Queue can auto-create reviewed JSONL dataset paths and per-run output paths instead of requiring manual path construction
+- the default foundation separates the protected runtime GGUF from the trainable `Qwen/Qwen3.5-9B` source
+- isolated Trainer environment setup and explicit PyTorch/CUDA preparation are packaged with SARA
+- 9B LoRA/foundation training uses a 4-bit QLoRA profile with CUDA/VRAM preflight
+- Foundation Fork training produces a merged native checkpoint and a deployable Q4_K_M GGUF runtime
+- Foundation activation history is persisted and supports compare / activate / rollback without modifying the immutable original base
+- model approval and deployment are gated by persisted evaluation state and the evaluated runtime stack
+- foundation fork versioning follows parent lineage rather than reusing ambiguous version numbers
+- persona response-rule match events are persisted and surfaced as hit counts
+- response rules support alternate response pools plus terminal-vs-continue flow
+- Persona LoRA activation history persists and supports exact-version compare / activate / rollback
+- Trainer jobs persist heartbeat state; only stale RUNNING jobs are recoverable instead of treating every interrupted process as abandoned
+- worker heartbeat updates protect legitimately running training jobs from false recovery
+- the permanent SARA 1.0.15-derived shell, startup, installer contract, splash, and main navigation remain protected
+
+Artifact digests from run #804:
+
+- Windows package: `sha256:f6ebe315755fec4b01c5b3938ada44991b7b1fbf9dffd816b4915da249fdadc2`
+- unsigned-development Setup artifact: `sha256:8e0193dbda2dc507734eba8357d4656136c2159f18b3ff1b1b613c660fb8db2c`
+- UI screenshots: `sha256:7bb30a184ad73831a5e49265d51d04700feaf0f6e9aa36cf3fb8a46fa1d51421`
+
+This is the current consolidated rollback point for the recovered SARA operational shell and Model Lab lifecycle.
