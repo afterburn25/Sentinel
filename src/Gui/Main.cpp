@@ -70,7 +70,7 @@ constexpr UINT_PTR kSimReplyTimer = 4102;
 constexpr UINT_PTR kSimEngagementTimer = 4103;
 constexpr int kSimVisibleRows = 4;
 
-enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas };
+enum class Page { Dashboard, Cases, Evidence, Audit, Verification, Simulation, Persona, ModelLab, Trainer, Messaging, Supervisor, Agency, Settings, ModelLabDatasets, ModelLabPersonas, ModelLabFoundations, ModelLabJobs };
 enum class PersonaTab { Profile, Bio, Behavior, Scenario, Gallery };
 enum class IconKind { Shield, Home, Folder, Database, Document, Check, Gear, Search, Plus, Chain, Lock, Chat };
 
@@ -1211,6 +1211,8 @@ public:
             case Page::Trainer: DrawTrainer(w,h); break;
             case Page::ModelLabDatasets: DrawDatasets(w,h); break;
             case Page::ModelLabPersonas: DrawPersonasLoras(w,h); break;
+            case Page::ModelLabFoundations: DrawFoundationForks(w,h); break;
+            case Page::ModelLabJobs: DrawJobs(w,h); break;
             case Page::Messaging: DrawMessaging(w,h); break;
             case Page::Supervisor: DrawSupervisor(w,h); break;
             case Page::Agency: DrawAgency(w,h); break;
@@ -1223,7 +1225,7 @@ public:
 
     void Click(float x,float y) {
         if (x<kSidebar && y>kHeader) {
-            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas) {
+            if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs) {
                 const float startY=(float)kHeader+18.0f;
                 const float firstRowY=startY+42.0f;
                 const int idx=(int)((y-firstRowY)/44.0f);
@@ -1232,8 +1234,8 @@ public:
                     else if(idx==1) page_=Page::Trainer;
                     else if(idx==2) page_=Page::ModelLabDatasets;
                     else if(idx==3) page_=Page::ModelLabPersonas;
-                    else if(idx==4) statusText_=L"Foundation Forks workspace will reuse the recovered 1.0.15 trainer backend";
-                    else if(idx==5) statusText_=L"Jobs workspace will surface the recovered training job registry";
+                    else if(idx==4) page_=Page::ModelLabFoundations;
+                    else if(idx==5) page_=Page::ModelLabJobs;
                     else if(idx==6) statusText_=L"Evaluation workspace remains quarantined until its backend is selectively restored";
                     else if(idx==7) statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
                     ApplyPageControls();
@@ -1296,8 +1298,8 @@ public:
             else if (b.id==L"ml_train") { page_=Page::Trainer; ApplyPageControls(); }
             else if (b.id==L"ml_personas") { page_=Page::ModelLabPersonas; ApplyPageControls(); }
             else if (b.id==L"ml_datasets") { page_=Page::ModelLabDatasets; ApplyPageControls(); }
-            else if (b.id==L"ml_foundations") statusText_=L"Foundation Forks are available below; dedicated workspace recovery is pending";
-            else if (b.id==L"ml_jobs") statusText_=L"Training Jobs are active in this Trainer workspace; dedicated view is pending";
+            else if (b.id==L"ml_foundations") { page_=Page::ModelLabFoundations; ApplyPageControls(); }
+            else if (b.id==L"ml_jobs") { page_=Page::ModelLabJobs; ApplyPageControls(); }
             else if (b.id==L"ml_evaluation") statusText_=L"Evaluation workspace will be restored after the Trainer passes visual regression";
             else if (b.id==L"ml_deployment") statusText_=L"Deployment workspace remains quarantined until the recovered UI is approved";
             else if (b.id==L"persona_save") SaveProfileEditors();
@@ -1368,6 +1370,32 @@ public:
                     if(idx>=0) SendMessageW(personaProfileCombo_,CB_SETCURSEL,(WPARAM)idx,0);
                     LoadSelectedPersonaProfile();
                 }
+                page_=Page::Trainer;
+                ApplyPageControls();
+            }
+            else if (b.id.rfind(L"foundation_row:",0)==0) {
+                selectedModelLabFoundationId_=Narrow(b.id.substr(15));
+                statusText_=L"Foundation selected";
+            }
+            else if (b.id==L"foundation_open_trainer") {
+                RefreshTrainerFoundationList(selectedModelLabFoundationId_);
+                trainerAdvancedOpen_=true;
+                SendMessageW(trainerModeCombo_,CB_SETCURSEL,3,0);
+                page_=Page::Trainer;
+                ApplyPageControls();
+            }
+            else if (b.id==L"foundation_new_fork") {
+                RefreshTrainerFoundationList(selectedModelLabFoundationId_);
+                trainerAdvancedOpen_=true;
+                page_=Page::Trainer;
+                ApplyPageControls();
+            }
+            else if (b.id.rfind(L"job_row:",0)==0) {
+                selectedModelLabJobId_=Narrow(b.id.substr(8));
+                statusText_=L"Training job selected";
+            }
+            else if (b.id==L"job_run_selected") RunSelectedTrainerJob();
+            else if (b.id==L"job_open_trainer") {
                 page_=Page::Trainer;
                 ApplyPageControls();
             }
@@ -1687,6 +1715,8 @@ private:
     std::vector<sentinel::simulation::ModelFoundation> trainerFoundations_;
     std::wstring trainerRuntimeStatus_=L"No persona LoRA active";
     std::string selectedModelLabPersonaName_;
+    std::string selectedModelLabFoundationId_;
+    std::string selectedModelLabJobId_;
     bool trainerAdvancedOpen_{false};
     bool responseRuleExactWording_{false};
 
@@ -2023,7 +2053,7 @@ private:
     }
 
     void DrawSidebar() {
-        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas) {
+        if(page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs) {
             const wchar_t* names[]={
                 L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
                 L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
@@ -2036,7 +2066,9 @@ private:
             const float startY=(float)kHeader+18.0f;
             const int active=page_==Page::ModelLab?0:
                 page_==Page::Trainer?1:
-                page_==Page::ModelLabDatasets?2:3;
+                page_==Page::ModelLabDatasets?2:
+                page_==Page::ModelLabPersonas?3:
+                page_==Page::ModelLabFoundations?4:5;
 
             TextLine(L"MODEL LAB",22,startY-2,176,18,tinyFmt_.Get(),brush_.cyan.Get());
             TextLine(L"TRAIN  |  ADAPT  |  EVALUATE  |  DEPLOY",
@@ -2045,7 +2077,7 @@ private:
             for(int i=0;i<8;i++) {
                 const float y=startY+42.0f+i*rowH;
                 const bool selected=i==active;
-                const bool restored=i<4;
+                const bool restored=i<6;
                 if(selected) {
                     target_->FillRectangle(D2D1::RectF(0,y-4,(float)kSidebar,y+36),brush_.panel2.Get());
                     target_->FillRectangle(D2D1::RectF(0,y-4,4,y+36),brush_.cyan.Get());
@@ -2091,13 +2123,15 @@ private:
     }
 
     void DrawHeader(float w) {
-        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas;
+        const bool modelLabShell=page_==Page::ModelLab || page_==Page::Trainer || page_==Page::ModelLabDatasets || page_==Page::ModelLabPersonas || page_==Page::ModelLabFoundations || page_==Page::ModelLabJobs;
         if(modelLabShell) {
             Text(L"MODEL LAB",kSidebar+28,18,110,20,tinyFmt_.Get(),brush_.cyan.Get());
             Text(L"|",kSidebar+132,17,12,20,tinyFmt_.Get(),brush_.border.Get());
             const wchar_t* labSection=page_==Page::Trainer?L"TRAIN":
                 page_==Page::ModelLabDatasets?L"DATASETS":
-                page_==Page::ModelLabPersonas?L"PERSONAS":L"OVERVIEW";
+                page_==Page::ModelLabPersonas?L"PERSONAS":
+                page_==Page::ModelLabFoundations?L"FOUNDATIONS":
+                page_==Page::ModelLabJobs?L"JOBS":L"OVERVIEW";
             Text(labSection,kSidebar+148,18,100,20,tinyFmt_.Get(),brush_.text.Get());
             TextLine(L"Train  |  Adapt  |  Evaluate  |  Deploy",
                 kSidebar+28,40,330,20,tinyFmt_.Get(),brush_.muted.Get());
@@ -3255,6 +3289,50 @@ private:
 
         statusText_=L"Trainer worker launched for "+Widen(it->id)+
             L" | progress will update in the Training Job list";
+    }
+
+
+    void RunSelectedTrainerJob() {
+        if(selectedModelLabJobId_.empty()) {
+            statusText_=L"Select a queued training job first";
+            return;
+        }
+
+        const auto jobs=runtime_->trainer.ListJobs(100);
+        auto it=std::find_if(jobs.begin(),jobs.end(),[&](const auto& job){
+            return job.id==selectedModelLabJobId_;
+        });
+        if(it==jobs.end()) {
+            statusText_=L"Selected training job no longer exists";
+            return;
+        }
+        if(it->state!="QUEUED") {
+            statusText_=L"Only queued training jobs can be launched";
+            return;
+        }
+
+        const auto script=ExeDir()/L"trainer"/L"Run-SARA-Training.ps1";
+        if(!std::filesystem::exists(script)) {
+            statusText_=L"Trainer worker script is missing from this installation";
+            return;
+        }
+
+        const auto dbPath=runtime_->root/"sentinel.db";
+        std::wstring params=
+            L"-NoProfile -ExecutionPolicy Bypass -File \""+script.wstring()+
+            L"\" -Database \""+dbPath.wstring()+
+            L"\" -JobId \""+Widen(it->id)+L"\"";
+
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",L"powershell.exe",params.c_str(),
+            (ExeDir()/L"trainer").c_str(),SW_SHOWNORMAL);
+
+        if(rc<=32) {
+            statusText_=L"Unable to launch selected SARA Trainer job";
+            return;
+        }
+
+        statusText_=L"Trainer worker launched for "+Widen(it->id);
     }
 
     void ApplyTrainerBehaviorInstruction() {
@@ -5854,6 +5932,338 @@ private:
             AddButton(L"persona_use_selected",L"Use Persona",detailX+16,actionY,92,30,true);
             AddButton(L"persona_edit_selected",L"Edit",detailX+116,actionY,66,30,false);
             AddButton(L"persona_train_selected",L"Train LoRA",detailX+190,actionY,88,30,false);
+        }
+    }
+
+
+    void DrawFoundationForks(float w,float h) {
+        PageTitle(
+            L"Model Lab / Foundation Forks",
+            L"Inspect the recovered SARA foundation lineage and create/train forks without replacing the original base");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==4;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        auto foundations=runtime_->trainer.ListFoundations();
+        if(!foundations.empty()) {
+            const bool selectedExists=std::any_of(
+                foundations.begin(),foundations.end(),[&](const auto& item){
+                    return item.id==selectedModelLabFoundationId_;
+                });
+            if(!selectedExists) {
+                auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& item){
+                    return item.status=="ACTIVE";
+                });
+                selectedModelLabFoundationId_=(active!=foundations.end()?active:foundations.begin())->id;
+            }
+        } else {
+            selectedModelLabFoundationId_.clear();
+        }
+
+        size_t activeCount=0,draftCount=0;
+        for(const auto& item:foundations) {
+            if(item.status=="ACTIVE") ++activeCount;
+            if(item.status=="DRAFT" || item.status=="TRAINING") ++draftCount;
+        }
+        const auto jobs=runtime_->trainer.ListJobs(100);
+        size_t foundationJobs=0;
+        for(const auto& job:jobs)
+            if(job.mode==sentinel::simulation::TrainingMode::FoundationSft) ++foundationJobs;
+
+        const float summaryY=y+48.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct MetricRow { const wchar_t* label; std::wstring value; const wchar_t* sub; ID2D1Brush* accent; };
+        MetricRow metrics[]={
+            {L"Foundations",std::to_wstring(foundations.size()),L"Base + forks",brush_.cyan.Get()},
+            {L"Active",std::to_wstring(activeCount),L"Runtime foundation",brush_.green.Get()},
+            {L"Draft / Training",std::to_wstring(draftCount),L"Work in progress",brush_.yellow.Get()},
+            {L"Foundation Jobs",std::to_wstring(foundationJobs),L"Queued history",brush_.blue.Get()}
+        };
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,summaryY,cardW,78,brush_.panel.Get(),brush_.border.Get(),9);
+            target_->FillRectangle(D2D1::RectF(cx+14,summaryY+16,cx+18,summaryY+58),metrics[i].accent);
+            TextLine(metrics[i].label,cx+30,summaryY+10,cardW-44,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(metrics[i].value,cx+30,summaryY+28,cardW-44,28,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+30,summaryY+56,cardW-44,16,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=summaryY+90.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.62f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Foundation Lineage",x+16,bodyY+12,240,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"The original base remains intact; forks are separate versioned records.",
+            x+16,bodyY+40,listW-32,20,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"foundation_new_fork",L"Create Fork",x+listW-112,bodyY+12,96,28,true);
+
+        TextLine(L"NAME",x+18,bodyY+72,160,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"VERSION",x+190,bodyY+72,64,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATUS",x+266,bodyY+72,82,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PARENT / SOURCE",x+360,bodyY+72,listW-378,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rowY=bodyY+94.0f;
+        if(foundations.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No foundation records are available.",x+26,rowY+12,listW-52,28,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& item:foundations) {
+                const bool selected=item.id==selectedModelLabFoundationId_;
+                ID2D1Brush* stateBrush=
+                    item.status=="ACTIVE"?brush_.green.Get():
+                    item.status=="TRAINING"?brush_.yellow.Get():brush_.cyan.Get();
+
+                Rounded(x+14,rowY,listW-28,52,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(item.name),x+24,rowY+5,154,20,smallFmt_.Get(),brush_.text.Get());
+                TextLine(L"v"+std::to_wstring(item.version),x+190,rowY+5,64,20,tinyFmt_.Get(),brush_.cyan.Get());
+                TextLine(Widen(item.status),x+266,rowY+5,82,20,tinyFmt_.Get(),stateBrush);
+
+                std::wstring source=item.parentId.empty()
+                    ? L"BASE | "+Widen(item.sourceModel)
+                    : L"Fork of "+Widen(item.parentId);
+                if(source.size()>48) source=source.substr(0,45)+L"...";
+                TextLine(source,x+360,rowY+5,listW-378,20,tinyFmt_.Get(),brush_.muted.Get());
+
+                std::wstring path=item.runtimeGgufPath.empty()
+                    ? Widen(item.trainableSourcePath)
+                    : Widen(item.runtimeGgufPath);
+                if(path.size()>72) path=path.substr(0,69)+L"...";
+                TextLine(path,x+24,rowY+28,listW-48,18,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+52},L"foundation_row:"+Widen(item.id)});
+                rowY+=58.0f;
+                if(rowY+52>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Foundation Inspector",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::optional<sentinel::simulation::ModelFoundation> selected;
+        if(!selectedModelLabFoundationId_.empty())
+            selected=runtime_->trainer.GetFoundation(selectedModelLabFoundationId_);
+
+        if(!selected) {
+            TextLine(L"Select a foundation to inspect its source and fork metadata.",
+                detailX+16,bodyY+54,detailW-32,50,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& item=*selected;
+            TextLine(Widen(item.name),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(L"Version "+std::to_wstring(item.version)+L"  |  "+Widen(item.status),
+                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
+                item.status=="ACTIVE"?brush_.green.Get():brush_.muted.Get());
+
+            TextLine(L"Source model",detailX+16,bodyY+116,88,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(item.sourceModel),detailX+112,bodyY+113,detailW-128,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Parent",detailX+16,bodyY+146,88,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(item.parentId.empty()?L"Immutable base":Widen(item.parentId),
+                detailX+112,bodyY+143,detailW-128,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Trainable",detailX+16,bodyY+176,88,18,tinyFmt_.Get(),brush_.muted.Get());
+            Text(Widen(item.trainableSourcePath.empty()?"Not configured":item.trainableSourcePath),
+                detailX+112,bodyY+173,detailW-128,42,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Runtime",detailX+16,bodyY+226,88,18,tinyFmt_.Get(),brush_.muted.Get());
+            Text(Widen(item.runtimeGgufPath.empty()?"No GGUF assigned":item.runtimeGgufPath),
+                detailX+112,bodyY+223,detailW-128,42,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Notes",detailX+16,bodyY+276,88,18,tinyFmt_.Get(),brush_.muted.Get());
+            Text(Widen(item.notes),detailX+16,bodyY+298,detailW-32,64,tinyFmt_.Get(),brush_.muted.Get());
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"foundation_open_trainer",L"Train / Configure",detailX+16,actionY,126,30,true);
+            AddButton(L"foundation_new_fork",L"Create Child Fork",detailX+150,actionY,128,30,false);
+        }
+    }
+
+    void DrawJobs(float w,float h) {
+        PageTitle(
+            L"Model Lab / Jobs",
+            L"Inspect and run the real training jobs queued by the recovered SARA 1.0.15 Trainer");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=12.0f;
+
+        const wchar_t* tabLabels[]={
+            L"Overview",L"Train",L"Datasets",L"Personas & LoRAs",
+            L"Foundation Forks",L"Jobs",L"Evaluation",L"Deployment"
+        };
+        const wchar_t* tabIds[]={
+            L"ml_overview",L"ml_train",L"ml_datasets",L"ml_personas",
+            L"ml_foundations",L"ml_jobs",L"ml_evaluation",L"ml_deployment"
+        };
+        const float tabGap=6.0f;
+        const float tabW=(contentW-tabGap*7.0f)/8.0f;
+        for(int i=0;i<8;i++) {
+            const float tx=x+i*(tabW+tabGap);
+            const bool active=i==5;
+            Rounded(tx,y,tabW,36,
+                active?brush_.panel2.Get():brush_.sidebar.Get(),
+                active?brush_.cyan.Get():brush_.border.Get(),7);
+            TextLine(tabLabels[i],tx+5,y+2,tabW-10,30,tinyFmt_.Get(),
+                active?brush_.cyan.Get():brush_.text.Get(),DWRITE_TEXT_ALIGNMENT_CENTER);
+            buttons_.push_back({{tx,y,tx+tabW,y+36},tabIds[i]});
+        }
+
+        const auto jobs=runtime_->trainer.ListJobs(100);
+        if(!jobs.empty()) {
+            const bool selectedExists=std::any_of(jobs.begin(),jobs.end(),[&](const auto& item){
+                return item.id==selectedModelLabJobId_;
+            });
+            if(!selectedExists) selectedModelLabJobId_=jobs.front().id;
+        } else selectedModelLabJobId_.clear();
+
+        size_t queued=0,running=0,completed=0,failed=0;
+        for(const auto& job:jobs) {
+            if(job.state=="QUEUED") ++queued;
+            else if(job.state=="RUNNING") ++running;
+            else if(job.state=="COMPLETED") ++completed;
+            else if(job.state=="FAILED") ++failed;
+        }
+
+        const float summaryY=y+48.0f;
+        const float cardW=(contentW-gap*3.0f)/4.0f;
+        struct JobMetric { const wchar_t* label; size_t value; const wchar_t* sub; ID2D1Brush* accent; };
+        JobMetric metrics[]={
+            {L"Queued",queued,L"Waiting to run",brush_.yellow.Get()},
+            {L"Running",running,L"Worker active",brush_.cyan.Get()},
+            {L"Completed",completed,L"Finished jobs",brush_.green.Get()},
+            {L"Failed",failed,L"Needs attention",brush_.red.Get()}
+        };
+        for(int i=0;i<4;i++) {
+            const float cx=x+i*(cardW+gap);
+            Rounded(cx,summaryY,cardW,78,brush_.panel.Get(),brush_.border.Get(),9);
+            target_->FillRectangle(D2D1::RectF(cx+14,summaryY+16,cx+18,summaryY+58),metrics[i].accent);
+            TextLine(metrics[i].label,cx+30,summaryY+10,cardW-44,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(std::to_wstring(metrics[i].value),cx+30,summaryY+28,cardW-44,28,h1Fmt_.Get(),brush_.text.Get());
+            TextLine(metrics[i].sub,cx+30,summaryY+56,cardW-44,16,tinyFmt_.Get(),metrics[i].accent);
+        }
+
+        const float bodyY=summaryY+90.0f;
+        const float bodyH=std::max(430.0f,h-bodyY-26.0f);
+        const float listW=contentW*0.64f-gap*0.5f;
+        const float detailW=contentW-listW-gap;
+        const float detailX=x+listW+gap;
+
+        Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Training Queue & History",x+16,bodyY+12,260,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"job_open_trainer",L"New Job",x+listW-102,bodyY+12,86,28,true);
+
+        TextLine(L"TARGET",x+18,bodyY+58,140,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"MODE",x+168,bodyY+58,112,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PERSONA",x+290,bodyY+58,100,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"STATE",x+400,bodyY+58,90,18,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"PROGRESS",x+listW-102,bodyY+58,84,18,tinyFmt_.Get(),brush_.muted.Get());
+
+        float rowY=bodyY+80.0f;
+        if(jobs.empty()) {
+            Rounded(x+14,rowY,listW-28,58,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"No training jobs have been queued. Open Train to create one.",
+                x+26,rowY+12,listW-52,28,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& job:jobs) {
+                const bool selected=job.id==selectedModelLabJobId_;
+                ID2D1Brush* stateBrush=
+                    job.state=="COMPLETED"?brush_.green.Get():
+                    job.state=="FAILED"?brush_.red.Get():
+                    job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get();
+
+                Rounded(x+14,rowY,listW-28,48,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(job.targetName),x+24,rowY+5,134,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(sentinel::simulation::ToString(job.mode)),x+168,rowY+5,112,18,tinyFmt_.Get(),brush_.muted.Get());
+                TextLine(Widen(job.personaName),x+290,rowY+5,100,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(Widen(job.state),x+400,rowY+5,90,18,tinyFmt_.Get(),stateBrush);
+                TextLine(std::to_wstring(job.progress)+L"%",
+                    x+listW-102,rowY+5,84,18,tinyFmt_.Get(),stateBrush,DWRITE_TEXT_ALIGNMENT_TRAILING);
+
+                std::wstring dataset=Widen(job.datasetPath);
+                if(dataset.size()>74) dataset=dataset.substr(0,71)+L"...";
+                TextLine(dataset,x+24,rowY+26,listW-48,16,tinyFmt_.Get(),brush_.muted.Get());
+
+                buttons_.push_back({{x+14,rowY,x+listW-14,rowY+48},L"job_row:"+Widen(job.id)});
+                rowY+=54.0f;
+                if(rowY+48>bodyY+bodyH-10) break;
+            }
+        }
+
+        Rounded(detailX,bodyY,detailW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Job Inspector",detailX+16,bodyY+12,detailW-32,28,h1Fmt_.Get(),brush_.text.Get());
+
+        std::optional<sentinel::simulation::TrainerJobRecord> selected;
+        for(const auto& job:jobs) if(job.id==selectedModelLabJobId_) { selected=job; break; }
+
+        if(!selected) {
+            TextLine(L"Select a training job to inspect its mode, data, target, output, and state.",
+                detailX+16,bodyY+54,detailW-32,50,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            const auto& job=*selected;
+            ID2D1Brush* stateBrush=
+                job.state=="COMPLETED"?brush_.green.Get():
+                job.state=="FAILED"?brush_.red.Get():
+                job.state=="RUNNING"?brush_.cyan.Get():brush_.yellow.Get();
+
+            TextLine(Widen(job.targetName),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
+            TextLine(Widen(job.state)+L"  |  "+std::to_wstring(job.progress)+L"%",
+                detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),stateBrush);
+
+            TextLine(L"Mode",detailX+16,bodyY+116,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(sentinel::simulation::ToString(job.mode)),
+                detailX+100,bodyY+113,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Persona",detailX+16,bodyY+146,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            TextLine(Widen(job.personaName),detailX+100,bodyY+143,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Foundation",detailX+16,bodyY+176,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            auto foundation=runtime_->trainer.GetFoundation(job.foundationId);
+            TextLine(foundation?Widen(foundation->name):Widen(job.foundationId),
+                detailX+100,bodyY+173,detailW-116,22,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Dataset",detailX+16,bodyY+210,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+230,detailW-28,56,brush_.sidebar.Get(),brush_.border.Get(),6);
+            Text(Widen(job.datasetPath.empty()?"Not specified":job.datasetPath),
+                detailX+24,bodyY+238,detailW-48,40,tinyFmt_.Get(),brush_.text.Get());
+
+            TextLine(L"Output",detailX+16,bodyY+300,76,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+320,detailW-28,56,brush_.sidebar.Get(),brush_.border.Get(),6);
+            Text(Widen(job.outputPath.empty()?"Not specified":job.outputPath),
+                detailX+24,bodyY+328,detailW-48,40,tinyFmt_.Get(),brush_.text.Get());
+
+            const float actionY=bodyY+bodyH-42.0f;
+            AddButton(L"job_run_selected",L"Run Selected",detailX+16,actionY,110,30,job.state=="QUEUED");
+            AddButton(L"job_open_trainer",L"Open Trainer",detailX+134,actionY,104,30,false);
         }
     }
 
