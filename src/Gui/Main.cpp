@@ -5591,7 +5591,7 @@ private:
 
             TextLine(L"Input",detailX+16,bodyY+148,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
             Rounded(detailX+14,bodyY+168,detailW-28,92,brush_.sidebar.Get(),brush_.border.Get(),7);
-            Text(Widen(item.inputText.empty()?L"(no input text)":Widen(item.inputText)),
+            Text(item.inputText.empty()?L"(no input text)":Widen(item.inputText),
                 detailX+26,bodyY+178,detailW-52,72,smallFmt_.Get(),brush_.text.Get());
 
             TextLine(L"Output",detailX+16,bodyY+274,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
