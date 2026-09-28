@@ -57,7 +57,7 @@ Write-Host 'Validating trainer imports...'
 if($LASTEXITCODE -ne 0) { throw 'Trainer package validation failed.' }
 
 @(
-  'sara-trainer-env-v1'
+  'sara-trainer-env-v2'
   ('python=' + $venvPython)
   ('configured_utc=' + [DateTime]::UtcNow.ToString('o'))
 ) | Set-Content -Encoding ascii $marker

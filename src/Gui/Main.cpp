@@ -1885,7 +1885,17 @@ public:
     }
 
 private:
-    struct PersonaResponseRuleView;
+    struct PersonaResponseRuleView {
+        long long id{};
+        std::string matchType;
+        std::string trigger;
+        std::string response;
+        std::string responseMode{"persona_variation"};
+        bool enabled{};
+        bool terminal{true};
+        int priority{100};
+        int matchScore{};
+    };
     struct Button { RectF rect; std::wstring id; };
 
     HWND hwnd_{},caseNumberEdit_{},caseTitleEdit_{},chatEdit_{},modelEndpointEdit_{},modelNameEdit_{},modelCombo_{},simScroll_{};
@@ -4066,18 +4076,6 @@ private:
         return value;
     }
 
-    struct PersonaResponseRuleView {
-        long long id{};
-        std::string matchType;
-        std::string trigger;
-        std::string response;
-        std::string responseMode{"persona_variation"};
-        bool enabled{};
-        bool terminal{true};
-        int priority{100};
-        int matchScore{};
-    };
-
     std::vector<PersonaResponseRuleView> PersonaResponseRules(size_t limit=8) const {
         std::vector<PersonaResponseRuleView> out;
         sqlite3_stmt* s{};
@@ -4471,9 +4469,19 @@ private:
     }
 
     bool TrainerEnvironmentReady() const {
-        return
-            std::filesystem::exists(runtime_->root/"trainer-venv"/"Scripts"/"python.exe") &&
-            std::filesystem::exists(runtime_->root/"trainer-env.version");
+        const auto python=runtime_->root/"trainer-venv"/"Scripts"/"python.exe";
+        const auto marker=runtime_->root/"trainer-env.version";
+        if(!std::filesystem::exists(python) || !std::filesystem::exists(marker))
+            return false;
+
+        std::ifstream in(marker,std::ios::binary);
+        std::string version;
+        std::getline(in,version);
+        while(!version.empty() &&
+              (version.back()=='\r' || version.back()=='\n' ||
+               version.back()==' ' || version.back()=='\t'))
+            version.pop_back();
+        return version=="sara-trainer-env-v2";
     }
 
     void PrepareTrainerEnvironment() {
