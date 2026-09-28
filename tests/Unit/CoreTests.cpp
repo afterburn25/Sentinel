@@ -12,6 +12,7 @@
 #include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <array>
 #include <cassert>
@@ -277,6 +278,84 @@ void TestPersonaScopedConversationMemory()
 }
 
 
+
+void TestPersistentEvaluationSuite()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::simulation::PersonaProfile persona;
+    persona.name="Samantha";
+    persona.age=13;
+    persona.grammarQuality="Casual";
+    persona.emojiLevel="Occasional";
+    persona.cognitiveLevel="Average";
+
+    const std::vector<std::string> responses={
+        "hey im samantha and im 13",
+        "music is probably my favorite thing rn",
+        "im just hanging out today"
+    };
+
+    auto personaScore=sentinel::simulation::ScorePersonaConsistency(
+        persona,sentinel::simulation::AgeKnowledgeState::Unknown,responses);
+    auto policyScore=sentinel::simulation::ScorePolicyCompliance(
+        sentinel::simulation::AgeKnowledgeState::Unknown,responses);
+    auto styleScore=sentinel::simulation::ScoreStyleConsistency(persona,responses);
+    auto memoryScore=sentinel::simulation::ScoreMemoryRecall("cobalt","yeah i remember cobalt");
+    auto triggerScore=sentinel::simulation::ScoreTriggerRegression(4,4);
+    auto diversityScore=sentinel::simulation::ScoreResponseDiversity(responses);
+
+    sentinel::simulation::EvaluationRunRegistry registry;
+    auto& first=registry.Create(
+        "candidate-a","Candidate A",
+        "foundation-1","SARA Foundation",
+        "adapter-1","Samantha v1",
+        {personaScore,policyScore,styleScore,memoryScore,triggerScore,diversityScore});
+    Require(first.overallScore>0,"evaluation run overall score missing");
+    Require(first.previousOverallScore==-1,"first evaluation run should not have a previous score");
+
+    auto weaker=diversityScore;
+    weaker.score=20;
+    weaker.passed=false;
+    weaker.warnings={"deliberate regression"};
+    auto& second=registry.Create(
+        "candidate-a","Candidate A",
+        "foundation-1","SARA Foundation",
+        "adapter-1","Samantha v1",
+        {personaScore,policyScore,styleScore,memoryScore,triggerScore,weaker});
+    Require(second.previousOverallScore==first.overallScore,
+        "evaluation run did not link previous candidate score");
+    Require(second.regressionDelta==second.overallScore-first.overallScore,
+        "evaluation run regression delta mismatch");
+
+    const auto root=std::filesystem::temp_directory_path()/("sara-eval-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+    const auto path=root/"evaluation-runs.tsv";
+    registry.Save(path);
+
+    sentinel::simulation::EvaluationRunRegistry loaded;
+    loaded.Load(path);
+    Require(loaded.Runs().size()==2,"evaluation registry persistence count mismatch");
+    Require(loaded.LatestIndexForCandidate("candidate-a")==1,
+        "evaluation registry latest candidate index mismatch");
+    Require(sentinel::simulation::DimensionScore(
+        loaded.Runs().back(),sentinel::simulation::EvaluationDimension::ResponseDiversity)==20,
+        "evaluation dimension persistence mismatch");
+
+    const auto report=sentinel::simulation::BuildEvaluationRunReport(loaded.Runs().back());
+    Require(report.find("SARA EVALUATION RUN REPORT")!=std::string::npos,
+        "evaluation run report header missing");
+    const auto comparison=sentinel::simulation::BuildCandidateComparisonReport(
+        loaded.Runs().front(),loaded.Runs().back());
+    Require(comparison.find("Overall delta")!=std::string::npos,
+        "evaluation comparison report missing delta");
+
+    std::filesystem::remove_all(root);
+}
+
+
 #ifdef _WIN32
 void TestWindowsCryptoAndSev()
 {
@@ -521,6 +600,9 @@ int main()
         std::cout << "[core] persona-scoped conversation memory..." << std::endl;
         TestPersonaScopedConversationMemory();
         std::cout << "[core] persona-scoped conversation memory PASS" << std::endl;
+        std::cout << "[core] persistent evaluation suite..." << std::endl;
+        TestPersistentEvaluationSuite();
+        std::cout << "[core] persistent evaluation suite PASS" << std::endl;
 #ifdef _WIN32
         std::cout << "[core] windows crypto/evidence..." << std::endl;
         TestWindowsCryptoAndSev();
