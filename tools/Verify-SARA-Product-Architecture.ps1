@@ -317,16 +317,48 @@ $personaWorkflowTokens = @(
     'L"Rules & Learning"',
     'L"persona_tab_rules"',
     'PersonaResponseRules(50)',
+    'PersonaResponseRules(0)',
     'responseRuleMatches.Append(',
     'CountForRule(',
     'rule_terminal_toggle',
     'SelectResponseRuleVariant(',
+    'selectedResponseRuleId_',
+    'SaveLoadedPersonaResponseRule()',
+    'StartNewPersonaResponseRule(',
+    'rule_save',
+    'rule_new',
+    'rule_prev',
+    'rule_next',
+    'rule_open:',
     'rule_toggle:',
-    'rule_delete:'
+    'rule_delete:',
+    'pageStart=responseRulePage_*rulePageSize',
+    'responseRulePage_=0'
 )
 foreach ($token in $personaWorkflowTokens) {
     if (-not $src.Contains($token)) {
         throw "Protected Persona Rules & Learning workflow is missing: $token"
+    }
+}
+
+$ruleEditStart = $src.IndexOf('    void SaveLoadedPersonaResponseRule() {')
+$ruleEditEnd = $src.IndexOf('    void TogglePersonaResponseRuleEnabled(', $ruleEditStart)
+if ($ruleEditStart -lt 0 -or $ruleEditEnd -le $ruleEditStart) {
+    throw 'Unable to isolate response-rule in-place edit implementation.'
+}
+$ruleEditBlock = $src.Substring($ruleEditStart, $ruleEditEnd - $ruleEditStart)
+foreach ($required in @(
+    'UPDATE persona_response_rules SET ',
+    'trigger_text=?,response_text=?,response_mode=?,terminal=?,updated_utc=CURRENT_TIMESTAMP',
+    'WHERE id=? AND persona_name=?'
+)) {
+    if (-not $ruleEditBlock.Contains($required)) {
+        throw "Response-rule in-place edit contract is missing: $required"
+    }
+}
+foreach ($forbidden in @('match_type=?','enabled=?','priority=?')) {
+    if ($ruleEditBlock.Contains($forbidden)) {
+        throw "Response-rule editor may not silently mutate preserved rule metadata: $forbidden"
     }
 }
 
