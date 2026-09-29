@@ -6685,7 +6685,13 @@ private:
 
     void SaveProfileEditors(bool showConfirmation=true) {
         try {
+            const std::string previousPersonaName=simSettings_.persona.name;
             simSettings_.persona.name=Narrow(EditText(personaNameEdit_));
+            if(simSettings_.persona.name!=previousPersonaName) {
+                responseRulePage_=0;
+                personaShowLearnedNotes_=false;
+                StartNewPersonaResponseRule(false);
+            }
             {
                 int ageSel=(int)SendMessageW(personaAgeCombo_,CB_GETCURSEL,0,0);
                 simSettings_.persona.age=(ageSel==CB_ERR)?13:(8+ageSel);
