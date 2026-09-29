@@ -214,6 +214,55 @@ def ensure_llama_tools(work_root: Path):
         raise RuntimeError("Pinned llama.cpp conversion tools could not be prepared.")
     return target
 
+def register_persona_lora_candidate(db, job, lora_path):
+    db.execute(
+        "INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,1.0,0)",
+        (job["persona_name"],job["foundation_id"],job["target_name"],str(lora_path))
+    )
+    db.commit()
+
+def self_test_candidate_isolation():
+    db=sqlite3.connect(":memory:")
+    db.row_factory=sqlite3.Row
+    db.execute(
+        "CREATE TABLE persona_lora_bindings("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "persona_name TEXT NOT NULL,"
+        "foundation_id TEXT NOT NULL,"
+        "lora_name TEXT NOT NULL,"
+        "lora_path TEXT NOT NULL,"
+        "weight REAL NOT NULL DEFAULT 1.0,"
+        "active INTEGER NOT NULL DEFAULT 1,"
+        "created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "updated_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    )
+    db.execute(
+        "INSERT INTO persona_lora_bindings("
+        "persona_name,foundation_id,lora_name,lora_path,weight,active"
+        ") VALUES('Samantha','foundation-1','Samantha v1','active.gguf',1.0,1)"
+    )
+    register_persona_lora_candidate(
+        db,
+        {
+            "persona_name":"Samantha",
+            "foundation_id":"foundation-1",
+            "target_name":"Samantha v2",
+        },
+        Path("candidate.gguf")
+    )
+    rows=db.execute(
+        "SELECT lora_name,active FROM persona_lora_bindings "
+        "WHERE persona_name='Samantha' ORDER BY id"
+    ).fetchall()
+    if len(rows)!=2:
+        raise RuntimeError("candidate-isolation self-test did not create exactly two LoRA rows")
+    if rows[0]["lora_name"]!="Samantha v1" or rows[0]["active"]!=1:
+        raise RuntimeError("training candidate registration changed the existing active LoRA")
+    if rows[1]["lora_name"]!="Samantha v2" or rows[1]["active"]!=0:
+        raise RuntimeError("newly trained Persona LoRA was not registered as inactive")
+    db.close()
+    print("SARA Trainer Persona LoRA candidate isolation: PASS")
+
 def convert_persona_lora(db, job, base, adapter_dir, output):
     tools=ensure_llama_tools(Path(job["output_path"]).parent/"trainer-tools" if job["output_path"] else output/"trainer-tools")
     gguf=output/(job["target_name"].replace(" ","-")+"-LoRA-F16.gguf")
@@ -229,11 +278,7 @@ def convert_persona_lora(db, job, base, adapter_dir, output):
     # Training completion must never mutate the live persona runtime. Register
     # the artifact as an inactive candidate; the investigator must explicitly
     # review/evaluate and activate a version from Model Lab.
-    db.execute(
-        "INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,1.0,0)",
-        (job["persona_name"],job["foundation_id"],job["target_name"],str(gguf))
-    )
-    db.commit()
+    register_persona_lora_candidate(db,job,gguf)
     return gguf
 
 def complete_persona_lora(db, job, foundation):
@@ -350,6 +395,10 @@ def complete_correction(db, job):
     print(f"Correction dataset prepared: {dst}")
 
 def main():
+    if "--self-test-candidate-isolation" in sys.argv:
+        self_test_candidate_isolation()
+        return
+
     ap=argparse.ArgumentParser()
     ap.add_argument("--db",required=True)
     ap.add_argument("--job",required=True)
