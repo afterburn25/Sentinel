@@ -1,5 +1,15 @@
 # SARA Changelog
 
+## 1.0.18 — Response-rule management
+
+### In development
+- Page through all saved persona response rules instead of displaying only the newest four.
+- Add explicit loaded-rule edit state with Save Changes and New actions.
+- Update an existing rule in place without creating duplicate rules.
+- Preserve rule type, hit history, enabled state, priority, wording mode, and terminal/continue behavior when editing.
+- Keep rule matching precedence and deterministic alternate-response behavior unchanged.
+
+
 ## 1.0.17 — Local AI self-recovery
 
 Validated by Windows Build #960.
