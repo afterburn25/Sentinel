@@ -9,6 +9,8 @@
 
 namespace sentinel::simulation {
 
+struct EvaluationRun;
+
 enum class TrainingMode { Behavior, Correction, PersonaLora, FoundationSft, Preference };
 
 struct ModelFoundation {
@@ -21,6 +23,7 @@ struct ModelFoundation {
     int version{1};
     std::string status{"DRAFT"};
     std::string notes;
+    std::string approvedEvaluationRunId;
 };
 
 struct PersonaLoraBinding {
@@ -31,6 +34,7 @@ struct PersonaLoraBinding {
     std::string loraPath;
     double weight{1.0};
     bool active{true};
+    std::string approvedEvaluationRunId;
 };
 
 struct TrainerJobRecord {
@@ -79,7 +83,7 @@ public:
     void EnsureDefaultFoundation(std::string_view name,std::string_view sourceModel,std::string_view runtimeGgufPath);
     std::vector<ModelFoundation> ListFoundations() const;
     std::optional<ModelFoundation> GetFoundation(std::string_view id) const;
-    bool ApproveFoundation(std::string_view id);
+    bool ApproveFoundation(std::string_view id,const EvaluationRun& evaluation);
     bool ActivateFoundation(std::string_view id);
     std::optional<ModelFoundation> PreviousFoundation() const;
     bool RollbackFoundation();
@@ -87,6 +91,7 @@ public:
     PersonaLoraBinding BindPersonaLora(std::string_view personaName,std::string_view foundationId,std::string_view loraName,std::string_view loraPath,double weight = 1.0);
     std::optional<PersonaLoraBinding> ResolvePersonaLora(std::string_view personaName) const;
     std::optional<PersonaLoraBinding> GetPersonaLora(long long id) const;
+    bool ApprovePersonaLora(long long id,const EvaluationRun& evaluation);
     bool ActivatePersonaLora(long long id);
     std::optional<PersonaLoraBinding> PreviousPersonaLora(
         std::string_view personaName) const;
