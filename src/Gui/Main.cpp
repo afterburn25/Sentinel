@@ -1703,7 +1703,10 @@ public:
             else if (b.id.rfind(L"rule_delete:",0)==0)
                 DeletePersonaResponseRule(std::stoll(b.id.substr(12)));
             else if (b.id==L"learning_toggle") ToggleLearningMode();
-            else if (b.id==L"learning_notes_toggle") personaShowLearnedNotes_=!personaShowLearnedNotes_;
+            else if (b.id==L"learning_notes_toggle") {
+                personaShowLearnedNotes_=!personaShowLearnedNotes_;
+                ApplyPageControls();
+            }
             else if (b.id.rfind(L"learning_note_delete:",0)==0)
                 DeletePersonaLearnedNote(std::stoll(b.id.substr(21)));
             else if (b.id==L"trainer_create_fork") CreateFoundationForkFromTrainer();
@@ -8404,9 +8407,10 @@ private:
             }
         }
         else if(personaTab_==PersonaTab::Rules) {
-            const auto rules=PersonaResponseRules(0);
+            const auto allRules=PersonaResponseRules(0);
+            const auto rules=FilteredPersonaResponseRules();
             size_t enabledRules=0;
-            for(const auto& rule:rules) if(rule.enabled) ++enabledRules;
+            for(const auto& rule:allRules) if(rule.enabled) ++enabledRules;
 
             TextLine(L"Rules & Learning",x+22,py+16,260,32,h1Fmt_.Get(),brush_.text.Get());
             TextLine(
@@ -8451,28 +8455,48 @@ private:
             AddButton(L"rule_test",L"Test",x+548,actionY,54,28,false);
             AddButton(L"rule_clear",L"Clear All",x+610,actionY,72,28,false);
 
+            if(!personaShowLearnedNotes_) {
+                const float filterY=py+148.0f;
+                const float searchW=std::clamp(contentW*0.23f,180.0f,260.0f);
+                const float filterX=x+80.0f+searchW;
+                const std::wstring typeLabel=
+                    responseRuleTypeFilter_=="smart"?L"Type: Smart":
+                    responseRuleTypeFilter_=="contains"?L"Type: Contains":
+                    responseRuleTypeFilter_=="exact"?L"Type: Exact":L"Type: All";
+                const std::wstring stateLabel=
+                    responseRuleStateFilter_==1?L"State: Enabled":
+                    responseRuleStateFilter_==0?L"State: Disabled":L"State: All";
+
+                TextLine(L"Search",x+22,filterY+4,46,20,tinyFmt_.Get(),brush_.muted.Get());
+                AddButton(L"rule_filter_type",typeLabel,filterX,filterY,104,28,false);
+                AddButton(L"rule_filter_state",stateLabel,filterX+112,filterY,112,28,false);
+                AddButton(L"rule_filter_apply",L"Search",filterX+232,filterY,62,28,true);
+                AddButton(L"rule_filter_clear",L"Clear",filterX+302,filterY,54,28,false);
+            }
+
             constexpr size_t rulePageSize=4;
             const auto rulePage=sentinel::simulation::ComputeResponseRulePageWindow(
                 rules.size(),responseRulePage_,rulePageSize);
             responseRulePage_=rulePage.pageIndex;
             const size_t rulePageCount=rulePage.pageCount;
 
-            TextLine(
-                std::to_wstring(enabledRules)+L" enabled / "+
-                std::to_wstring(rules.size())+L" saved for "+Widen(simSettings_.persona.name),
-                x+22,py+154,contentW-260,20,tinyFmt_.Get(),brush_.cyan.Get());
-
             if(!personaShowLearnedNotes_) {
-                AddButton(L"rule_prev",L"<",x+contentW-226,py+148,34,26,false);
+                TextLine(
+                    std::to_wstring(rules.size())+L" matching / "+
+                    std::to_wstring(allRules.size())+L" saved | "+
+                    std::to_wstring(enabledRules)+L" enabled for "+Widen(simSettings_.persona.name),
+                    x+22,py+184,contentW-260,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+                AddButton(L"rule_prev",L"<",x+contentW-226,py+178,34,26,false);
                 TextLine(
                     L"Page "+std::to_wstring(responseRulePage_+1)+L" / "+
                     std::to_wstring(rulePageCount),
-                    x+contentW-184,py+151,100,20,tinyFmt_.Get(),brush_.muted.Get(),
+                    x+contentW-184,py+181,100,20,tinyFmt_.Get(),brush_.muted.Get(),
                     DWRITE_TEXT_ALIGNMENT_CENTER);
-                AddButton(L"rule_next",L">",x+contentW-76,py+148,34,26,false);
+                AddButton(L"rule_next",L">",x+contentW-76,py+178,34,26,false);
             }
 
-            const float listY=py+180.0f;
+            const float listY=personaShowLearnedNotes_?py+180.0f:py+214.0f;
             const float rowH=64.0f;
             if(personaShowLearnedNotes_) {
                 TextLine(
@@ -8509,10 +8533,17 @@ private:
             } else {
             if(rules.empty()) {
                 Rounded(x+18,listY,contentW-36,82,brush_.sidebar.Get(),brush_.border.Get(),8);
-                TextLine(L"No saved response rules for this persona.",x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.muted.Get());
-                TextLine(
-                    L"Enter a trigger and approved response above, choose the wording mode, then add Smart, Contains, or Exact.",
-                    x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
+                if(allRules.empty()) {
+                    TextLine(L"No saved response rules for this persona.",x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.muted.Get());
+                    TextLine(
+                        L"Enter a trigger and approved response above, choose the wording mode, then add Smart, Contains, or Exact.",
+                        x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
+                } else {
+                    TextLine(L"No response rules match the current filters.",x+34,listY+13,contentW-68,24,smallFmt_.Get(),brush_.yellow.Get());
+                    TextLine(
+                        L"Change Search / Type / State or choose Clear to return to the complete persona rule list.",
+                        x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
+                }
             } else {
                 const size_t pageStart=rulePage.start;
                 const size_t pageEnd=rulePage.end;
@@ -8560,7 +8591,7 @@ private:
                 TextLine(
                     L"Showing "+std::to_wstring(pageStart+1)+L"-"+
                     std::to_wstring(pageEnd)+L" of "+
-                    std::to_wstring(rules.size())+L" saved rules.",
+                    std::to_wstring(rules.size())+L" matching rules.",
                     x+22,listY+visible*(rowH+6.0f)+4,contentW-44,18,tinyFmt_.Get(),brush_.muted.Get());
             }
             }
