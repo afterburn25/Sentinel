@@ -7,6 +7,10 @@ $memoryPath = Join-Path $repo "src\Simulation\ConversationMemory.cpp"
 $fallbackModelPath = Join-Path $repo "src\Simulation\RuleBasedTestModel.cpp"
 $modelRegistryPath = Join-Path $repo "src\Simulation\ModelRegistry.cpp"
 $deploymentRegistryPath = Join-Path $repo "src\Simulation\DeploymentRegistry.cpp"
+$trainingReviewPath = Join-Path $repo "src\Simulation\TrainingReviewStore.cpp"
+$modelAdapterPath = Join-Path $repo "include\Sentinel\Simulation\IModelAdapter.hpp"
+$openAiModelPath = Join-Path $repo "src\Simulation\OpenAICompatibleModel.cpp"
+$correctionMigrationPath = Join-Path $repo "migrations\0038_training_review_correction_targets.sql"
 $contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
 
 if (-not (Test-Path $contractPath)) {
@@ -27,12 +31,28 @@ if (-not (Test-Path $modelRegistryPath)) {
 if (-not (Test-Path $deploymentRegistryPath)) {
     throw "SARA deployment-registry source is missing: $deploymentRegistryPath"
 }
+if (-not (Test-Path $trainingReviewPath)) {
+    throw "SARA training-review source is missing: $trainingReviewPath"
+}
+if (-not (Test-Path $modelAdapterPath)) {
+    throw "SARA model-adapter contract is missing: $modelAdapterPath"
+}
+if (-not (Test-Path $openAiModelPath)) {
+    throw "SARA OpenAI-compatible model source is missing: $openAiModelPath"
+}
+if (-not (Test-Path $correctionMigrationPath)) {
+    throw "SARA correction-target migration is missing: $correctionMigrationPath"
+}
 
 $src = Get-Content $mainPath -Raw
 $memorySrc = Get-Content $memoryPath -Raw
 $fallbackModelSrc = Get-Content $fallbackModelPath -Raw
 $modelRegistrySrc = Get-Content $modelRegistryPath -Raw
 $deploymentRegistrySrc = Get-Content $deploymentRegistryPath -Raw
+$trainingReviewSrc = Get-Content $trainingReviewPath -Raw
+$modelAdapterSrc = Get-Content $modelAdapterPath -Raw
+$openAiModelSrc = Get-Content $openAiModelPath -Raw
+$correctionMigrationSrc = Get-Content $correctionMigrationPath -Raw
 
 $begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
 $end = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_END")
@@ -298,6 +318,61 @@ $trainerWorkflowTokens = @(
 foreach ($token in $trainerWorkflowTokens) {
     if (-not $src.Contains($token)) {
         throw "Protected conversational Trainer workflow is missing: $token"
+    }
+}
+
+$correctionReviewMainTokens = @(
+    'GenerateCorrectionPreview(',
+    'SetCorrectionTarget(',
+    'TrainingTargetText(item)',
+    'PENDING human review in Model Lab / Datasets',
+    'Training Target (corrected',
+    'item.correctionInstruction',
+    'item.correctionInstruction.empty()?"Reviewed":"Correction"'
+)
+foreach ($token in $correctionReviewMainTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected reviewed-correction workflow is missing: $token"
+    }
+}
+
+$correctionReviewStoreTokens = @(
+    'TrainingTargetText(const TrainingReviewItem& item)',
+    'TrainingReviewStore::SetCorrectionTarget',
+    'target_output_text',
+    'correction_instruction',
+    'status=0,reviewer='''''',notes='''''',reviewed_utc='''''',
+    'JsonEscape(TrainingTargetText(item))'
+)
+foreach ($token in $correctionReviewStoreTokens) {
+    if (-not $trainingReviewSrc.Contains($token)) {
+        throw "Protected correction-target review store is missing: $token"
+    }
+}
+
+$correctionModelTokens = @(
+    'GenerateCorrectionPreview(',
+    'originalInput',
+    'originalResponse',
+    'trainerInstruction'
+)
+foreach ($token in $correctionModelTokens) {
+    if (-not $modelAdapterSrc.Contains($token)) {
+        throw "Correction-preview model contract is missing: $token"
+    }
+    if (-not $openAiModelSrc.Contains($token)) {
+        throw "Connected-model correction preview is missing: $token"
+    }
+}
+
+$correctionMigrationTokens = @(
+    'correction_instruction',
+    'target_output_text',
+    'correction_updated_utc'
+)
+foreach ($token in $correctionMigrationTokens) {
+    if (-not $correctionMigrationSrc.Contains($token)) {
+        throw "Correction-target schema migration is missing: $token"
     }
 }
 
