@@ -8,6 +8,8 @@
 
 namespace sentinel::simulation {
 
+struct EvaluationRun;
+
 enum class DeploymentStage { Staged, Active, RolledBack, Retired };
 
 struct DeploymentPackage {
@@ -32,15 +34,8 @@ struct DeploymentPackage {
 class DeploymentRegistry {
 public:
     DeploymentPackage& Prepare(
-        std::string candidateId,
-        std::string candidateName,
-        std::string foundationId,
-        std::string foundationName,
-        std::string adapterId,
-        std::string adapterName,
-        std::string personaName,
-        std::string evaluationRunId,
-        int evaluationScore);
+        const EvaluationRun& evaluation,
+        std::string personaName);
 
     bool Activate(size_t index);
     bool Rollback();
