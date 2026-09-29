@@ -642,6 +642,14 @@ std::wstring AuditActionName(int action) {
         case 602: return L"Deployment rolled back";
         case 603: return L"Deployment lock changed";
         case 604: return L"Deployment manifest exported";
+        case 605: return L"Foundation evaluated";
+        case 606: return L"Foundation approved";
+        case 607: return L"Foundation activated";
+        case 608: return L"Foundation rolled back";
+        case 609: return L"Persona LoRA evaluated";
+        case 610: return L"Persona LoRA approved";
+        case 611: return L"Persona LoRA activated";
+        case 612: return L"Persona LoRA rolled back";
         case 700: return L"Subject created";
         case 701: return L"Subject updated";
         case 702: return L"Subject deleted";
@@ -8560,6 +8568,16 @@ private:
         }
         if(EvaluateStagedRuntimeStack(selectedModelLabFoundationId_,{})) {
             const auto& run=evaluationRuns_.Runs().back();
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::FoundationEvaluated,
+                "model_foundation",
+                selectedModelLabFoundationId_,
+                AuditMetadata(
+                    "evaluation="+run.id+
+                    " score="+std::to_string(run.overallScore)+
+                    " passed="+(sentinel::simulation::EvaluationPassedApprovalGate(run)?"true":"false"))
+            });
             statusText_=L"Foundation evaluation complete: "+
                 std::to_wstring(run.overallScore)+L"/100; review then Approve";
         }
@@ -8580,6 +8598,18 @@ private:
                 std::to_string(binding->id)))
         {
             const auto& run=evaluationRuns_.Runs().back();
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::PersonaLoraEvaluated,
+                "persona_lora",
+                std::to_string(binding->id),
+                AuditMetadata(
+                    "persona="+binding->personaName+
+                    " foundation="+binding->foundationId+
+                    " evaluation="+run.id+
+                    " score="+std::to_string(run.overallScore)+
+                    " passed="+(sentinel::simulation::EvaluationPassedApprovalGate(run)?"true":"false"))
+            });
             statusText_=L"LoRA evaluation complete: "+
                 std::to_wstring(run.overallScore)+L"/100; review then Approve";
         }
@@ -8602,6 +8632,13 @@ private:
             return;
         }
         RefreshTrainerFoundationList(selectedModelLabFoundationId_);
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::FoundationApproved,
+            "model_foundation",
+            selectedModelLabFoundationId_,
+            AuditMetadata("evaluation="+run.id+" score="+std::to_string(run.overallScore))
+        });
         statusText_=L"Foundation approved from evaluation "+Widen(run.id);
     }
 
@@ -8626,6 +8663,17 @@ private:
             statusText_=L"LoRA approval was rejected; approve its evaluated foundation first";
             return;
         }
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::PersonaLoraApproved,
+            "persona_lora",
+            std::to_string(binding->id),
+            AuditMetadata(
+                "persona="+binding->personaName+
+                " foundation="+binding->foundationId+
+                " evaluation="+run.id+
+                " score="+std::to_string(run.overallScore))
+        });
         statusText_=L"LoRA candidate approved from evaluation "+Widen(run.id);
     }
 
