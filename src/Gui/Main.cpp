@@ -1688,6 +1688,10 @@ public:
             else if (b.id==L"rule_new") StartNewPersonaResponseRule();
             else if (b.id==L"rule_prev") PreviousPersonaResponseRulePage();
             else if (b.id==L"rule_next") NextPersonaResponseRulePage();
+            else if (b.id==L"rule_filter_apply") ApplyPersonaResponseRuleSearch();
+            else if (b.id==L"rule_filter_clear") ClearPersonaResponseRuleFilters();
+            else if (b.id==L"rule_filter_type") CyclePersonaResponseRuleTypeFilter();
+            else if (b.id==L"rule_filter_state") CyclePersonaResponseRuleStateFilter();
             else if (b.id==L"rule_test") TestPersonaResponseRuleMatch();
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
             else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
