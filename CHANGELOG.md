@@ -1,5 +1,15 @@
 # SARA Changelog
 
+## 1.0.17 — Local AI self-recovery
+
+### In development
+- Automatically recover the local `sentinel-chat` runtime when an in-session model request fails.
+- Perform one bounded restart/reconnect attempt and retry the failed model operation once.
+- Never download or repair model files during automatic recovery.
+- Avoid background polling and infinite retry loops.
+- Keep manual Reconnect available as a diagnostic override.
+
+
 ## 1.0.16 — Current recovery feature release
 
 Built on the protected 1.0.15 recovery baseline.
