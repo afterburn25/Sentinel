@@ -1908,7 +1908,11 @@ public:
                     simContext_.recalledMemory+=learnedNotes;
                 }
 
-                auto initiative=model_->GenerateSyntheticInitiative(simContext_);
+                auto initiative=CallModelWithLocalRecovery(
+                    L"Proactive engagement",
+                    [&](auto& adapter){
+                        return adapter.GenerateSyntheticInitiative(simContext_);
+                    });
                 if(!initiative.empty()) {
                     simContext_.history.push_back({
                         sentinel::simulation::ChatTurn::Speaker::SyntheticSubject,
@@ -1946,8 +1950,12 @@ public:
                 if(simPreparedFromRule_) {
                     std::string ruleReply=simRuleMeaning_;
                     if(simRuleResponseMode_=="persona_variation" && model_) {
-                        ruleReply=model_->GeneratePersonaRuleReply(
-                            simRuleMeaning_,simContext_);
+                        ruleReply=CallModelWithLocalRecovery(
+                            L"Rule response",
+                            [&](auto& adapter){
+                                return adapter.GeneratePersonaRuleReply(
+                                    simRuleMeaning_,simContext_);
+                            });
                         const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
                             simSettings_.ageState,ruleReply);
                         if(!policy.allowed)
@@ -1957,8 +1965,12 @@ public:
 
                     if(simMatchedRule_ && !simMatchedRule_->terminal && model_) {
                         try {
-                            const auto generated=model_->GenerateSyntheticReply(
-                                simPendingMessage_,simContext_);
+                            const auto generated=CallModelWithLocalRecovery(
+                                L"Simulation reply",
+                                [&](auto& adapter){
+                                    return adapter.GenerateSyntheticReply(
+                                        simPendingMessage_,simContext_);
+                                });
                             if(!generated.empty()) {
                                 const auto combined=ruleReply+
                                     (ruleReply.empty()?"":" ")+generated;
@@ -1972,8 +1984,12 @@ public:
                         }
                     }
                 } else if(model_) {
-                    simPreparedReply_=model_->GenerateSyntheticReply(
-                        simPendingMessage_,simContext_);
+                    simPreparedReply_=CallModelWithLocalRecovery(
+                        L"Simulation reply",
+                        [&](auto& adapter){
+                            return adapter.GenerateSyntheticReply(
+                                simPendingMessage_,simContext_);
+                        });
                 }
             } catch(const std::exception& e) {
                 simPreparedReply_=std::string("Model error: ")+e.what();
@@ -2141,6 +2157,8 @@ private:
     sentinel::simulation::ModelContext simContext_;
     std::wstring simSuggestion_=L"No suggestion generated yet";
     std::wstring modelStatus_=L"Built-in test model";
+    bool localModelRecoveryInProgress_{false};
+    unsigned int localModelRecoveryCount_{0};
     std::string currentConversationId_;
     std::wstring currentConversationTitle_=L"New conversation";
     int archiveCursor_{0};
@@ -6090,6 +6108,63 @@ private:
             ". Use Apply Preview if this interpretation is correct.";
     }
 
+    std::string CallModelWithLocalRecovery(
+        std::wstring_view operation,
+        const std::function<std::string(sentinel::simulation::IModelAdapter&)>& call)
+    {
+        if(!model_)
+            throw std::runtime_error("no model adapter configured");
+
+        try {
+            return call(*model_);
+        } catch(const std::exception& first) {
+            if(!IsLocalModelEndpoint(simSettings_.endpoint) ||
+               localModelRecoveryInProgress_)
+                throw;
+
+            const std::string firstError=first.what();
+            localModelRecoveryInProgress_=true;
+            modelStatus_=L"sentinel-chat interrupted; recovering...";
+            statusText_=L"Recovering sentinel-chat for "+std::wstring(operation);
+            if(hwnd_) {
+                InvalidateRect(hwnd_,nullptr,FALSE);
+                UpdateWindow(hwnd_);
+            }
+
+            bool recovered=false;
+            std::wstring recoveryDetail;
+            try {
+                recovered=ApplyPersonaRuntimeBinding(true,30000);
+                if(!recovered) recoveryDetail=trainerRuntimeStatus_;
+            } catch(const std::exception& recoveryError) {
+                recoveryDetail=Widen(recoveryError.what());
+            }
+            localModelRecoveryInProgress_=false;
+
+            if(!recovered) {
+                throw std::runtime_error(
+                    "sentinel-chat request failed: "+firstError+
+                    "; automatic recovery failed: "+Narrow(recoveryDetail));
+            }
+
+            ++localModelRecoveryCount_;
+            modelStatus_=
+                L"Connected automatically: sentinel-chat | recovered "+
+                std::to_wstring(localModelRecoveryCount_)+L"x";
+            statusText_=std::wstring(operation)+
+                L" resumed after automatic local AI recovery";
+
+            try {
+                return call(*model_);
+            } catch(const std::exception& second) {
+                throw std::runtime_error(
+                    "sentinel-chat retry failed after automatic recovery: "+
+                    std::string(second.what()));
+            }
+        }
+    }
+
+
     void SendTrainerConversationMessage() {
         const auto instruction=Narrow(EditText(trainerInstructionEdit_));
         if(instruction.empty()) {
@@ -6118,8 +6193,12 @@ private:
                         "\nExisting persona: "+BuildPersonaSummary()+
                         "\nTrainer instruction: "+instruction+
                         "\nInterpret this as a proposed profile change only. Do not apply it automatically.";
-                    payload=model_->GenerateBehaviorProfile(
-                        simSettings_.persona.age,trainingBackground,ctx);
+                    payload=CallModelWithLocalRecovery(
+                        L"Trainer behavior preview",
+                        [&](auto& adapter){
+                            return adapter.GenerateBehaviorProfile(
+                                simSettings_.persona.age,trainingBackground,ctx);
+                        });
                     reply=TrainerBehaviorPreviewText(payload);
                 }
             }
@@ -6140,11 +6219,15 @@ private:
                     } else {
                         auto correctionContext=simContext_;
                         correctionContext.personaSummary=BuildPersonaSummary();
-                        auto target=model_->GenerateCorrectionPreview(
-                            staged->inputText,
-                            staged->outputText,
-                            instruction,
-                            correctionContext);
+                        auto target=CallModelWithLocalRecovery(
+                            L"Trainer correction preview",
+                            [&](auto& adapter){
+                                return adapter.GenerateCorrectionPreview(
+                                    staged->inputText,
+                                    staged->outputText,
+                                    instruction,
+                                    correctionContext);
+                            });
 
                         if(target.empty() || target==staged->outputText) {
                             reply=
@@ -6436,7 +6519,11 @@ private:
         try {
             sentinel::simulation::ModelContext ctx=simContext_;
             ctx.personaSummary=BuildPersonaSummary();
-            const auto result=model_->GenerateBehaviorProfile(age,background,ctx);
+            const auto result=CallModelWithLocalRecovery(
+                L"Persona behavior generation",
+                [&](auto& adapter){
+                    return adapter.GenerateBehaviorProfile(age,background,ctx);
+                });
             LogPersonaConversationEvent(
                 "behavior_profile_generation",background,result,0,0);
 
@@ -7454,7 +7541,11 @@ private:
             return;
         }
         try {
-            auto suggestion=model_->GenerateInvestigatorSuggestion(simContext_);
+            auto suggestion=CallModelWithLocalRecovery(
+                L"Simulation suggestion",
+                [&](auto& adapter){
+                    return adapter.GenerateInvestigatorSuggestion(simContext_);
+                });
             auto decision=sentinel::simulation::EvaluateSimulationPolicy(simSettings_.ageState,suggestion);
             simSuggestion_=Widen(suggestion);
             policyStatus_=Widen(decision.reason);
