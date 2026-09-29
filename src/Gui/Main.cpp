@@ -641,6 +641,10 @@ std::wstring AuditActionName(int action) {
         case 711: return L"Identity lead verified";
         case 712: return L"Identity lead rejected";
         case 713: return L"Subject identity confirmed";
+        case 714: return L"Identity research queued";
+        case 715: return L"Identity research completed";
+        case 716: return L"Identity research promoted";
+        case 717: return L"Identity research rejected";
         case 720: return L"Investigator takeover activated";
         case 721: return L"Investigator takeover released";
         case 722: return L"Supervisor approval requested";
