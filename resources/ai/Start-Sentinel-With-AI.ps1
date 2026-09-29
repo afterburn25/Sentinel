@@ -45,6 +45,8 @@ $gpu=Get-ChildItem (Join-Path $ai 'runtime') -Filter llama-server.exe -Recurse -
 $cpu=Get-ChildItem (Join-Path $ai 'runtime_cpu') -Filter llama-server.exe -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
 if(-not $gpu -and -not $cpu){throw 'SARA llama.cpp runtime is not installed.'}
 
+$startupDeadline=(Get-Date).AddSeconds($StartupTimeoutSeconds)
+
 function Start-One($server,[int]$layers,[string]$tag){
   $out=Join-Path $logs "llama-server-$tag.out.log"
   $err=Join-Path $logs "llama-server-$tag.err.log"
@@ -52,8 +54,7 @@ function Start-One($server,[int]$layers,[string]$tag){
   if($activeLora){$args+=@('--lora',$activeLora)}
   $p=Start-Process -FilePath $server.FullName -ArgumentList $args -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
   Set-Content $pidFile $p.Id -Encoding ASCII
-  $deadline=(Get-Date).AddSeconds($StartupTimeoutSeconds)
-  while((Get-Date)-lt $deadline){
+  while((Get-Date)-lt $startupDeadline){
     Start-Sleep -Milliseconds 500
     $p.Refresh()
     if($p.HasExited){return $false}
