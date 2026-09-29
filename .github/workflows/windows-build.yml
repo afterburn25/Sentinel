@@ -83,16 +83,21 @@ jobs:
       - name: Validate bundled AI startup script syntax
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path 'resources/ai/Start-Sentinel-With-AI.ps1'),
-            [ref]$tokens,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            throw 'Bundled AI startup script contains PowerShell syntax errors.'
+          foreach ($script in @(
+            'resources/ai/Start-Sentinel-With-AI.ps1',
+            'resources/ai/Configure-Sentinel.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }
+              throw "Bundled AI script contains PowerShell syntax errors: $script"
+            }
           }
 
       - name: Validate Persona LoRA candidate isolation
