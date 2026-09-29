@@ -26,6 +26,10 @@ static void Require(bool v,const char* msg) {
 
 int main() {
     using namespace sentinel;
+    simulation::SimulationSettings defaultSettings;
+    Require(defaultSettings.model=="sentinel-chat",
+        "default local model alias must be sentinel-chat");
+
     simulation::SimulationSettings settings;
     settings.endpoint="http://127.0.0.1:1234/v1/chat/completions";
     settings.model="test-model";
