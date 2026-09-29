@@ -20,6 +20,7 @@
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
 #include "Sentinel/Identity/IdentityResearchProviderAdapter.hpp"
+#include "Sentinel/Identity/IdentityResearchPackage.hpp"
 #include "Sentinel/Operations/SupervisorStateStore.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 
@@ -869,6 +870,67 @@ void TestIdentityResearchProviderAdapters()
         "duplicate identity research adapter provider id was accepted");
 }
 
+
+void TestIdentityResearchPackages()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::identity::IdentityResearchRequestPackage request;
+    request.taskId="task-123";
+    request.caseId="case-456";
+    request.subjectId="subject-789";
+    request.subjectDisplayName="Example Subject";
+    request.researchType="PUBLIC RECORDS";
+    request.providerId="agency-public-records";
+    request.providerDisplayName="Agency Public Records Connector";
+    request.accessMode="API";
+    request.endpointHint="https://provider.example/";
+    request.queryText="reference value\nwith second line";
+    request.purpose="authorized case purpose";
+    request.createdUtc="2026-09-29T01:00:00Z";
+
+    const auto requestText=
+        sentinel::identity::SerializeResearchRequestPackage(request);
+    Require(requestText.find("credential")==std::string::npos,
+        "research request package unexpectedly contains credential material");
+    const auto parsedRequest=
+        sentinel::identity::ParseResearchRequestPackage(requestText);
+    Require(parsedRequest.taskId==request.taskId,
+        "research request task id did not round-trip");
+    Require(parsedRequest.queryText==request.queryText,
+        "research request escaped query did not round-trip");
+
+    sentinel::identity::IdentityResearchResultPackage result;
+    result.taskId=request.taskId;
+    result.providerId=request.providerId;
+    result.resultSummary="possible correlation only";
+    result.resultReference="provider-ref-42";
+    result.provenance="authorized provider export 2026-09-29";
+
+    const auto resultText=
+        sentinel::identity::SerializeResearchResultPackage(result);
+    const auto parsedResult=
+        sentinel::identity::ParseResearchResultPackage(resultText);
+    Require(parsedResult.taskId==result.taskId,
+        "research result task id did not round-trip");
+    Require(parsedResult.providerId==result.providerId,
+        "research result provider id did not round-trip");
+    Require(parsedResult.provenance==result.provenance,
+        "research result provenance did not round-trip");
+
+    bool malformedRejected=false;
+    try {
+        (void)sentinel::identity::ParseResearchResultPackage(
+            "SARA_IDENTITY_RESEARCH_RESULT_V1\ntask_id\ttask-123\nprovider_id\tagency-public-records\n");
+    } catch(...) {
+        malformedRejected=true;
+    }
+    Require(malformedRejected,
+        "research result without finding/provenance was not rejected");
+}
+
 void TestSubjectIdentityStore()
 {
     auto Require=[](bool value,const char* message) {
@@ -1576,6 +1638,9 @@ int main()
         std::cout << "[core] identity research provider adapters..." << std::endl;
         TestIdentityResearchProviderAdapters();
         std::cout << "[core] identity research provider adapters PASS" << std::endl;
+        std::cout << "[core] identity research packages..." << std::endl;
+        TestIdentityResearchPackages();
+        std::cout << "[core] identity research packages PASS" << std::endl;
         std::cout << "[core] subject identity store..." << std::endl;
         TestSubjectIdentityStore();
         std::cout << "[core] subject identity store PASS" << std::endl;

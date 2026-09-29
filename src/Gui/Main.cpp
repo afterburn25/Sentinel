@@ -5,6 +5,7 @@
 #include "Sentinel/Evidence/SevContainer.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
 #include "Sentinel/Identity/IdentityResearchProviderAdapter.hpp"
+#include "Sentinel/Identity/IdentityResearchPackage.hpp"
 #include "Sentinel/Security/Crypto.hpp"
 #include "Sentinel/Security/KeyManager.hpp"
 #include "Sentinel/Security/SecretProtector.hpp"
@@ -653,6 +654,7 @@ std::wstring AuditActionName(int action) {
         case 716: return L"Identity research promoted";
         case 717: return L"Identity research rejected";
         case 718: return L"Identity research preserved";
+        case 719: return L"Identity research request exported";
         case 720: return L"Investigator takeover activated";
         case 721: return L"Investigator takeover released";
         case 722: return L"Supervisor approval requested";
@@ -1526,6 +1528,8 @@ public:
                 ToggleResearchProviderType((int)std::stol(b.id.substr(23)));
             else if (b.id.rfind(L"research_task:",0)==0) SelectIdentityResearchTask(Narrow(b.id.substr(14)));
             else if (b.id==L"research_complete") CompleteSelectedIdentityResearch();
+            else if (b.id==L"research_export_request") ExportSelectedIdentityResearchRequest();
+            else if (b.id==L"research_import_result") ImportSelectedIdentityResearchResult();
             else if (b.id==L"research_promote") PromoteSelectedIdentityResearch();
             else if (b.id==L"research_preserve") PreserveSelectedIdentityResearchAsEvidence();
             else if (b.id==L"research_reject") RejectSelectedIdentityResearch();
@@ -3778,6 +3782,137 @@ private:
         }
     }
 
+    void ExportSelectedIdentityResearchRequest() {
+        if(selectedResearchTaskId_.empty()) {
+            statusText_=L"Select a queued research task first";
+            return;
+        }
+        auto task=runtime_->subjectIdentity.GetResearch(selectedResearchTaskId_);
+        if(!task || task->status!=sentinel::identity::IdentityResearchStatus::Queued) {
+            statusText_=L"Only queued research tasks can export a provider request";
+            return;
+        }
+        auto subject=runtime_->subjectIdentity.GetSubject(task->subjectId);
+        if(!subject) {
+            statusText_=L"Research subject could not be loaded";
+            return;
+        }
+
+        auto provider=runtime_->subjectIdentity.GetResearchProvider(task->provider);
+        sentinel::identity::IdentityResearchRequestPackage package;
+        package.taskId=task->id;
+        package.caseId=subject->caseId.ToString();
+        package.subjectId=subject->id.ToString();
+        package.subjectDisplayName=subject->displayName;
+        package.researchType=sentinel::identity::ToString(task->type);
+        package.providerId=task->provider;
+        package.providerDisplayName=provider?provider->displayName:task->provider;
+        package.accessMode=provider
+            ?sentinel::identity::ToString(provider->accessMode)
+            :"MANUAL";
+        package.endpointHint=provider?provider->endpointHint:"";
+        package.queryText=task->queryText;
+        package.purpose=task->purpose;
+        package.createdUtc=task->createdUtc;
+
+        wchar_t file[MAX_PATH]{};
+        const auto defaultName=
+            L"SARA-Research-"+Widen(task->id.substr(0,8))+L".sara-research-request";
+        wcsncpy_s(file,defaultName.c_str(),_TRUNCATE);
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=
+            L"SARA Research Request\0*.sara-research-request\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-research-request";
+        ofn.Flags=OFN_OVERWRITEPROMPT|OFN_PATHMUSTEXIST;
+        if(!GetSaveFileNameW(&ofn)) return;
+
+        try {
+            const std::filesystem::path requestPath(file);
+            sentinel::identity::SaveResearchRequestPackage(requestPath,package);
+
+            sentinel::identity::IdentityResearchResultPackage resultTemplate;
+            resultTemplate.taskId=task->id;
+            resultTemplate.providerId=task->provider;
+            auto templatePath=requestPath;
+            templatePath.replace_extension(L".result-template.sara-research-result");
+            sentinel::identity::SaveResearchResultPackage(templatePath,resultTemplate);
+
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::IdentityResearchRequestExported,
+                "identity_research",
+                task->id,
+                AuditMetadata(
+                    "provider="+task->provider+
+                    " type="+sentinel::identity::ToString(task->type)+
+                    " credentials_included=false")
+            });
+            statusText_=L"Research request + blank result template exported without credentials";
+        } catch(const std::exception& e) {
+            statusText_=L"Research request package export failed";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Research Package Export",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ImportSelectedIdentityResearchResult() {
+        if(selectedResearchTaskId_.empty()) {
+            statusText_=L"Select the queued task that this provider result belongs to";
+            return;
+        }
+        auto task=runtime_->subjectIdentity.GetResearch(selectedResearchTaskId_);
+        if(!task || task->status!=sentinel::identity::IdentityResearchStatus::Queued) {
+            statusText_=L"Provider results can be imported only into queued research tasks";
+            return;
+        }
+
+        wchar_t file[MAX_PATH]{};
+        OPENFILENAMEW ofn{};
+        ofn.lStructSize=sizeof(ofn);
+        ofn.hwndOwner=hwnd_;
+        ofn.lpstrFile=file;
+        ofn.nMaxFile=MAX_PATH;
+        ofn.lpstrFilter=
+            L"SARA Research Result\0*.sara-research-result\0All Files\0*.*\0\0";
+        ofn.lpstrDefExt=L"sara-research-result";
+        ofn.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST;
+        if(!GetOpenFileNameW(&ofn)) return;
+
+        try {
+            const auto package=sentinel::identity::LoadResearchResultPackage(file);
+            if(package.taskId!=task->id)
+                throw std::runtime_error("result task_id does not match the selected research task");
+            if(package.providerId!=task->provider)
+                throw std::runtime_error("result provider_id does not match the queued provider");
+
+            if(!runtime_->subjectIdentity.CompleteResearch(
+                    task->id,
+                    package.resultSummary,
+                    package.resultReference,
+                    package.provenance))
+                throw std::runtime_error("research task is no longer queued");
+
+            SetWindowTextW(researchResultEdit_,Widen(package.resultSummary).c_str());
+            SetWindowTextW(researchReferenceEdit_,Widen(package.resultReference).c_str());
+            SetWindowTextW(researchProvenanceEdit_,Widen(package.provenance).c_str());
+
+            runtime_->audit.Append({
+                sentinel::UserId::Random(),
+                sentinel::AuditAction::IdentityResearchCompleted,
+                "identity_research",
+                task->id,
+                AuditMetadata("result package imported; human review required")
+            });
+            statusText_=L"Provider result imported; it remains an unverified research finding";
+        } catch(const std::exception& e) {
+            statusText_=L"Research result package was rejected";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Research Result Import",MB_OK|MB_ICONERROR);
+        }
+    }
+
     void CompleteSelectedIdentityResearch() {
         if(selectedResearchTaskId_.empty()) {
             statusText_=L"Select a research task first";
@@ -4421,8 +4556,10 @@ private:
 
         const float actionY=resultY+resultH-36.0f;
         if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Queued) {
-            AddButton(L"research_complete",L"Save Result",rightX+16,actionY,94,26,true);
-            AddButton(L"research_reject",L"Reject",rightX+118,actionY,68,26,false);
+            AddButton(L"research_complete",L"Save Result",rightX+16,actionY,86,26,true);
+            AddButton(L"research_reject",L"Reject",rightX+110,actionY,62,26,false);
+            AddButton(L"research_export_request",L"Export Req",rightX+180,actionY,82,26,false);
+            AddButton(L"research_import_result",L"Import Result",rightX+270,actionY,94,26,false);
         } else if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Completed) {
             AddButton(L"research_promote",L"Promote to Lead",rightX+16,actionY,118,26,true);
             AddButton(L"research_reject",L"Reject",rightX+142,actionY,68,26,false);

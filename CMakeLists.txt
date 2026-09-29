@@ -26,6 +26,7 @@ add_library(sentinel_core
     src/Evidence/EvidenceService.cpp
     src/Identity/SubjectIdentityStore.cpp
     src/Identity/IdentityResearchProviderAdapter.cpp
+    src/Identity/IdentityResearchPackage.cpp
     src/Simulation/RuleBasedTestModel.cpp
     src/Simulation/OpenAICompatibleModel.cpp
     src/Simulation/PersonaPolicy.cpp
