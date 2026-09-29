@@ -80,6 +80,21 @@ jobs:
         shell: pwsh
         run: python -m py_compile resources/trainer/train_sara.py
 
+      - name: Validate bundled AI startup script syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'resources/ai/Start-Sentinel-With-AI.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'Bundled AI startup script contains PowerShell syntax errors.'
+          }
+
       - name: Validate Persona LoRA candidate isolation
         shell: pwsh
         run: python resources/trainer/train_sara.py --self-test-candidate-isolation
