@@ -957,3 +957,50 @@ Artifact digests from run #887:
 
 This is the validated rollback point for the recovered SARA shell through non-activating Persona LoRA training output.
 
+## Checkpoint 19 — Persona LoRA candidate isolation validated
+
+Validated commit:
+
+`3a9bd0d66a041f98697eff8c483ececcd209554b`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #887
+- Run ID: `36524609266`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Persona LoRA candidate isolation proven by this checkpoint:
+
+- completing a Persona LoRA training job no longer deactivates the current active adapter
+- newly trained LoRA artifacts are registered as inactive candidates
+- the active persona runtime remains unchanged when training completes
+- explicit Model Lab activation remains required before a new LoRA can become active
+- the worker contains an executable SQLite self-test that seeds an existing active adapter, registers a trained candidate, and proves the old adapter remains active while the new adapter remains inactive
+- CI runs that self-test on every Windows recovery build
+- architecture guards reject reintroduction of trainer-side auto-deactivation or auto-activation
+- the protected 1.0.15 startup, splash, installer, application shell and navigation remain unchanged
+
+Artifact digests from run #887:
+
+- Windows package: `sha256:89c875c67142f1efa84431aba1e24e424dcb18f7eec2ee9fbbb7a0b39a731d4f`
+- unsigned-development Setup artifact: `sha256:fc53ccad840d172f38b6c8fd2c58452c24b84ce78f23f6c875c08d949d68d1aa`
+- UI screenshots: `sha256:66bd2d1ea758bb9f1e73b7b4eda60f55e38077d296a2bdf62a934867f40dff7b`
+
+This is the validated rollback point for the recovered SARA shell through Persona LoRA candidate isolation.
+
