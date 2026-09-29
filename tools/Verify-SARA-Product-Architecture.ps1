@@ -202,7 +202,7 @@ $identityResearchTokens = @(
     'research_export_request',
     'research_import_result',
     'IdentityResearchRequestPackage',
-    'SARA_IDENTITY_RESEARCH_RESULT_V1',
+    'LoadResearchResultPackage(',
     'BuildResearchReport(',
     'IdentityResearchPreserved',
     'researchProviderCredentialEdit_',
