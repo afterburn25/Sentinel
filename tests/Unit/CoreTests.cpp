@@ -10,6 +10,7 @@
 #include "Sentinel/Channels/ChannelCore.hpp"
 #include "Sentinel/Channels/JurisdictionRules.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
+#include "Sentinel/Simulation/IModelAdapter.hpp"
 #include "Sentinel/Simulation/TrainerStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
 #include "Sentinel/Simulation/ConversationMemory.hpp"
@@ -189,7 +190,58 @@ void TestTrainingReviewRecentList()
     Require(approved.size()==1,"approved training review filter count mismatch");
     Require(approved.front().id=="review-old","approved training review filter returned wrong item");
 
-    db.Execute("UPDATE training_review_items SET status=1,reviewer='unit' WHERE id='review-new';");
+    Require(reviews.SetCorrectionTarget(
+            "review-new",
+            "Make the reply shorter and friendlier.",
+            "hey, that sounds good"),
+        "training correction target could not be saved");
+
+    auto corrected=reviews.Get("review-new");
+    Require(corrected.has_value(),"corrected training review could not be loaded");
+    Require(corrected->status==sentinel::simulation::TrainingReviewStatus::Pending,
+        "changing a correction target must reset review status to pending");
+    Require(corrected->correctionInstruction=="Make the reply shorter and friendlier.",
+        "correction instruction did not persist");
+    Require(corrected->targetOutputText=="hey, that sounds good",
+        "correction target did not persist");
+    Require(sentinel::simulation::TrainingTargetText(*corrected)=="hey, that sounds good",
+        "training target helper did not select corrected target");
+
+    Require(reviews.Review(
+            "review-new",
+            sentinel::simulation::TrainingReviewStatus::Approved,
+            "unit-reviewer",
+            "Approved corrected target"),
+        "corrected training target could not be approved");
+
+    const auto nikkiExport=root/"nikki-approved.jsonl";
+    const auto nikkiExported=reviews.ExportApprovedJsonlForPersona(nikkiExport,"Nikki");
+    Require(nikkiExported==1,"corrected persona export count mismatch");
+    {
+        std::ifstream in(nikkiExport,std::ios::binary);
+        const std::string json(
+            (std::istreambuf_iterator<char>(in)),
+            std::istreambuf_iterator<char>());
+        Require(json.find("\"output\":\"hey, that sounds good\"")!=std::string::npos,
+            "approved JSONL did not use corrected target as output");
+        Require(json.find("\"original_output\":\"new output\"")!=std::string::npos,
+            "approved JSONL did not preserve original output");
+        Require(json.find("\"correction_instruction\":\"Make the reply shorter and friendlier.\"")!=std::string::npos,
+            "approved JSONL omitted correction instruction");
+    }
+
+    Require(reviews.SetCorrectionTarget(
+            "review-new",
+            "Use this exact replacement.",
+            "second corrected target"),
+        "second correction target could not be saved");
+    corrected=reviews.Get("review-new");
+    Require(corrected.has_value() &&
+            corrected->status==sentinel::simulation::TrainingReviewStatus::Pending,
+        "editing an approved target did not force re-review");
+    Require(corrected->reviewer.empty() && corrected->reviewedUtc.empty(),
+        "editing an approved target did not clear prior approval provenance");
+
     const auto personaExport=root/"samantha-approved.jsonl";
     const auto exported=reviews.ExportApprovedJsonlForPersona(personaExport,"Samantha");
     Require(exported==1,"persona-scoped approved export count mismatch");
@@ -200,9 +252,26 @@ void TestTrainingReviewRecentList()
             std::istreambuf_iterator<char>());
         Require(personaJson.find("\"persona_name\":\"Samantha\"")!=std::string::npos,
             "persona-scoped export omitted the selected persona");
+        Require(personaJson.find("\"output\":\"old output\"")!=std::string::npos,
+            "uncorrected approved item did not retain original output as target");
         Require(personaJson.find("Nikki")==std::string::npos,
             "persona-scoped export leaked another persona into the dataset");
     }
+
+    auto fallback=sentinel::simulation::CreateRuleBasedTestModel();
+    sentinel::simulation::ModelContext correctionContext;
+    const auto exactTarget=fallback->GenerateCorrectionPreview(
+        "hello","old answer","TARGET: revised answer",correctionContext);
+    Require(exactTarget=="revised answer",
+        "fallback correction preview did not honor explicit TARGET syntax");
+    const auto quotedTarget=fallback->GenerateCorrectionPreview(
+        "hello","old answer","please use \"quoted replacement\"",correctionContext);
+    Require(quotedTarget=="quoted replacement",
+        "fallback correction preview did not honor quoted exact target");
+    const auto unchangedTarget=fallback->GenerateCorrectionPreview(
+        "hello","old answer","make it friendlier",correctionContext);
+    Require(unchangedTarget=="old answer",
+        "fallback correction preview invented a semantic rewrite without a model");
 
     db.Close();
     std::filesystem::remove_all(root);
