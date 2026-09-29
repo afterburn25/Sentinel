@@ -10067,7 +10067,7 @@ private:
             return;
         }
         if(!runtime_->trainer.ActivatePersonaLora(selectedModelLabLoraId_)) {
-            statusText_=L"LoRA must have passing evaluation proof and an approved foundation before activation";
+            statusText_=L"LoRA activation requires passing evaluation proof and its approved Foundation to be active";
             return;
         }
 
