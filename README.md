@@ -59,7 +59,7 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ## Version
 
-- Current application version: **1.0.18** (canonical value in `VERSION`)
+- Current application version: **1.0.19** (canonical value in `VERSION`)
 - Protected recovery baseline: **1.0.15**
 - Version policy: see `docs/SARA_VERSIONING.md`
 - Evidence container: SEV1
