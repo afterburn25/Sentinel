@@ -483,6 +483,7 @@ $modelStackEvaluationStoreTokens = @(
     'target->runtimeGgufPath.empty()',
     'target->loraPath.empty()',
     'foundation->approvedEvaluationRunId.empty()',
+    'foundation->status!="ACTIVE"',
     'approved_evaluation_run_id',
     "VALUES(?,?,?,?,?,0,'')"
 )
