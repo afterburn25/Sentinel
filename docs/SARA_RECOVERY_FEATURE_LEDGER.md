@@ -280,6 +280,7 @@ Every future feature restoration must follow this exact sequence:
 - Automatic sentinel-chat startup: RESTORED / VALIDATED (Windows Build #928)
 - Canonical application versioning: RESTORED / VALIDATED (SARA 1.0.16 / Windows Build #949)
 - Deterministic sentinel-chat model selection: RESTORED / VALIDATED (SARA 1.0.16 / Windows Build #949)
+- Automatic sentinel-chat in-session self-recovery: RESTORED / VALIDATED (SARA 1.0.17 / Windows Build #960)
 - Foundation / Persona LoRA audit provenance: RESTORED / VALIDATED (Windows Build #928)
 - Wholesale post-1.0.15 branch merges: NONE
 
