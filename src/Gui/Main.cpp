@@ -4,6 +4,7 @@
 #include "Sentinel/Evidence/EvidenceService.hpp"
 #include "Sentinel/Evidence/SevContainer.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
+#include "Sentinel/Identity/IdentityResearchProviderAdapter.hpp"
 #include "Sentinel/Security/Crypto.hpp"
 #include "Sentinel/Security/KeyManager.hpp"
 #include "Sentinel/Security/SecretProtector.hpp"
@@ -676,6 +677,7 @@ struct Runtime {
     sentinel::operations::SupervisorStateStore supervisorState;
     sentinel::agency::AgencyServerStore agencyStore;
     sentinel::identity::SubjectIdentityStore subjectIdentity;
+    sentinel::identity::IdentityResearchProviderAdapterRegistry identityResearchAdapters;
     sentinel::simulation::ConversationMemoryStore conversationMemory;
     sentinel::simulation::PersonaProfileStore personaProfiles;
     sentinel::simulation::TrainingReviewStore trainingReviews;
@@ -708,6 +710,8 @@ struct Runtime {
         db.Open(root/"sentinel.db");
         migrations.ApplyDirectory(MigrationsDir());
         jurisdictionRules.EnsureBuiltInBaselines();
+        identityResearchAdapters.Register(
+            std::make_unique<sentinel::identity::ManualIdentityResearchProviderAdapter>());
         trainer.EnsureDefaultFoundation(
             "SARA Foundation 1",
             "Qwen/Qwen3.5-9B",
@@ -4092,7 +4096,7 @@ private:
     void DrawIdentityResearchProviders(float w,float h) {
         PageTitle(
             L"Subjects & Identity / Research Providers",
-            L"Authorized provider metadata only; credential aliases are references, never secrets");
+            L"Authorized provider metadata only; execution requires a separately loaded and configured adapter");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -4175,7 +4179,8 @@ private:
                 AddButton(L"research_provider_toggle",selected->enabled?L"Disable":L"Enable",rightX+128,actionY,78,30,false);
         }
         TextLine(
-            L"Provider records do not execute lookups; a future adapter must separately prove configuration and authorization.",
+            L"Executable adapters loaded: "+std::to_wstring(runtime_->identityResearchAdapters.ExecutableCount())+
+            L" | Provider metadata alone never enables automatic research.",
             rightX+216,actionY+4,rightW-232,20,tinyFmt_.Get(),brush_.muted.Get());
     }
 
@@ -4314,7 +4319,8 @@ private:
         TextLine(L"Case purpose / legal-basis note",rightX+16,bodyY+131,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"research_queue",L"Queue Research",rightX+16,bodyY+172,126,26,true);
         TextLine(
-            L"Provider metadata only; no secrets stored. Automatic execution remains disabled.",
+            L"Provider metadata only; executable adapters loaded: "+
+            std::to_wstring(runtime_->identityResearchAdapters.ExecutableCount())+L".",
             rightX+154,bodyY+175,rightW-170,20,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(rightX,resultY,rightW,resultH,brush_.panel.Get(),brush_.border.Get(),10);
