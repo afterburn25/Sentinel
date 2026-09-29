@@ -38,6 +38,9 @@ struct TrainingReviewItem {
     std::string notes;
     std::string createdUtc;
     std::string reviewedUtc;
+    std::string correctionInstruction;
+    std::string targetOutputText;
+    std::string correctionUpdatedUtc;
 };
 
 class TrainingReviewStore {
@@ -46,6 +49,10 @@ public:
 
     std::optional<TrainingReviewItem> StageLatestReply(std::string_view conversationId);
     std::optional<TrainingReviewItem> Get(std::string_view id) const;
+    bool SetCorrectionTarget(
+        std::string_view id,
+        std::string_view correctionInstruction,
+        std::string_view targetOutputText);
     bool Review(
         std::string_view id,
         TrainingReviewStatus status,
@@ -65,5 +72,6 @@ private:
 };
 
 std::string ToString(TrainingReviewStatus status);
+std::string TrainingTargetText(const TrainingReviewItem& item);
 
 }
