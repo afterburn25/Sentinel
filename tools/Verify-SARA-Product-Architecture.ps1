@@ -171,6 +171,29 @@ foreach ($token in $requiredWorkflowNames) {
     }
 }
 
+$localModelRecoveryTokens = @(
+    'CallModelWithLocalRecovery(',
+    'ShouldAttemptAutomaticLocalModelRecovery(',
+    'ApplyPersonaRuntimeBinding(true,30000)',
+    'localModelRecoveryInProgress_',
+    'localModelRecoveryCount_',
+    'sentinel-chat interrupted; recovering',
+    'retry failed after automatic recovery',
+    'Automatic sentinel-chat recoveries this session',
+    'L"Simulation reply"',
+    'L"Simulation suggestion"',
+    'L"Trainer behavior preview"',
+    'L"Trainer correction preview"'
+)
+foreach ($token in $localModelRecoveryTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected automatic local-model recovery workflow is missing: $token"
+    }
+}
+if ($src.Contains('model_->Generate')) {
+    throw "Direct model generation call bypasses the automatic recovery wrapper."
+}
+
 $startupModelTokens = @(
     'simSettings_.model="sentinel-chat"',
     'ApplyPersonaRuntimeBinding(false,75000)',
