@@ -374,6 +374,8 @@ foreach ($token in $correctionModelTokens) {
 }
 
 $trainerCandidateTokens = @(
+    'register_persona_lora_candidate',
+    'self_test_candidate_isolation',
     'VALUES(?,?,?,?,1.0,0)',
     'Persona LoRA candidate complete:',
     'Candidate remains inactive until explicitly reviewed/evaluated and activated in SARA Model Lab.'
