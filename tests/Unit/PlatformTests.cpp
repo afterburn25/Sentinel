@@ -71,6 +71,31 @@ int main() {
             chosenLocal);
         Require(selectedAdapter->Name().find("sentinel-chat")!=std::string::npos,
             "selected model adapter identity does not include sentinel-chat");
+
+        Require(simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "http://127.0.0.1:1234/v1/chat/completions",
+                "sentinel-chat",true,false),
+            "loopback sentinel-chat should be eligible for automatic recovery");
+        Require(simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "http://localhost:1234/v1/chat/completions",
+                "sentinel-chat",true,false),
+            "localhost sentinel-chat should be eligible for automatic recovery");
+        Require(!simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "http://127.0.0.1:1234/v1/chat/completions",
+                "custom-local-model",true,false),
+            "custom local models must not be replaced by bundled sentinel-chat recovery");
+        Require(!simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "https://models.example.test/v1/chat/completions",
+                "sentinel-chat",true,false),
+            "external model endpoints must not trigger bundled local recovery");
+        Require(!simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "http://127.0.0.1:1234/v1/chat/completions",
+                "sentinel-chat",false,false),
+            "automatic recovery must require installed bundled prerequisites");
+        Require(!simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                "http://127.0.0.1:1234/v1/chat/completions",
+                "sentinel-chat",true,true),
+            "automatic recovery must reject recursive recovery attempts");
     }
 
     simulation::SimulationSettings settings;
