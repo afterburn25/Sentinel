@@ -19,8 +19,15 @@ function Set-Key([string[]]$src,[string]$key,[string]$value){
   if(-not $found){$out+="$key=$value"}
   return ,$out
 }
+function Ensure-Key([string[]]$src,[string]$key,[string]$value){
+  $prefix="$key="
+  foreach($line in $src){
+    if($line.StartsWith($prefix,[System.StringComparison]::Ordinal)){return ,$src}
+  }
+  return ,($src+"$key=$value")
+}
 $lines=Set-Key $lines 'endpoint' 'http://127.0.0.1:1234/v1/chat/completions'
 $lines=Set-Key $lines 'model' 'sentinel-chat'
-$lines=Set-Key $lines 'temperature' '0.75'
-$lines=Set-Key $lines 'maxTokens' '220'
+$lines=Ensure-Key $lines 'temperature' '0.75'
+$lines=Ensure-Key $lines 'maxTokens' '220'
 Set-Content -LiteralPath $ini -Value $lines -Encoding UTF8
