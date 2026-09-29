@@ -17,6 +17,9 @@ struct RegisteredModel {
     int evaluationScore{0};
     long long latencyMs{0};
     ModelStage stage{ModelStage::Candidate};
+    std::string approvedEvaluationRunId;
+    std::string approvedFoundationId;
+    std::string approvedAdapterId;
 };
 
 struct TrainingJob {
