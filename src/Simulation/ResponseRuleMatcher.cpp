@@ -213,6 +213,30 @@ std::string SelectResponseRuleVariant(
     return variants[(std::size_t)(hash%variants.size())];
 }
 
+bool ResponseRulePassesFilter(
+    std::string_view trigger,
+    std::string_view response,
+    std::string_view matchType,
+    bool enabled,
+    std::string_view searchText,
+    std::string_view typeFilter,
+    int stateFilter)
+{
+    if(stateFilter==1 && !enabled) return false;
+    if(stateFilter==0 && enabled) return false;
+
+    if(!typeFilter.empty() && typeFilter!="all" && matchType!=typeFilter)
+        return false;
+
+    const auto normalizedSearch=NormalizeResponseRuleText(searchText);
+    if(normalizedSearch.empty()) return true;
+
+    const auto normalizedTrigger=NormalizeResponseRuleText(trigger);
+    const auto normalizedResponse=NormalizeResponseRuleText(response);
+    return normalizedTrigger.find(normalizedSearch)!=std::string::npos ||
+           normalizedResponse.find(normalizedSearch)!=std::string::npos;
+}
+
 ResponseRulePageWindow ComputeResponseRulePageWindow(
     std::size_t totalItems,
     std::size_t requestedPage,
