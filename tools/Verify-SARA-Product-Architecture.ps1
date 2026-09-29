@@ -341,7 +341,7 @@ $correctionReviewStoreTokens = @(
     'TrainingReviewStore::SetCorrectionTarget',
     'target_output_text',
     'correction_instruction',
-    'status=0,reviewer='''''',notes='''''',reviewed_utc='''''',
+    'status=0,reviewer=',
     'JsonEscape(TrainingTargetText(item))'
 )
 foreach ($token in $correctionReviewStoreTokens) {
