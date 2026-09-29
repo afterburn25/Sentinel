@@ -1678,6 +1678,8 @@ public:
                 selectedModelLabLoraId_=std::stoll(b.id.substr(17));
                 statusText_=L"Persona LoRA version selected";
             }
+            else if (b.id==L"persona_lora_evaluate") EvaluateSelectedPersonaLoraStack();
+            else if (b.id==L"persona_lora_approve") ApproveSelectedPersonaLoraVersion();
             else if (b.id==L"persona_lora_activate") ActivateSelectedPersonaLoraVersion();
             else if (b.id==L"persona_lora_rollback") RollbackSelectedPersonaLoraVersion();
             else if (b.id==L"persona_lora_compare") CompareSelectedPersonaLoraVersion();
@@ -1721,13 +1723,8 @@ public:
                 page_=Page::Trainer;
                 ApplyPageControls();
             }
-            else if (b.id==L"foundation_approve_selected") {
-                if(selectedModelLabFoundationId_.empty()) statusText_=L"Select a foundation first";
-                else if(runtime_->trainer.ApproveFoundation(selectedModelLabFoundationId_)) {
-                    RefreshTrainerFoundationList(selectedModelLabFoundationId_);
-                    statusText_=L"Foundation approved for activation/deployment";
-                } else statusText_=L"Foundation could not be approved from its current state";
-            }
+            else if (b.id==L"foundation_evaluate_selected") EvaluateSelectedFoundationStack();
+            else if (b.id==L"foundation_approve_selected") ApproveSelectedFoundationFromLab();
             else if (b.id==L"foundation_activate_selected") ActivateSelectedFoundationFromLab();
             else if (b.id==L"foundation_rollback") RollbackFoundationFromLab();
             else if (b.id==L"foundation_compare") CompareSelectedFoundationToActive();
@@ -2146,6 +2143,11 @@ private:
     sentinel::simulation::EvaluationRunRegistry evaluationRuns_;
     int selectedEvaluationRun_{-1};
     int comparisonEvaluationRun_{-1};
+    bool evaluationRuntimeOverride_{false};
+    std::string evaluationFoundationOverrideId_;
+    std::string evaluationFoundationOverrideName_;
+    std::string evaluationAdapterOverrideId_;
+    std::string evaluationAdapterOverrideName_;
     sentinel::simulation::DeploymentRegistry deploymentRegistry_;
     int selectedDeployment_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
@@ -5727,8 +5729,8 @@ private:
         try {
             auto binding=runtime_->trainer.BindPersonaLora(
                 simSettings_.persona.name,foundation->id,loraName,loraPath,1.0);
-            statusText_=L"Bound "+Widen(binding.loraName)+L" to "+Widen(binding.personaName);
-            ApplyPersonaRuntimeBinding();
+            statusText_=L"Registered LoRA candidate "+Widen(binding.loraName)+
+                L"; evaluate and approve it before activation";
         } catch(const std::exception& e) {
             statusText_=L"LoRA binding failed: "+Widen(e.what());
         }
@@ -8295,22 +8297,29 @@ private:
             std::string adapterId;
             std::string adapterName;
 
-            auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
-            if(binding) {
-                foundationId=binding->foundationId;
-                adapterId=std::to_string(binding->id);
-                adapterName=binding->loraName;
-                auto foundation=runtime_->trainer.GetFoundation(binding->foundationId);
-                if(foundation) foundationName=foundation->name;
-            }
-            if(foundationName.empty()) {
-                auto foundations=runtime_->trainer.ListFoundations();
-                auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& f){
-                    return f.status=="ACTIVE";
-                });
-                if(active!=foundations.end()) {
-                    foundationId=active->id;
-                    foundationName=active->name;
+            if(evaluationRuntimeOverride_) {
+                foundationId=evaluationFoundationOverrideId_;
+                foundationName=evaluationFoundationOverrideName_;
+                adapterId=evaluationAdapterOverrideId_;
+                adapterName=evaluationAdapterOverrideName_;
+            } else {
+                auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
+                if(binding) {
+                    foundationId=binding->foundationId;
+                    adapterId=std::to_string(binding->id);
+                    adapterName=binding->loraName;
+                    auto foundation=runtime_->trainer.GetFoundation(binding->foundationId);
+                    if(foundation) foundationName=foundation->name;
+                }
+                if(foundationName.empty()) {
+                    auto foundations=runtime_->trainer.ListFoundations();
+                    auto active=std::find_if(foundations.begin(),foundations.end(),[](const auto& f){
+                        return f.status=="ACTIVE";
+                    });
+                    if(active!=foundations.end()) {
+                        foundationId=active->id;
+                        foundationName=active->name;
+                    }
                 }
             }
 
@@ -8404,6 +8413,208 @@ private:
         std::ofstream out(std::filesystem::path(file),std::ios::trunc);
         out<<report;
         statusText_=L"Evaluation comparison exported";
+    }
+
+    int LatestPassingEvaluationForStack(
+        std::string_view foundationId,
+        std::string_view adapterId) const
+    {
+        const auto& runs=evaluationRuns_.Runs();
+        for(int i=(int)runs.size()-1;i>=0;--i) {
+            const auto& run=runs[(size_t)i];
+            if(run.foundationId==foundationId &&
+               run.adapterId==adapterId &&
+               sentinel::simulation::EvaluationPassedApprovalGate(run))
+                return i;
+        }
+        return -1;
+    }
+
+    bool EnsureEvaluationModelSelected() {
+        if(selectedRegistryModel_>=0 &&
+           selectedRegistryModel_<(int)modelRegistry_.Models().size())
+            return true;
+
+        if(simSettings_.endpoint.empty() || simSettings_.model.empty()) {
+            statusText_=L"Configure or register a model before evaluating a runtime stack";
+            return false;
+        }
+
+        auto& item=modelRegistry_.Register(simSettings_.endpoint,simSettings_.model);
+        selectedRegistryModel_=(int)(&item-modelRegistry_.Models().data());
+        modelRegistry_.Save(runtime_->root/"model-registry.tsv");
+        return true;
+    }
+
+    bool EvaluateStagedRuntimeStack(
+        const std::string& foundationId,
+        const std::string& adapterId)
+    {
+        if(!EnsureEvaluationModelSelected()) return false;
+        const auto& modelItem=modelRegistry_.Models()[(size_t)selectedRegistryModel_];
+        if(!IsLocalModelEndpoint(modelItem.endpoint)) {
+            statusText_=L"Foundation/LoRA staging requires the local SARA model endpoint";
+            return false;
+        }
+
+        auto foundation=runtime_->trainer.GetFoundation(foundationId);
+        if(!foundation || foundation->runtimeGgufPath.empty()) {
+            statusText_=L"Selected foundation has no deployable runtime to evaluate";
+            return false;
+        }
+
+        const std::filesystem::path modelPath(foundation->runtimeGgufPath);
+        if(!std::filesystem::exists(modelPath)) {
+            statusText_=L"Selected foundation GGUF file does not exist";
+            return false;
+        }
+
+        std::filesystem::path loraPath;
+        std::string adapterName;
+        if(!adapterId.empty()) {
+            long long bindingId=0;
+            try { bindingId=std::stoll(adapterId); }
+            catch(...) {
+                statusText_=L"Selected LoRA identifier is invalid";
+                return false;
+            }
+            auto binding=runtime_->trainer.GetPersonaLora(bindingId);
+            if(!binding || binding->foundationId!=foundationId) {
+                statusText_=L"Selected LoRA does not belong to the selected foundation";
+                return false;
+            }
+            if(binding->personaName!=simSettings_.persona.name) {
+                statusText_=L"Load the LoRA's persona before evaluating this candidate";
+                return false;
+            }
+            loraPath=std::filesystem::path(binding->loraPath);
+            adapterName=binding->loraName;
+            if(!std::filesystem::exists(loraPath)) {
+                statusText_=L"Selected LoRA file does not exist";
+                return false;
+            }
+        }
+
+        const std::string alias=
+            adapterId.empty()
+                ? "sara-eval-foundation"
+                : "sara-eval-lora-"+adapterId;
+        if(!WriteActiveRuntimeConfig(modelPath,loraPath,alias)) {
+            statusText_=L"Could not write staged evaluation runtime configuration";
+            return false;
+        }
+
+        std::wstring failure;
+        if(!StartBundledAiService(&failure,true)) {
+            ApplyPersonaRuntimeBinding();
+            statusText_=L"Could not start staged evaluation runtime: "+failure;
+            return false;
+        }
+
+        try {
+            (void)sentinel::simulation::DiscoverOpenAICompatibleModels(modelItem.endpoint);
+        } catch(const std::exception& e) {
+            ApplyPersonaRuntimeBinding();
+            statusText_=L"Staged evaluation runtime did not become ready: "+Widen(e.what());
+            return false;
+        }
+
+        const size_t before=evaluationRuns_.Runs().size();
+        evaluationRuntimeOverride_=true;
+        evaluationFoundationOverrideId_=foundation->id;
+        evaluationFoundationOverrideName_=foundation->name;
+        evaluationAdapterOverrideId_=adapterId;
+        evaluationAdapterOverrideName_=adapterName;
+
+        EvaluateSelectedRegistryModel();
+
+        evaluationRuntimeOverride_=false;
+        evaluationFoundationOverrideId_.clear();
+        evaluationFoundationOverrideName_.clear();
+        evaluationAdapterOverrideId_.clear();
+        evaluationAdapterOverrideName_.clear();
+
+        ApplyPersonaRuntimeBinding();
+
+        if(evaluationRuns_.Runs().size()<=before) return false;
+        const auto& run=evaluationRuns_.Runs().back();
+        return run.foundationId==foundationId && run.adapterId==adapterId;
+    }
+
+    void EvaluateSelectedFoundationStack() {
+        if(selectedModelLabFoundationId_.empty()) {
+            statusText_=L"Select a foundation first";
+            return;
+        }
+        if(EvaluateStagedRuntimeStack(selectedModelLabFoundationId_,{})) {
+            const auto& run=evaluationRuns_.Runs().back();
+            statusText_=L"Foundation evaluation complete: "+
+                std::to_wstring(run.overallScore)+L"/100; review then Approve";
+        }
+    }
+
+    void EvaluateSelectedPersonaLoraStack() {
+        if(selectedModelLabLoraId_<=0) {
+            statusText_=L"Select a LoRA candidate first";
+            return;
+        }
+        auto binding=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+        if(!binding) {
+            statusText_=L"Selected LoRA version no longer exists";
+            return;
+        }
+        if(EvaluateStagedRuntimeStack(
+                binding->foundationId,
+                std::to_string(binding->id)))
+        {
+            const auto& run=evaluationRuns_.Runs().back();
+            statusText_=L"LoRA evaluation complete: "+
+                std::to_wstring(run.overallScore)+L"/100; review then Approve";
+        }
+    }
+
+    void ApproveSelectedFoundationFromLab() {
+        if(selectedModelLabFoundationId_.empty()) {
+            statusText_=L"Select a foundation first";
+            return;
+        }
+        const int evalIndex=LatestPassingEvaluationForStack(
+            selectedModelLabFoundationId_,{});
+        if(evalIndex<0) {
+            statusText_=L"Run a passing staged Evaluation / Test for this foundation first";
+            return;
+        }
+        const auto& run=evaluationRuns_.Runs()[(size_t)evalIndex];
+        if(!runtime_->trainer.ApproveFoundation(selectedModelLabFoundationId_,run)) {
+            statusText_=L"Foundation approval was rejected by the evaluation gate";
+            return;
+        }
+        RefreshTrainerFoundationList(selectedModelLabFoundationId_);
+        statusText_=L"Foundation approved from evaluation "+Widen(run.id);
+    }
+
+    void ApproveSelectedPersonaLoraVersion() {
+        if(selectedModelLabLoraId_<=0) {
+            statusText_=L"Select a LoRA candidate first";
+            return;
+        }
+        auto binding=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
+        if(!binding) {
+            statusText_=L"Selected LoRA version no longer exists";
+            return;
+        }
+        const int evalIndex=LatestPassingEvaluationForStack(
+            binding->foundationId,std::to_string(binding->id));
+        if(evalIndex<0) {
+            statusText_=L"Run a passing staged Evaluation / Test for this LoRA first";
+            return;
+        }
+        const auto& run=evaluationRuns_.Runs()[(size_t)evalIndex];
+        if(!runtime_->trainer.ApprovePersonaLora(binding->id,run)) {
+            statusText_=L"LoRA approval was rejected; approve its evaluated foundation first";
+            return;
+        }
+        statusText_=L"LoRA candidate approved from evaluation "+Widen(run.id);
     }
 
     std::pair<std::string,std::string> CurrentEvaluationRuntimeIds() const {
@@ -9832,7 +10043,7 @@ private:
             return;
         }
         if(!runtime_->trainer.ActivatePersonaLora(selectedModelLabLoraId_)) {
-            statusText_=L"Could not activate selected LoRA version";
+            statusText_=L"LoRA must have passing evaluation proof and an approved foundation before activation";
             return;
         }
 
@@ -10150,9 +10361,13 @@ private:
                         selectedLora?brush_.panel2.Get():brush_.sidebar.Get(),
                         selectedLora?brush_.cyan.Get():brush_.border.Get(),6);
                     TextLine(Widen(lora.loraName),detailX+24,ly+4,detailW-118,18,tinyFmt_.Get(),brush_.text.Get());
-                    TextLine(lora.active?L"ACTIVE":L"INACTIVE",
+                    const wchar_t* loraState=
+                        lora.active?L"ACTIVE":
+                        !lora.approvedEvaluationRunId.empty()?L"APPROVED":L"CANDIDATE";
+                    TextLine(loraState,
                         detailX+detailW-96,ly+4,72,18,tinyFmt_.Get(),
-                        lora.active?brush_.green.Get():brush_.muted.Get(),
+                        lora.active?brush_.green.Get():
+                        !lora.approvedEvaluationRunId.empty()?brush_.cyan.Get():brush_.yellow.Get(),
                         DWRITE_TEXT_ALIGNMENT_TRAILING);
                     buttons_.push_back({
                         {detailX+14,ly,detailX+detailW-14,ly+28},
@@ -10167,14 +10382,20 @@ private:
             const auto previousLora=runtime_->trainer.PreviousPersonaLora(p.name);
             if(selectedModelLabLoraId_>0) {
                 auto selectedLora=runtime_->trainer.GetPersonaLora(selectedModelLabLoraId_);
-                if(selectedLora && !selectedLora->active)
-                    AddButton(L"persona_lora_activate",L"Activate",detailX+16,actionY-36,72,28,false);
+                AddButton(L"persona_lora_evaluate",L"Evaluate",detailX+16,actionY-36,70,28,true);
+                if(selectedLora && !selectedLora->active &&
+                   selectedLora->approvedEvaluationRunId.empty())
+                    AddButton(L"persona_lora_approve",L"Approve",detailX+94,actionY-36,70,28,false);
+                if(selectedLora && !selectedLora->active &&
+                   !selectedLora->approvedEvaluationRunId.empty())
+                    AddButton(L"persona_lora_activate",L"Activate",detailX+172,actionY-36,70,28,false);
+
                 if(activeLora && selectedLora && activeLora->id!=selectedLora->id)
-                    AddButton(L"persona_lora_compare",L"Compare",detailX+96,actionY-36,72,28,false);
-                AddButton(L"persona_lora_export",L"Export",detailX+176,actionY-36,72,28,false);
+                    AddButton(L"persona_lora_compare",L"Compare",detailX+16,actionY-72,70,28,false);
+                AddButton(L"persona_lora_export",L"Export",detailX+94,actionY-72,70,28,false);
             }
             if(previousLora)
-                AddButton(L"persona_lora_rollback",L"Rollback",detailX+16,actionY-72,78,28,false);
+                AddButton(L"persona_lora_rollback",L"Rollback",detailX+172,actionY-72,70,28,false);
 
             AddButton(L"persona_use_selected",L"Use Persona",detailX+16,actionY,92,30,true);
             AddButton(L"persona_edit_selected",L"Edit",detailX+116,actionY,66,30,false);
@@ -10202,7 +10423,7 @@ private:
             return;
         }
         if(!runtime_->trainer.ActivateFoundation(foundation->id)) {
-            statusText_=L"Foundation activation failed";
+            statusText_=L"Foundation activation requires persisted passing evaluation proof";
             return;
         }
         RefreshTrainerFoundationList(foundation->id);
@@ -10409,9 +10630,15 @@ private:
         } else {
             const auto& item=*selected;
             TextLine(Widen(item.name),detailX+16,bodyY+48,detailW-32,30,h1Fmt_.Get(),brush_.cyan.Get());
-            TextLine(L"Version "+std::to_wstring(item.version)+L"  |  "+Widen(item.status),
+            const std::wstring proofState=item.approvedEvaluationRunId.empty()
+                ? L"NEEDS EVALUATION"
+                : (item.approvedEvaluationRunId=="LEGACY_ACTIVE_1.0.15"
+                    ? L"LEGACY APPROVED"
+                    : L"EVALUATED");
+            TextLine(L"Version "+std::to_wstring(item.version)+L"  |  "+Widen(item.status)+L"  |  "+proofState,
                 detailX+16,bodyY+79,detailW-32,20,tinyFmt_.Get(),
-                item.status=="ACTIVE"?brush_.green.Get():brush_.muted.Get());
+                item.status=="ACTIVE"?brush_.green.Get():
+                item.approvedEvaluationRunId.empty()?brush_.yellow.Get():brush_.cyan.Get());
 
             TextLine(L"Source model",detailX+16,bodyY+116,88,18,tinyFmt_.Get(),brush_.muted.Get());
             TextLine(Widen(item.sourceModel),detailX+112,bodyY+113,detailW-128,22,tinyFmt_.Get(),brush_.text.Get());
@@ -10445,10 +10672,11 @@ private:
             if(activeFoundation!=foundations.end() && activeFoundation->id!=item.id)
                 AddButton(L"foundation_compare",L"Compare",detailX+188,upperY,78,28,false);
 
-            AddButton(L"foundation_open_trainer",L"Train",detailX+16,actionY,78,30,true);
+            AddButton(L"foundation_evaluate_selected",L"Evaluate",detailX+16,actionY,70,30,true);
             if(item.status!="ACTIVE")
-                AddButton(L"foundation_approve_selected",L"Approve",detailX+102,actionY,78,30,false);
-            AddButton(L"foundation_new_fork",L"Child Fork",detailX+188,actionY,78,30,false);
+                AddButton(L"foundation_approve_selected",L"Approve",detailX+94,actionY,70,30,false);
+            AddButton(L"foundation_open_trainer",L"Train",detailX+172,actionY,62,30,false);
+            AddButton(L"foundation_new_fork",L"Child Fork",detailX+242,actionY,76,30,false);
         }
     }
 
