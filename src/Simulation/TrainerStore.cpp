@@ -369,7 +369,7 @@ bool TrainerStore::ActivatePersonaLora(long long id) {
     if(target->approvedEvaluationRunId.empty()) return false;
     auto foundation=GetFoundation(target->foundationId);
     if(!foundation ||
-       (foundation->status!="APPROVED" && foundation->status!="ACTIVE") ||
+       foundation->status!="ACTIVE" ||
        foundation->approvedEvaluationRunId.empty())
         return false;
     if(target->active) return true;
