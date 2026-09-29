@@ -84,6 +84,21 @@ IdentityResearchTask ReadResearch(sqlite3_stmt* s) {
     return out;
 }
 
+IdentityResearchProvider ReadResearchProvider(sqlite3_stmt* s) {
+    IdentityResearchProvider out;
+    out.id=Col(s,0);
+    out.displayName=Col(s,1);
+    out.accessMode=(IdentityResearchAccessMode)sqlite3_column_int(s,2);
+    out.supportedTypesMask=(unsigned int)sqlite3_column_int64(s,3);
+    out.endpointHint=Col(s,4);
+    out.credentialReference=Col(s,5);
+    out.enabled=sqlite3_column_int(s,6)!=0;
+    out.notes=Col(s,7);
+    out.createdUtc=Col(s,8);
+    out.updatedUtc=Col(s,9);
+    return out;
+}
+
 }
 
 std::string ToString(SubjectIdentityStatus status) {
@@ -123,6 +138,15 @@ std::string ToString(IdentityResearchStatus status) {
         case IdentityResearchStatus::Rejected: return "REJECTED";
     }
     return "QUEUED";
+}
+
+std::string ToString(IdentityResearchAccessMode mode) {
+    switch(mode) {
+        case IdentityResearchAccessMode::Manual: return "MANUAL";
+        case IdentityResearchAccessMode::Portal: return "PORTAL";
+        case IdentityResearchAccessMode::Api: return "API";
+    }
+    return "MANUAL";
 }
 
 SubjectRecord SubjectIdentityStore::CreateSubject(const CaseId& caseId,std::string displayName) {
@@ -365,6 +389,109 @@ bool SubjectIdentityStore::ReviewLead(
     return ok;
 }
 
+IdentityResearchProvider SubjectIdentityStore::SaveResearchProvider(
+    IdentityResearchProvider provider)
+{
+    if(provider.id.empty()) throw std::runtime_error("identity research provider id is required");
+    if(provider.displayName.empty()) throw std::runtime_error("identity research provider name is required");
+    if(provider.supportedTypesMask==0)
+        throw std::runtime_error("identity research provider must support at least one research type");
+
+    // This store intentionally accepts only a credential *reference*. Secrets,
+    // API keys, passwords and tokens belong in an external/DPAPI-backed secret
+    // store, never in case or provider metadata.
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "INSERT INTO identity_research_providers("
+        "id,display_name,access_mode,supported_types_mask,endpoint_hint,credential_reference,enabled,notes"
+        ") VALUES(?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "display_name=excluded.display_name,"
+        "access_mode=excluded.access_mode,"
+        "supported_types_mask=excluded.supported_types_mask,"
+        "endpoint_hint=excluded.endpoint_hint,"
+        "credential_reference=excluded.credential_reference,"
+        "enabled=excluded.enabled,"
+        "notes=excluded.notes,"
+        "updated_utc=CURRENT_TIMESTAMP";
+    CheckPrepare(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare identity research provider save");
+    Bind(s,1,provider.id);
+    Bind(s,2,provider.displayName);
+    sqlite3_bind_int(s,3,(int)provider.accessMode);
+    sqlite3_bind_int64(s,4,(sqlite3_int64)provider.supportedTypesMask);
+    Bind(s,5,provider.endpointHint);
+    Bind(s,6,provider.credentialReference);
+    sqlite3_bind_int(s,7,provider.enabled?1:0);
+    Bind(s,8,provider.notes);
+    if(sqlite3_step(s)!=SQLITE_DONE) {
+        const std::string error=sqlite3_errmsg(db);
+        sqlite3_finalize(s);
+        throw std::runtime_error("identity research provider save failed: "+error);
+    }
+    sqlite3_finalize(s);
+
+    auto stored=GetResearchProvider(provider.id);
+    if(!stored) throw std::runtime_error("identity research provider could not be reloaded");
+    return *stored;
+}
+
+std::optional<IdentityResearchProvider> SubjectIdentityStore::GetResearchProvider(
+    std::string_view id) const
+{
+    if(id.empty()) return std::nullopt;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "SELECT id,display_name,access_mode,supported_types_mask,endpoint_hint,"
+        "credential_reference,enabled,notes,created_utc,updated_utc "
+        "FROM identity_research_providers WHERE id=? LIMIT 1";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return std::nullopt;
+    Bind(s,1,std::string(id));
+    std::optional<IdentityResearchProvider> out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadResearchProvider(s);
+    sqlite3_finalize(s);
+    return out;
+}
+
+std::vector<IdentityResearchProvider> SubjectIdentityStore::ListResearchProviders(
+    bool includeDisabled) const
+{
+    std::vector<IdentityResearchProvider> out;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=includeDisabled
+        ? "SELECT id,display_name,access_mode,supported_types_mask,endpoint_hint,"
+          "credential_reference,enabled,notes,created_utc,updated_utc "
+          "FROM identity_research_providers ORDER BY enabled DESC,display_name COLLATE NOCASE"
+        : "SELECT id,display_name,access_mode,supported_types_mask,endpoint_hint,"
+          "credential_reference,enabled,notes,created_utc,updated_utc "
+          "FROM identity_research_providers WHERE enabled=1 "
+          "ORDER BY display_name COLLATE NOCASE";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return out;
+    while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadResearchProvider(s));
+    sqlite3_finalize(s);
+    return out;
+}
+
+bool SubjectIdentityStore::SetResearchProviderEnabled(
+    std::string_view id,
+    bool enabled)
+{
+    if(id.empty()) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    if(sqlite3_prepare_v2(db,
+        "UPDATE identity_research_providers "
+        "SET enabled=?,updated_utc=CURRENT_TIMESTAMP WHERE id=?",
+        -1,&s,nullptr)!=SQLITE_OK) return false;
+    sqlite3_bind_int(s,1,enabled?1:0);
+    Bind(s,2,std::string(id));
+    const bool changed=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
 IdentityResearchTask SubjectIdentityStore::QueueResearch(
     const SubjectId& subjectId,
     IdentityResearchType type,
@@ -375,6 +502,13 @@ IdentityResearchTask SubjectIdentityStore::QueueResearch(
     if(queryText.empty()) throw std::runtime_error("identity research query is required");
     if(purpose.empty()) throw std::runtime_error("identity research purpose/legal basis note is required");
     if(provider.empty()) provider="manual/authorized";
+
+    if(auto registered=GetResearchProvider(provider)) {
+        if(!registered->enabled)
+            throw std::runtime_error("selected identity research provider is disabled");
+        if(!registered->Supports(type))
+            throw std::runtime_error("selected provider does not support this research type");
+    }
 
     IdentityResearchTask task;
     task.id=Uuid::Random().ToString();

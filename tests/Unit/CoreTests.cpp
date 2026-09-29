@@ -912,10 +912,37 @@ void TestSubjectIdentityStore()
     counts=store.CountsForCase(caseA);
     Require(counts.confirmedSubjects==1,"confirmed subject count mismatch");
 
+    const auto defaultProviders=store.ListResearchProviders(false);
+    Require(defaultProviders.size()==1,
+        "only the manual identity research provider should be enabled by default");
+    Require(defaultProviders.front().id=="manual/authorized",
+        "manual identity research provider baseline missing");
+    Require(defaultProviders.front().Supports(
+        sentinel::identity::IdentityResearchType::ImageReference),
+        "manual identity research provider should support all research types");
+
+    auto configuredProvider=store.SaveResearchProvider({
+        "unit-username-provider",
+        "Unit Username Provider",
+        sentinel::identity::IdentityResearchAccessMode::Api,
+        1u<<static_cast<unsigned int>(sentinel::identity::IdentityResearchType::Username),
+        "https://provider.example.test",
+        "secret-ref/unit-provider",
+        true,
+        "Unit test provider metadata only"
+    });
+    Require(configuredProvider.enabled,"configured provider should be enabled");
+    Require(configuredProvider.credentialReference=="secret-ref/unit-provider",
+        "provider credential reference did not persist");
+    Require(configuredProvider.Supports(sentinel::identity::IdentityResearchType::Username),
+        "configured provider username capability missing");
+    Require(!configuredProvider.Supports(sentinel::identity::IdentityResearchType::PublicRecords),
+        "configured provider unexpectedly supports public records");
+
     auto research=store.QueueResearch(
         subject.id,
         sentinel::identity::IdentityResearchType::Username,
-        "authorized-osint-provider",
+        configuredProvider.id,
         "@knownhandle",
         "Correlate a public username to additional public profiles for CASE-A");
     Require(research.status==sentinel::identity::IdentityResearchStatus::Queued,
@@ -951,6 +978,22 @@ void TestSubjectIdentityStore()
         "identity research promotion state mismatch");
     Require(completedResearch->promotedLeadId==promoted.id.ToString(),
         "identity research promoted lead id mismatch");
+
+    Require(store.SetResearchProviderEnabled(configuredProvider.id,false),
+        "configured identity research provider could not be disabled");
+    bool disabledProviderRejected=false;
+    try {
+        (void)store.QueueResearch(
+            subject.id,
+            sentinel::identity::IdentityResearchType::Username,
+            configuredProvider.id,
+            "@blocked",
+            "Disabled provider must not be usable");
+    } catch(const std::exception&) {
+        disabledProviderRejected=true;
+    }
+    Require(disabledProviderRejected,
+        "disabled registered identity research provider was accepted");
 
     auto rejectTask=store.QueueResearch(
         subject.id,

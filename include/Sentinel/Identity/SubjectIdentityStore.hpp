@@ -36,6 +36,30 @@ enum class IdentityResearchStatus : int {
     Rejected = 3
 };
 
+enum class IdentityResearchAccessMode : int {
+    Manual = 0,
+    Portal = 1,
+    Api = 2
+};
+
+struct IdentityResearchProvider {
+    std::string id;
+    std::string displayName;
+    IdentityResearchAccessMode accessMode{IdentityResearchAccessMode::Manual};
+    unsigned int supportedTypesMask{0x1Fu};
+    std::string endpointHint;
+    std::string credentialReference;
+    bool enabled{true};
+    std::string notes;
+    std::string createdUtc;
+    std::string updatedUtc;
+
+    [[nodiscard]] bool Supports(IdentityResearchType type) const noexcept {
+        const auto bit=1u<<static_cast<unsigned int>(type);
+        return (supportedTypesMask & bit)!=0;
+    }
+};
+
 struct SubjectRecord {
     SubjectId id;
     CaseId caseId;
@@ -95,6 +119,7 @@ std::string ToString(SubjectIdentityStatus status);
 std::string ToString(IdentityLeadStatus status);
 std::string ToString(IdentityResearchType type);
 std::string ToString(IdentityResearchStatus status);
+std::string ToString(IdentityResearchAccessMode mode);
 
 class SubjectIdentityStore {
 public:
@@ -122,6 +147,16 @@ public:
         IdentityLeadStatus status,
         std::string reviewer,
         std::string reviewNotes);
+
+    IdentityResearchProvider SaveResearchProvider(
+        IdentityResearchProvider provider);
+    std::optional<IdentityResearchProvider> GetResearchProvider(
+        std::string_view id) const;
+    std::vector<IdentityResearchProvider> ListResearchProviders(
+        bool includeDisabled=false) const;
+    bool SetResearchProviderEnabled(
+        std::string_view id,
+        bool enabled);
 
     IdentityResearchTask QueueResearch(
         const SubjectId& subjectId,
