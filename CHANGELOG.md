@@ -2,7 +2,8 @@
 
 ## 1.0.18 — Response-rule management
 
-### In development
+Validated by Windows Build #980.
+
 - Page through all saved persona response rules instead of displaying only the newest four.
 - Add explicit loaded-rule edit state with Save Changes and New actions.
 - Update an existing rule in place without creating duplicate rules.
