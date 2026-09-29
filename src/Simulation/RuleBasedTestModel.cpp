@@ -496,6 +496,41 @@ public:
             "INTERESTS=keep existing interests";
     }
 
+    std::string GenerateCorrectionPreview(
+        std::string_view,
+        std::string_view originalResponse,
+        std::string_view trainerInstruction,
+        const ModelContext&) override
+    {
+        auto instruction=Trim(std::string(trainerInstruction));
+        const auto lower=Lower(instruction);
+
+        const std::string prefixes[]={
+            "target:",
+            "reply:",
+            "corrected reply:",
+            "exact reply:"
+        };
+        for(const auto& prefix:prefixes) {
+            if(lower.rfind(prefix,0)==0) {
+                auto target=Trim(instruction.substr(prefix.size()));
+                if(!target.empty()) return target;
+            }
+        }
+
+        const auto firstQuote=instruction.find('"');
+        const auto lastQuote=instruction.find_last_of('"');
+        if(firstQuote!=std::string::npos && lastQuote>firstQuote+1) {
+            auto target=Trim(instruction.substr(firstQuote+1,lastQuote-firstQuote-1));
+            if(!target.empty()) return target;
+        }
+
+        // The built-in fallback intentionally does not invent a semantic rewrite
+        // from free-form trainer prose. A connected local model can do that;
+        // fallback users can provide an exact target using TARGET: or quotes.
+        return std::string(originalResponse);
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
