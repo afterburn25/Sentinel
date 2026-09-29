@@ -60,6 +60,30 @@ IdentityLead ReadLead(sqlite3_stmt* s) {
     return out;
 }
 
+IdentityResearchTask ReadResearch(sqlite3_stmt* s) {
+    auto subjectId=SubjectId::Parse(Col(s,1));
+    if(!subjectId) throw std::runtime_error("invalid identity research subject UUID");
+
+    IdentityResearchTask out;
+    out.id=Col(s,0);
+    out.subjectId=*subjectId;
+    out.type=(IdentityResearchType)sqlite3_column_int(s,2);
+    out.provider=Col(s,3);
+    out.queryText=Col(s,4);
+    out.purpose=Col(s,5);
+    out.status=(IdentityResearchStatus)sqlite3_column_int(s,6);
+    out.resultSummary=Col(s,7);
+    out.resultReference=Col(s,8);
+    out.provenance=Col(s,9);
+    out.promotedLeadId=Col(s,10);
+    out.reviewedBy=Col(s,11);
+    out.reviewNotes=Col(s,12);
+    out.createdUtc=Col(s,13);
+    out.updatedUtc=Col(s,14);
+    out.completedUtc=Col(s,15);
+    return out;
+}
+
 }
 
 std::string ToString(SubjectIdentityStatus status) {
@@ -78,6 +102,27 @@ std::string ToString(IdentityLeadStatus status) {
         case IdentityLeadStatus::Rejected: return "REJECTED";
     }
     return "LEAD";
+}
+
+std::string ToString(IdentityResearchType type) {
+    switch(type) {
+        case IdentityResearchType::PublicRecords: return "PUBLIC RECORDS";
+        case IdentityResearchType::SocialProfile: return "SOCIAL PROFILE";
+        case IdentityResearchType::Username: return "USERNAME";
+        case IdentityResearchType::Contact: return "CONTACT";
+        case IdentityResearchType::ImageReference: return "IMAGE REFERENCE";
+    }
+    return "PUBLIC RECORDS";
+}
+
+std::string ToString(IdentityResearchStatus status) {
+    switch(status) {
+        case IdentityResearchStatus::Queued: return "QUEUED";
+        case IdentityResearchStatus::Completed: return "COMPLETED";
+        case IdentityResearchStatus::PromotedToLead: return "PROMOTED";
+        case IdentityResearchStatus::Rejected: return "REJECTED";
+    }
+    return "QUEUED";
 }
 
 SubjectRecord SubjectIdentityStore::CreateSubject(const CaseId& caseId,std::string displayName) {
@@ -308,6 +353,186 @@ bool SubjectIdentityStore::ReviewLead(
     const bool ok=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
     sqlite3_finalize(s);
     return ok;
+}
+
+IdentityResearchTask SubjectIdentityStore::QueueResearch(
+    const SubjectId& subjectId,
+    IdentityResearchType type,
+    std::string provider,
+    std::string queryText,
+    std::string purpose)
+{
+    if(queryText.empty()) throw std::runtime_error("identity research query is required");
+    if(purpose.empty()) throw std::runtime_error("identity research purpose/legal basis note is required");
+    if(provider.empty()) provider="manual/authorized";
+
+    IdentityResearchTask task;
+    task.id=Uuid::Random().ToString();
+    task.subjectId=subjectId;
+    task.type=type;
+    task.provider=std::move(provider);
+    task.queryText=std::move(queryText);
+    task.purpose=std::move(purpose);
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "INSERT INTO identity_research_tasks("
+        "id,subject_id,research_type,provider,query_text,purpose,status"
+        ") VALUES(?,?,?,?,?,?,0)";
+    CheckPrepare(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare identity research queue");
+    Bind(s,1,task.id);
+    Bind(s,2,subjectId.ToString());
+    sqlite3_bind_int(s,3,(int)type);
+    Bind(s,4,task.provider);
+    Bind(s,5,task.queryText);
+    Bind(s,6,task.purpose);
+    if(sqlite3_step(s)!=SQLITE_DONE) {
+        const std::string error=sqlite3_errmsg(db);
+        sqlite3_finalize(s);
+        throw std::runtime_error("identity research queue failed: "+error);
+    }
+    sqlite3_finalize(s);
+
+    auto stored=GetResearch(task.id);
+    if(!stored) throw std::runtime_error("identity research task could not be reloaded");
+    return *stored;
+}
+
+std::optional<IdentityResearchTask> SubjectIdentityStore::GetResearch(std::string_view id) const {
+    if(id.empty()) return std::nullopt;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "SELECT id,subject_id,research_type,provider,query_text,purpose,status,"
+        "result_summary,result_reference,provenance,promoted_lead_id,reviewed_by,review_notes,"
+        "created_utc,updated_utc,COALESCE(completed_utc,'') "
+        "FROM identity_research_tasks WHERE id=? LIMIT 1";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return std::nullopt;
+    Bind(s,1,std::string(id));
+    std::optional<IdentityResearchTask> out;
+    if(sqlite3_step(s)==SQLITE_ROW) out=ReadResearch(s);
+    sqlite3_finalize(s);
+    return out;
+}
+
+std::vector<IdentityResearchTask> SubjectIdentityStore::ListResearch(
+    const SubjectId& subjectId,
+    size_t limit) const
+{
+    std::vector<IdentityResearchTask> out;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "SELECT id,subject_id,research_type,provider,query_text,purpose,status,"
+        "result_summary,result_reference,provenance,promoted_lead_id,reviewed_by,review_notes,"
+        "created_utc,updated_utc,COALESCE(completed_utc,'') "
+        "FROM identity_research_tasks WHERE subject_id=? "
+        "ORDER BY updated_utc DESC,id DESC LIMIT ?";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return out;
+    Bind(s,1,subjectId.ToString());
+    sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,500));
+    while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadResearch(s));
+    sqlite3_finalize(s);
+    return out;
+}
+
+bool SubjectIdentityStore::CompleteResearch(
+    std::string_view id,
+    std::string resultSummary,
+    std::string resultReference,
+    std::string provenance)
+{
+    if(id.empty() || resultSummary.empty()) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "UPDATE identity_research_tasks "
+        "SET result_summary=?,result_reference=?,provenance=?,status=1,"
+        "completed_utc=CURRENT_TIMESTAMP,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND status=0";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return false;
+    Bind(s,1,resultSummary);
+    Bind(s,2,resultReference);
+    Bind(s,3,provenance);
+    Bind(s,4,std::string(id));
+    const bool ok=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return ok;
+}
+
+bool SubjectIdentityStore::RejectResearch(
+    std::string_view id,
+    std::string reviewer,
+    std::string reviewNotes)
+{
+    if(id.empty()) return false;
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    const char* sql=
+        "UPDATE identity_research_tasks "
+        "SET status=3,reviewed_by=?,review_notes=?,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND status IN (0,1)";
+    if(sqlite3_prepare_v2(db,sql,-1,&s,nullptr)!=SQLITE_OK) return false;
+    Bind(s,1,reviewer);
+    Bind(s,2,reviewNotes);
+    Bind(s,3,std::string(id));
+    const bool ok=sqlite3_step(s)==SQLITE_DONE && sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return ok;
+}
+
+IdentityLead SubjectIdentityStore::PromoteResearchToLead(
+    std::string_view id,
+    int confidence,
+    std::string reviewer,
+    std::string reviewNotes)
+{
+    auto task=GetResearch(id);
+    if(!task) throw std::runtime_error("identity research task not found");
+    if(task->status!=IdentityResearchStatus::Completed)
+        throw std::runtime_error("identity research task must be completed before promotion");
+    if(task->resultSummary.empty())
+        throw std::runtime_error("identity research result is empty");
+
+    std::string sourceReference=task->resultReference;
+    if(sourceReference.empty())
+        sourceReference=task->provider+" | "+task->queryText;
+
+    std::string provenance=task->provenance;
+    if(!provenance.empty()) provenance+=" | ";
+    provenance+=
+        "research_provider="+task->provider+
+        " | query="+task->queryText+
+        " | purpose="+task->purpose;
+
+    SqliteTransaction tx(db_);
+    auto lead=AddLead(
+        task->subjectId,
+        "research:"+ToString(task->type),
+        std::move(sourceReference),
+        task->resultSummary,
+        confidence,
+        std::move(provenance));
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    CheckPrepare(sqlite3_prepare_v2(db,
+        "UPDATE identity_research_tasks "
+        "SET status=2,promoted_lead_id=?,reviewed_by=?,review_notes=?,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND status=1",
+        -1,&s,nullptr),db,"prepare identity research promote");
+    Bind(s,1,lead.id.ToString());
+    Bind(s,2,reviewer);
+    Bind(s,3,reviewNotes);
+    Bind(s,4,std::string(id));
+    if(sqlite3_step(s)!=SQLITE_DONE || sqlite3_changes(db)!=1) {
+        sqlite3_finalize(s);
+        throw std::runtime_error("identity research promotion state update failed");
+    }
+    sqlite3_finalize(s);
+    tx.Commit();
+    return lead;
 }
 
 SubjectIdentityCounts SubjectIdentityStore::CountsForCase(const CaseId& caseId) const {

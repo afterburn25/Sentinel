@@ -912,6 +912,60 @@ void TestSubjectIdentityStore()
     counts=store.CountsForCase(caseA);
     Require(counts.confirmedSubjects==1,"confirmed subject count mismatch");
 
+    auto research=store.QueueResearch(
+        subject.id,
+        sentinel::identity::IdentityResearchType::Username,
+        "authorized-osint-provider",
+        "@knownhandle",
+        "Correlate a public username to additional public profiles for CASE-A");
+    Require(research.status==sentinel::identity::IdentityResearchStatus::Queued,
+        "identity research should begin queued");
+    Require(research.subjectId==subject.id,"identity research subject mismatch");
+
+    auto researchList=store.ListResearch(subject.id);
+    Require(researchList.size()==1,"identity research list count mismatch");
+    Require(researchList.front().queryText=="@knownhandle",
+        "identity research query did not persist");
+
+    Require(store.CompleteResearch(
+        research.id,
+        "Possible public profile correlation",
+        "https://example.test/profile/knownhandle",
+        "Manual review of an authorized public source"),
+        "identity research completion failed");
+
+    auto completedResearch=store.GetResearch(research.id);
+    Require(completedResearch.has_value(),"completed identity research missing");
+    Require(completedResearch->status==sentinel::identity::IdentityResearchStatus::Completed,
+        "identity research completion status mismatch");
+
+    auto promoted=store.PromoteResearchToLead(
+        research.id,61,"unit-investigator",
+        "Promoted for later identity-lead verification");
+    Require(promoted.status==sentinel::identity::IdentityLeadStatus::Lead,
+        "promoted research must remain an unverified lead");
+    Require(promoted.confidence==61,"promoted research confidence mismatch");
+
+    completedResearch=store.GetResearch(research.id);
+    Require(completedResearch->status==sentinel::identity::IdentityResearchStatus::PromotedToLead,
+        "identity research promotion state mismatch");
+    Require(completedResearch->promotedLeadId==promoted.id.ToString(),
+        "identity research promoted lead id mismatch");
+
+    auto rejectTask=store.QueueResearch(
+        subject.id,
+        sentinel::identity::IdentityResearchType::ImageReference,
+        "manual-visual-review",
+        "case-image-reference-1",
+        "Compare a case-authorized image reference against public material");
+    Require(store.RejectResearch(
+        rejectTask.id,"unit-investigator","insufficient similarity"),
+        "identity research rejection failed");
+    auto rejectedResearch=store.GetResearch(rejectTask.id);
+    Require(rejectedResearch.has_value() &&
+            rejectedResearch->status==sentinel::identity::IdentityResearchStatus::Rejected,
+        "identity research rejection state mismatch");
+
     auto listB=store.ListForCase(caseB);
     Require(listB.size()==1 && listB.front().id==other.id,
         "case scoping leaked subjects across investigations");

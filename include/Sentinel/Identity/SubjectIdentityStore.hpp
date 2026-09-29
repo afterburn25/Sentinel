@@ -21,6 +21,21 @@ enum class IdentityLeadStatus : int {
     Rejected = 2
 };
 
+enum class IdentityResearchType : int {
+    PublicRecords = 0,
+    SocialProfile = 1,
+    Username = 2,
+    Contact = 3,
+    ImageReference = 4
+};
+
+enum class IdentityResearchStatus : int {
+    Queued = 0,
+    Completed = 1,
+    PromotedToLead = 2,
+    Rejected = 3
+};
+
 struct SubjectRecord {
     SubjectId id;
     CaseId caseId;
@@ -50,6 +65,25 @@ struct IdentityLead {
     std::string reviewedUtc;
 };
 
+struct IdentityResearchTask {
+    std::string id;
+    SubjectId subjectId;
+    IdentityResearchType type{IdentityResearchType::PublicRecords};
+    std::string provider;
+    std::string queryText;
+    std::string purpose;
+    IdentityResearchStatus status{IdentityResearchStatus::Queued};
+    std::string resultSummary;
+    std::string resultReference;
+    std::string provenance;
+    std::string promotedLeadId;
+    std::string reviewedBy;
+    std::string reviewNotes;
+    std::string createdUtc;
+    std::string updatedUtc;
+    std::string completedUtc;
+};
+
 struct SubjectIdentityCounts {
     int subjects{};
     int leads{};
@@ -59,6 +93,8 @@ struct SubjectIdentityCounts {
 
 std::string ToString(SubjectIdentityStatus status);
 std::string ToString(IdentityLeadStatus status);
+std::string ToString(IdentityResearchType type);
+std::string ToString(IdentityResearchStatus status);
 
 class SubjectIdentityStore {
 public:
@@ -84,6 +120,31 @@ public:
     bool ReviewLead(
         const SubjectIdentityId& id,
         IdentityLeadStatus status,
+        std::string reviewer,
+        std::string reviewNotes);
+
+    IdentityResearchTask QueueResearch(
+        const SubjectId& subjectId,
+        IdentityResearchType type,
+        std::string provider,
+        std::string queryText,
+        std::string purpose);
+    std::optional<IdentityResearchTask> GetResearch(std::string_view id) const;
+    std::vector<IdentityResearchTask> ListResearch(
+        const SubjectId& subjectId,
+        size_t limit=100) const;
+    bool CompleteResearch(
+        std::string_view id,
+        std::string resultSummary,
+        std::string resultReference,
+        std::string provenance);
+    bool RejectResearch(
+        std::string_view id,
+        std::string reviewer,
+        std::string reviewNotes);
+    IdentityLead PromoteResearchToLead(
+        std::string_view id,
+        int confidence,
         std::string reviewer,
         std::string reviewNotes);
 
