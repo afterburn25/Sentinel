@@ -65,6 +65,9 @@ TrainingReviewItem ReadItem(sqlite3_stmt* s) {
     item.notes=Col(s,12);
     item.createdUtc=Col(s,13);
     item.reviewedUtc=Col(s,14);
+    item.correctionInstruction=Col(s,15);
+    item.targetOutputText=Col(s,16);
+    item.correctionUpdatedUtc=Col(s,17);
     return item;
 }
 
@@ -77,6 +80,10 @@ std::string ToString(TrainingReviewStatus status) {
         case TrainingReviewStatus::Rejected: return "REJECTED";
     }
     return "PENDING";
+}
+
+std::string TrainingTargetText(const TrainingReviewItem& item) {
+    return item.targetOutputText.empty()?item.outputText:item.targetOutputText;
 }
 
 std::optional<TrainingReviewItem> TrainingReviewStore::StageLatestReply(std::string_view conversationId) {
@@ -112,7 +119,8 @@ std::optional<TrainingReviewItem> TrainingReviewStore::StageLatestReply(std::str
 
     Check(sqlite3_prepare_v2(db,
         "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
         "FROM training_review_items WHERE source_log_id=? LIMIT 1",
         -1,&s,nullptr),db,"prepare existing training item");
     sqlite3_bind_text(s,1,sourceId.c_str(),-1,SQLITE_TRANSIENT);
@@ -143,7 +151,8 @@ std::optional<TrainingReviewItem> TrainingReviewStore::Get(std::string_view id) 
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
         "FROM training_review_items WHERE id=? LIMIT 1",
         -1,&s,nullptr),db,"prepare training review get");
     sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
@@ -153,6 +162,31 @@ std::optional<TrainingReviewItem> TrainingReviewStore::Get(std::string_view id) 
     return out;
 }
 
+bool TrainingReviewStore::SetCorrectionTarget(
+    std::string_view id,
+    std::string_view correctionInstruction,
+    std::string_view targetOutputText)
+{
+    if(id.empty() || correctionInstruction.empty() || targetOutputText.empty()) return false;
+    auto existing=Get(id);
+    if(!existing) return false;
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE training_review_items SET "
+        "correction_instruction=?,target_output_text=?,correction_updated_utc=CURRENT_TIMESTAMP,"
+        "status=0,reviewer='',notes='',reviewed_utc='' WHERE id=?",
+        -1,&s,nullptr),db,"prepare training correction target update");
+    sqlite3_bind_text(s,1,std::string(correctionInstruction).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,std::string(targetOutputText).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,3,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    Check(sqlite3_step(s),db,"update training correction target");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
 bool TrainingReviewStore::Review(
     std::string_view id,
     TrainingReviewStatus status,
@@ -160,6 +194,10 @@ bool TrainingReviewStore::Review(
     std::string_view notes)
 {
     if(id.empty() || status==TrainingReviewStatus::Pending) return false;
+    if(status==TrainingReviewStatus::Approved) {
+        auto item=Get(id);
+        if(!item || TrainingTargetText(*item).empty()) return false;
+    }
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
@@ -203,11 +241,13 @@ std::vector<TrainingReviewItem> TrainingReviewStore::ListRecent(
     sqlite3_stmt* s{};
     const char* sql=status
         ? "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
           "FROM training_review_items WHERE status=? "
           "ORDER BY created_utc DESC,rowid DESC LIMIT ?"
         : "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+          "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
           "FROM training_review_items "
           "ORDER BY created_utc DESC,rowid DESC LIMIT ?";
     Check(sqlite3_prepare_v2(db,sql,-1,&s,nullptr),db,"prepare recent training reviews");
@@ -228,7 +268,8 @@ size_t TrainingReviewStore::ExportApprovedJsonl(const std::filesystem::path& pat
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
         "FROM training_review_items WHERE status=1 ORDER BY reviewed_utc ASC,created_utc ASC",
         -1,&s,nullptr),db,"prepare approved dataset export");
 
@@ -242,7 +283,10 @@ size_t TrainingReviewStore::ExportApprovedJsonl(const std::filesystem::path& pat
            <<"\"persona_name\":\""<<JsonEscape(item.personaName)<<"\","
            <<"\"model_name\":\""<<JsonEscape(item.modelName)<<"\","
            <<"\"input\":\""<<JsonEscape(item.inputText)<<"\","
-           <<"\"output\":\""<<JsonEscape(item.outputText)<<"\","
+           <<"\"output\":\""<<JsonEscape(TrainingTargetText(item))<<"\","
+           <<"\"original_output\":\""<<JsonEscape(item.outputText)<<"\","
+           <<"\"correction_instruction\":\""<<JsonEscape(item.correctionInstruction)<<"\","
+           <<"\"correction_updated_utc\":\""<<JsonEscape(item.correctionUpdatedUtc)<<"\","
            <<"\"persona_summary\":\""<<JsonEscape(item.personaSummary)<<"\","
            <<"\"recalled_memory\":\""<<JsonEscape(item.recalledMemory)<<"\","
            <<"\"context\":"<<(item.contextJson.empty()?"{}":item.contextJson)<<","
@@ -270,7 +314,8 @@ size_t TrainingReviewStore::ExportApprovedJsonlForPersona(
     sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "SELECT id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
-        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc "
+        "persona_summary,recalled_memory,context_json,status,reviewer,notes,created_utc,reviewed_utc,"
+        "correction_instruction,target_output_text,correction_updated_utc "
         "FROM training_review_items WHERE status=1 AND persona_name=? "
         "ORDER BY reviewed_utc ASC,created_utc ASC",
         -1,&s,nullptr),db,"prepare persona approved dataset export");
@@ -287,7 +332,10 @@ size_t TrainingReviewStore::ExportApprovedJsonlForPersona(
            <<"\"persona_name\":\""<<JsonEscape(item.personaName)<<"\","
            <<"\"model_name\":\""<<JsonEscape(item.modelName)<<"\","
            <<"\"input\":\""<<JsonEscape(item.inputText)<<"\","
-           <<"\"output\":\""<<JsonEscape(item.outputText)<<"\","
+           <<"\"output\":\""<<JsonEscape(TrainingTargetText(item))<<"\","
+           <<"\"original_output\":\""<<JsonEscape(item.outputText)<<"\","
+           <<"\"correction_instruction\":\""<<JsonEscape(item.correctionInstruction)<<"\","
+           <<"\"correction_updated_utc\":\""<<JsonEscape(item.correctionUpdatedUtc)<<"\","
            <<"\"persona_summary\":\""<<JsonEscape(item.personaSummary)<<"\","
            <<"\"recalled_memory\":\""<<JsonEscape(item.recalledMemory)<<"\","
            <<"\"context\":"<<(item.contextJson.empty()?"{}":item.contextJson)<<","
