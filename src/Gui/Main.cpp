@@ -5686,6 +5686,12 @@ private:
         statusText_=changed
             ? L"Rule #"+std::to_wstring(selectedResponseRuleId_)+L" changes saved"
             : L"Response rule update did not change a saved rule";
+        if(changed) {
+            const auto filtered=FilteredPersonaResponseRules();
+            responseRulePage_=sentinel::simulation::ComputeResponseRulePageWindow(
+                filtered.size(),responseRulePage_,4).pageIndex;
+            SyncSelectedResponseRuleWithFilters(filtered);
+        }
     }
 
     void TogglePersonaResponseRuleEnabled(long long id) {
@@ -5751,6 +5757,10 @@ private:
             else if(matchType=="contains") statusText_=L"Contains response rule added";
             else statusText_=L"Smart response rule added";
             statusText_+=L" | saved for "+Widen(simSettings_.persona.name);
+            const auto filtered=FilteredPersonaResponseRules();
+            SyncSelectedResponseRuleWithFilters(filtered);
+            if(selectedResponseRuleId_==0)
+                statusText_+=L" | hidden by current filters";
         } else {
             statusText_=L"Response rule could not be saved";
         }
@@ -5784,6 +5794,10 @@ private:
         }
         sqlite3_finalize(s);
         responseRulePage_=0;
+        responseRuleSearch_.clear();
+        responseRuleTypeFilter_="all";
+        responseRuleStateFilter_=-1;
+        if(responseRuleFilterEdit_) SetWindowTextW(responseRuleFilterEdit_,L"");
         StartNewPersonaResponseRule(false);
         statusText_=L"Persona response rules cleared";
     }
