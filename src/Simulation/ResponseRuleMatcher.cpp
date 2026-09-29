@@ -213,4 +213,19 @@ std::string SelectResponseRuleVariant(
     return variants[(std::size_t)(hash%variants.size())];
 }
 
+ResponseRulePageWindow ComputeResponseRulePageWindow(
+    std::size_t totalItems,
+    std::size_t requestedPage,
+    std::size_t pageSize) noexcept
+{
+    ResponseRulePageWindow out;
+    if(pageSize==0) pageSize=1;
+
+    out.pageCount=totalItems==0?1:(totalItems+pageSize-1)/pageSize;
+    out.pageIndex=std::min(requestedPage,out.pageCount-1);
+    out.start=std::min(totalItems,out.pageIndex*pageSize);
+    out.end=std::min(totalItems,out.start+pageSize);
+    return out;
+}
+
 }
