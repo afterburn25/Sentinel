@@ -45,6 +45,15 @@ struct ResponseRulePageWindow {
     std::string_view responseText,
     std::string_view deterministicBasis);
 
+[[nodiscard]] bool ResponseRulePassesFilter(
+    std::string_view trigger,
+    std::string_view response,
+    std::string_view matchType,
+    bool enabled,
+    std::string_view searchText,
+    std::string_view typeFilter,
+    int stateFilter);
+
 [[nodiscard]] ResponseRulePageWindow ComputeResponseRulePageWindow(
     std::size_t totalItems,
     std::size_t requestedPage,
