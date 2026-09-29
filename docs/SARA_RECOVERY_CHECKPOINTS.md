@@ -1174,3 +1174,53 @@ Artifact digests from run #949:
 
 This is the validated SARA **1.0.16** rollback/release point. The protected recovery ancestry remains 1.0.15, while future feature slices advance the application version independently.
 
+## Checkpoint 23 — SARA 1.0.17 automatic local-AI self-recovery validated
+
+Validated commit:
+
+`2f123d048c669320f90b19082e109fd1f0d6e941`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #960
+- Run ID: `36541822456`
+- Result: **SUCCESS**
+
+Validated SARA 1.0.17 behavior:
+
+- in-session failures from the bundled loopback `sentinel-chat` model now trigger one bounded automatic recovery attempt
+- SARA rewrites/uses the active approved Foundation/LoRA runtime configuration, restarts the bundled backend, reconnects `sentinel-chat`, and retries the failed model operation exactly once
+- automatic recovery is shared by Simulation replies, rule voice variation/continuation, proactive follow-ups, investigator suggestions, Persona behavior generation, Trainer behavior previews, and Trainer correction previews
+- custom localhost models are not replaced by bundled-model recovery
+- external model endpoints never invoke bundled local recovery
+- missing bundled prerequisites prevent automatic recovery rather than triggering downloads/repair
+- recursive recovery attempts are rejected
+- there is no background model polling and no infinite retry loop
+- diagnostics expose the number of successful automatic `sentinel-chat` recoveries in the current session
+- CI rejects direct GUI `model_->Generate...` calls that bypass the recovery wrapper
+- regression tests cover recovery eligibility for loopback, localhost, custom-local, external, missing-prerequisite, and re-entrant cases
+
+Validated gates:
+
+- canonical SARA version guard: PASS
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- bundled AI PowerShell syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and recovery UI capture: PASS
+- packaged launcher layout: PASS
+- version-aware SARA Setup.exe build: PASS
+
+Artifact digests from run #960:
+
+- Windows package: `sha256:b19437606455d4c17ac6b8876ffa37c849aa9b41714d5da59f88b4e6ab439508`
+- unsigned-development Setup artifact: `sha256:d13dafc5115327a9aa91adfc39c59ca971a3f3318d028462ed3d14285207ce5a`
+- UI screenshots: `sha256:f0aa3f8d33aee9b0cef9d860330b77683f2e197b2829bd5cf04c1ae231a34d08`
+
+This is the validated SARA **1.0.17** rollback/release point.
+
