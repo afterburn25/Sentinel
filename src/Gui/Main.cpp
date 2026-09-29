@@ -1670,6 +1670,10 @@ public:
             else if (b.id==L"rule_add_smart") AddPersonaResponseRule("smart");
             else if (b.id==L"rule_add_contains") AddPersonaResponseRule("contains");
             else if (b.id==L"rule_add_exact") AddPersonaResponseRule("exact");
+            else if (b.id==L"rule_save") SaveLoadedPersonaResponseRule();
+            else if (b.id==L"rule_new") StartNewPersonaResponseRule();
+            else if (b.id==L"rule_prev") PreviousPersonaResponseRulePage();
+            else if (b.id==L"rule_next") NextPersonaResponseRulePage();
             else if (b.id==L"rule_test") TestPersonaResponseRuleMatch();
             else if (b.id==L"rule_clear") ClearPersonaResponseRules();
             else if (b.id==L"rule_wording_toggle") ToggleResponseRuleWordingMode();
@@ -2223,6 +2227,9 @@ private:
     bool trainerAdvancedOpen_{false};
     bool responseRuleExactWording_{false};
     bool responseRuleTerminal_{true};
+    long long selectedResponseRuleId_{0};
+    std::string selectedResponseRuleMatchType_;
+    size_t responseRulePage_{0};
     bool personaShowLearnedNotes_{false};
 
     HFONT chatFont_{};
@@ -5449,7 +5456,7 @@ private:
     void LoadPersonaResponseRuleIntoEditors(long long id) {
         sqlite3_stmt* s{};
         const char* sql=
-            "SELECT trigger_text,response_text,response_mode,terminal FROM persona_response_rules "
+            "SELECT match_type,trigger_text,response_text,response_mode,terminal FROM persona_response_rules "
             "WHERE id=? AND persona_name=? LIMIT 1";
         if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK) {
             statusText_=L"Unable to load response rule";
@@ -5459,18 +5466,113 @@ private:
         sqlite3_bind_int64(s,1,id);
         sqlite3_bind_text(s,2,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
         if(sqlite3_step(s)==SQLITE_ROW) {
-            const auto* trigger=(const char*)sqlite3_column_text(s,0);
-            const auto* response=(const char*)sqlite3_column_text(s,1);
-            const auto* mode=(const char*)sqlite3_column_text(s,2);
+            const auto* matchType=(const char*)sqlite3_column_text(s,0);
+            const auto* trigger=(const char*)sqlite3_column_text(s,1);
+            const auto* response=(const char*)sqlite3_column_text(s,2);
+            const auto* mode=(const char*)sqlite3_column_text(s,3);
+            selectedResponseRuleId_=id;
+            selectedResponseRuleMatchType_=matchType?matchType:"smart";
             SetWindowTextW(responseRuleTriggerEdit_,Widen(trigger?trigger:"").c_str());
             SetWindowTextW(responseRuleResponseEdit_,Widen(response?response:"").c_str());
             responseRuleExactWording_=mode && std::string(mode)=="exact";
-            responseRuleTerminal_=sqlite3_column_int(s,3)!=0;
-            statusText_=L"Loaded Rule #"+std::to_wstring(id)+L" into the rule editor";
+            responseRuleTerminal_=sqlite3_column_int(s,4)!=0;
+            statusText_=L"Editing Rule #"+std::to_wstring(id)+
+                L" ("+Widen(selectedResponseRuleMatchType_)+L") - use Save Changes";
         } else {
+            selectedResponseRuleId_=0;
+            selectedResponseRuleMatchType_.clear();
             statusText_=L"Response rule not found";
         }
         sqlite3_finalize(s);
+    }
+
+    void StartNewPersonaResponseRule(bool updateStatus=true) {
+        selectedResponseRuleId_=0;
+        selectedResponseRuleMatchType_.clear();
+        responseRuleExactWording_=false;
+        responseRuleTerminal_=true;
+        if(responseRuleTriggerEdit_) SetWindowTextW(responseRuleTriggerEdit_,L"");
+        if(responseRuleResponseEdit_) SetWindowTextW(responseRuleResponseEdit_,L"");
+        if(updateStatus)
+            statusText_=L"New response rule - choose Smart, Contains, or Exact to save";
+    }
+
+    void PreviousPersonaResponseRulePage() {
+        if(responseRulePage_>0) {
+            --responseRulePage_;
+            statusText_=L"Previous response-rule page";
+        }
+    }
+
+    void NextPersonaResponseRulePage() {
+        const auto rules=PersonaResponseRules(50);
+        constexpr size_t pageSize=4;
+        const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
+        if(responseRulePage_+1<pageCount) {
+            ++responseRulePage_;
+            statusText_=L"Next response-rule page";
+        }
+    }
+
+    bool ValidatePersonaResponseRuleEditor(std::string& trigger,std::string& response) {
+        trigger=Narrow(EditText(responseRuleTriggerEdit_));
+        response=Narrow(EditText(responseRuleResponseEdit_));
+        if(trigger.empty() || response.empty()) {
+            statusText_=L"Enter both a trigger and a response";
+            return false;
+        }
+
+        const auto variants=sentinel::simulation::SplitResponseRuleVariants(response);
+        if(variants.empty()) {
+            statusText_=L"Enter at least one non-empty response";
+            return false;
+        }
+        for(const auto& variant:variants) {
+            const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
+                simSettings_.ageState,variant);
+            if(!policy.allowed) {
+                statusText_=L"One alternate response was rejected by active safety policy";
+                MessageBoxW(hwnd_,Widen(policy.reason).c_str(),
+                    L"Response Rule Blocked",MB_OK|MB_ICONWARNING);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void SaveLoadedPersonaResponseRule() {
+        if(selectedResponseRuleId_<=0 || selectedResponseRuleMatchType_.empty()) {
+            statusText_=L"Open a saved response rule before using Save Changes";
+            return;
+        }
+
+        std::string trigger,response;
+        if(!ValidatePersonaResponseRuleEditor(trigger,response)) return;
+
+        sqlite3_stmt* stmt{};
+        const char* sql=
+            "UPDATE persona_response_rules SET "
+            "trigger_text=?,response_text=?,response_mode=?,terminal=?,updated_utc=CURRENT_TIMESTAMP "
+            "WHERE id=? AND persona_name=?";
+        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&stmt,nullptr)!=SQLITE_OK) {
+            statusText_=L"Unable to prepare response rule update";
+            return;
+        }
+
+        const std::string responseMode=responseRuleExactWording_?"exact":"persona_variation";
+        sqlite3_bind_text(stmt,1,trigger.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt,2,response.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt,3,responseMode.c_str(),-1,SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt,4,responseRuleTerminal_?1:0);
+        sqlite3_bind_int64(stmt,5,selectedResponseRuleId_);
+        sqlite3_bind_text(stmt,6,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
+        const bool changed=sqlite3_step(stmt)==SQLITE_DONE &&
+            sqlite3_changes(runtime_->db.Handle())==1;
+        sqlite3_finalize(stmt);
+
+        statusText_=changed
+            ? L"Rule #"+std::to_wstring(selectedResponseRuleId_)+L" changes saved"
+            : L"Response rule update did not change a saved rule";
     }
 
     void TogglePersonaResponseRuleEnabled(long long id) {
@@ -5494,28 +5596,14 @@ private:
     }
 
     void AddPersonaResponseRule(const std::string& matchType) {
-        const auto trigger=Narrow(EditText(responseRuleTriggerEdit_));
-        const auto response=Narrow(EditText(responseRuleResponseEdit_));
-        if(trigger.empty() || response.empty()) {
-            statusText_=L"Enter both a trigger and a response";
+        if(selectedResponseRuleId_>0) {
+            statusText_=L"Rule #"+std::to_wstring(selectedResponseRuleId_)+
+                L" is open. Use Save Changes, or New before creating another rule.";
             return;
         }
 
-        const auto variants=sentinel::simulation::SplitResponseRuleVariants(response);
-        if(variants.empty()) {
-            statusText_=L"Enter at least one non-empty response";
-            return;
-        }
-        for(const auto& variant:variants) {
-            const auto policy=sentinel::simulation::EvaluateSimulationPolicy(
-                simSettings_.ageState,variant);
-            if(!policy.allowed) {
-                statusText_=L"One alternate response was rejected by active safety policy";
-                MessageBoxW(hwnd_,Widen(policy.reason).c_str(),
-                    L"Response Rule Blocked",MB_OK|MB_ICONWARNING);
-                return;
-            }
-        }
+        std::string trigger,response;
+        if(!ValidatePersonaResponseRuleEditor(trigger,response)) return;
 
         sqlite3_stmt* s{};
         const char* sql=
@@ -5537,8 +5625,9 @@ private:
         sqlite3_finalize(s);
 
         if(rc==SQLITE_DONE) {
-            SetWindowTextW(responseRuleTriggerEdit_,L"");
-            SetWindowTextW(responseRuleResponseEdit_,L"");
+            responseRulePage_=0;
+            selectedResponseRuleId_=sqlite3_last_insert_rowid(runtime_->db.Handle());
+            selectedResponseRuleMatchType_=matchType;
             if(matchType=="exact") statusText_=L"Exact response rule added";
             else if(matchType=="contains") statusText_=L"Contains response rule added";
             else statusText_=L"Smart response rule added";
@@ -5575,6 +5664,8 @@ private:
             sqlite3_step(s);
         }
         sqlite3_finalize(s);
+        responseRulePage_=0;
+        StartNewPersonaResponseRule(false);
         statusText_=L"Persona response rules cleared";
     }
 
@@ -5588,6 +5679,12 @@ private:
             sqlite3_step(s);
         }
         sqlite3_finalize(s);
+        if(selectedResponseRuleId_==id)
+            StartNewPersonaResponseRule(false);
+        const auto rules=PersonaResponseRules(50);
+        constexpr size_t pageSize=4;
+        const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
+        if(responseRulePage_>=pageCount) responseRulePage_=pageCount-1;
         statusText_=L"Response rule deleted";
     }
 
