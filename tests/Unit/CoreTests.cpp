@@ -289,6 +289,35 @@ void TestResponseRuleMatcher()
             "","all",0),
         "disabled response-rule state filter rejected disabled rule");
 
+    struct RuleFilterSample {
+        const char* trigger;
+        const char* response;
+        const char* matchType;
+        bool enabled;
+    };
+    const RuleFilterSample filterSamples[]={
+        {"favorite color","blue mostly","exact",true},
+        {"music","i like a bunch of stuff","contains",true},
+        {"after school","usually chill","smart",true},
+        {"favorite food","pizza probably","exact",true},
+        {"pets","yeah i like dogs","contains",false},
+        {"weekend plans","depends whats going on","smart",true}
+    };
+    std::size_t filteredSmartEnabled=0;
+    for(const auto& sample:filterSamples) {
+        if(sentinel::simulation::ResponseRulePassesFilter(
+                sample.trigger,sample.response,sample.matchType,sample.enabled,
+                "","smart",1))
+            ++filteredSmartEnabled;
+    }
+    Require(filteredSmartEnabled==2,
+        "combined response-rule type/state filter count mismatch");
+    const auto filteredPage=sentinel::simulation::ComputeResponseRulePageWindow(
+        filteredSmartEnabled,7,1);
+    Require(filteredPage.pageIndex==1 && filteredPage.pageCount==2 &&
+            filteredPage.start==1 && filteredPage.end==2,
+        "response-rule paging did not clamp to filtered result count");
+
     const auto emptyPage=sentinel::simulation::ComputeResponseRulePageWindow(0,5,4);
     Require(emptyPage.pageIndex==0 && emptyPage.pageCount==1 &&
             emptyPage.start==0 && emptyPage.end==0,
