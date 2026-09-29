@@ -707,3 +707,46 @@ Artifact digests from run #836:
 - UI screenshots: `sha256:3abe78529a3ab707ec3aa219d20a50c88c5426420c5cd5ccdf0f86da5a96c435`
 
 This is the validated rollback point through the provenance-first Identity Research provider registry and disabled-by-default adapter boundary.
+
+## Checkpoint 15 — Identity Research report preservation validated
+
+Validated commit:
+
+`28a53999bc1356eb253404749b1950631118ab6e`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #838
+- Run ID: `36507360542`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Identity Research/provider architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- full packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Identity Research preservation proven by this checkpoint:
+
+- completed, promoted, or rejected research tasks can be preserved as encrypted case evidence
+- the preserved report carries case/subject IDs, research type, provider/source, original query/reference, legal-basis note, status, finding, result reference, provenance, review state, and timestamps
+- preservation does not elevate a finding to verified identity or confirmed subject status
+- temporary plaintext report material is removed after encrypted evidence import
+- preservation receives its own audit event linking the research task to the generated evidence item
+- the Evidence workspace refreshes when the preserved research belongs to the currently open case
+
+Artifact digests from run #838:
+
+- Windows package: `sha256:b0f082622c0f6c6e662af859c3e308752520666c2a5fc1bb1889527332484608`
+- unsigned-development Setup artifact: `sha256:7dac0e0feb1225e7e41ecab5d67f89fe9a8df525e2ff819b7534e902a28f5487`
+- UI screenshots: `sha256:db62627f179322ec8ba09469a0b57a9b7c1bf76bcca45196e4ff62fae6dede84`
+
+This is the validated rollback point through encrypted preservation of authorized Identity Research results.
