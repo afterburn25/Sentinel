@@ -1,5 +1,9 @@
 [CmdletBinding()]
-param([switch]$NoLaunch,[switch]$ForceRestart)
+param(
+  [switch]$NoLaunch,
+  [switch]$ForceRestart,
+  [ValidateRange(10,600)][int]$StartupTimeoutSeconds=60
+)
 $ErrorActionPreference='Stop'
 $ai=$PSScriptRoot
 $app=Split-Path -Parent $ai
@@ -48,7 +52,7 @@ function Start-One($server,[int]$layers,[string]$tag){
   if($activeLora){$args+=@('--lora',$activeLora)}
   $p=Start-Process -FilePath $server.FullName -ArgumentList $args -WorkingDirectory $server.DirectoryName -WindowStyle Hidden -RedirectStandardOutput $out -RedirectStandardError $err -PassThru
   Set-Content $pidFile $p.Id -Encoding ASCII
-  $deadline=(Get-Date).AddMinutes(10)
+  $deadline=(Get-Date).AddSeconds($StartupTimeoutSeconds)
   while((Get-Date)-lt $deadline){
     Start-Sleep -Milliseconds 500
     $p.Refresh()
