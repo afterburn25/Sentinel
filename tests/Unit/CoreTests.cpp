@@ -893,8 +893,12 @@ void TestIdentityResearchPackages()
 
     const auto requestText=
         sentinel::identity::SerializeResearchRequestPackage(request);
-    Require(requestText.find("credential")==std::string::npos,
-        "research request package unexpectedly contains credential material");
+    Require(requestText.find("credential_reference\t")==std::string::npos,
+        "research request package unexpectedly contains a credential-reference field");
+    Require(requestText.find("api_key\t")==std::string::npos &&
+            requestText.find("password\t")==std::string::npos &&
+            requestText.find("bearer_token\t")==std::string::npos,
+        "research request package unexpectedly contains secret fields");
     const auto parsedRequest=
         sentinel::identity::ParseResearchRequestPackage(requestText);
     Require(parsedRequest.taskId==request.taskId,
