@@ -79,4 +79,10 @@ std::string SelectPreferredOpenAICompatibleModel(
     std::string_view configuredModel,
     bool requireSentinelChat);
 
+bool ShouldAttemptAutomaticLocalModelRecovery(
+    std::string_view endpoint,
+    std::string_view model,
+    bool bundledPrerequisitesPresent,
+    bool recoveryInProgress);
+
 }
