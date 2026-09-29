@@ -455,6 +455,24 @@ Write-Host "Permanent main navigation: $($required -join ' | ')"
 Write-Host "Model Lab remains subordinate with internal tabs."
 Write-Host "Simulation Chat and investigative modules remain protected."
 
+$modelStackAuditTokens = @(
+    'AuditAction::FoundationEvaluated',
+    'AuditAction::FoundationApproved',
+    'AuditAction::FoundationActivated',
+    'AuditAction::FoundationRolledBack',
+    'AuditAction::PersonaLoraEvaluated',
+    'AuditAction::PersonaLoraApproved',
+    'AuditAction::PersonaLoraActivated',
+    'AuditAction::PersonaLoraRolledBack',
+    'case 605: return L"Foundation evaluated"',
+    'case 612: return L"Persona LoRA rolled back"'
+)
+foreach ($token in $modelStackAuditTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Foundation/LoRA audit lifecycle is missing: $token"
+    }
+}
+
 $modelStackEvaluationMainTokens = @(
     'EvaluateStagedRuntimeStack(',
     'LatestPassingEvaluationForStack(',
