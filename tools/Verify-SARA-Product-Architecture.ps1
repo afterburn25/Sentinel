@@ -480,6 +480,8 @@ $modelStackEvaluationStoreTokens = @(
     'evaluation.foundationId!=id',
     'evaluation.adapterId!=std::to_string(id)',
     'target->approvedEvaluationRunId.empty()',
+    'target->runtimeGgufPath.empty()',
+    'target->loraPath.empty()',
     'foundation->approvedEvaluationRunId.empty()',
     'approved_evaluation_run_id',
     "VALUES(?,?,?,?,?,0,'')"
