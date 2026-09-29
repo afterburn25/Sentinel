@@ -8515,6 +8515,7 @@ private:
         }
 
         auto& package=deploymentRegistry_.Prepare(
+            modelItem,
             eval,
             simSettings_.persona.name);
 
