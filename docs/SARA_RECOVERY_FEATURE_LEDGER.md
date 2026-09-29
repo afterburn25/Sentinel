@@ -276,6 +276,7 @@ Every future feature restoration must follow this exact sequence:
 - Exact Model Lab approval/deployment evaluation-proof binding: RESTORED / VALIDATED (Windows Build #865)
 - Reviewed correction targets / shadow-learning data integrity: RESTORED / VALIDATED (Windows Build #880)
 - Persona LoRA training candidate isolation: RESTORED / VALIDATED (Windows Build #887)
+- Foundation / Persona LoRA staged evaluation and activation proof: RESTORED / VALIDATED (Windows Build #906)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -345,6 +346,9 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] versioned datasets preserve correction provenance and supersede stale approved targets for future snapshots
 - [x] completed Persona LoRA training registers an inactive candidate and cannot replace the active adapter automatically
 - [x] CI executes a Persona LoRA candidate-isolation self-test against SQLite worker behavior
+- [x] staged Foundation/LoRA evaluation loads candidate runtime files without changing persistent active bindings
+- [x] Foundation and Persona LoRA activation require persisted passing evaluation proof
+- [x] LoRA activation requires its evaluated Foundation to be the active Foundation
 - [x] newly trained Persona LoRAs are registered inactive and cannot silently replace the live adapter
 - [x] CI worker self-test proves the existing active LoRA survives candidate registration unchanged
 - [x] rule hit ledger, alternate response pools and terminal/continue behavior
