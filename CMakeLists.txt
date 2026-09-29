@@ -1,5 +1,19 @@
 cmake_minimum_required(VERSION 3.24)
-project(SARA VERSION 1.0.15 LANGUAGES CXX RC)
+
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" SARA_VERSION LIMIT_COUNT 1)
+string(STRIP "${SARA_VERSION}" SARA_VERSION)
+if(NOT SARA_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "Invalid SARA VERSION file: '${SARA_VERSION}'")
+endif()
+
+project(SARA VERSION ${SARA_VERSION} LANGUAGES CXX RC)
+
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(
+    resources/SentinelVersion.rc
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/SentinelVersion.rc"
+    @ONLY
+)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,7 +83,7 @@ target_link_libraries(SentinelCli PRIVATE sentinel_core)
 if(WIN32 AND SENTINEL_BUILD_GUI)
     add_executable(Sentinel WIN32
         src/Gui/Main.cpp
-        resources/SentinelVersion.rc
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/SentinelVersion.rc"
     )
     target_link_libraries(Sentinel PRIVATE
         sentinel_core
