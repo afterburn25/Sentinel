@@ -4089,7 +4089,102 @@ private:
         }
     }
 
+    void DrawIdentityResearchProviders(float w,float h) {
+        PageTitle(
+            L"Subjects & Identity / Research Providers",
+            L"Authorized provider metadata only; credential aliases are references, never secrets");
+
+        const float x=kSidebar+28.0f;
+        const float y=kHeader+94.0f;
+        const float contentW=w-x-28.0f;
+        const float gap=14.0f;
+        const float leftW=std::clamp(contentW*0.38f,300.0f,360.0f);
+        const float rightX=x+leftW+gap;
+        const float rightW=contentW-leftW-gap;
+        const float bodyH=std::max(500.0f,h-y-24.0f);
+
+        auto providers=runtime_->subjectIdentity.ListResearchProviders(true);
+        if(!selectedResearchProviderConfigId_.empty()) {
+            const bool exists=std::any_of(providers.begin(),providers.end(),[&](const auto& p){
+                return p.id==selectedResearchProviderConfigId_;
+            });
+            if(!exists) selectedResearchProviderConfigId_.clear();
+        }
+
+        Rounded(x,y,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Provider Registry",x+16,y+12,leftW-122,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"research_provider_back",L"Back",x+leftW-100,y+12,44,28,false);
+        AddButton(L"research_provider_new",L"New",x+leftW-50,y+12,34,28,true);
+        TextLine(L"DISABLED BY DEFAULT UNLESS MANUAL",x+16,y+43,leftW-32,18,tinyFmt_.Get(),brush_.yellow.Get());
+
+        float rowY=y+68.0f;
+        if(providers.empty()) {
+            TextLine(L"No provider records.",x+18,rowY,leftW-36,26,smallFmt_.Get(),brush_.muted.Get());
+        } else {
+            for(const auto& provider:providers) {
+                if(rowY+58>y+bodyH-12) break;
+                const bool selected=provider.id==selectedResearchProviderConfigId_;
+                Rounded(x+12,rowY,leftW-24,54,
+                    selected?brush_.panel2.Get():brush_.sidebar.Get(),
+                    selected?brush_.cyan.Get():brush_.border.Get(),7);
+                TextLine(Widen(provider.displayName),x+22,rowY+5,leftW-122,18,tinyFmt_.Get(),brush_.text.Get());
+                TextLine(provider.enabled?L"ENABLED":L"DISABLED",
+                    x+leftW-108,rowY+5,84,18,tinyFmt_.Get(),
+                    provider.enabled?brush_.green.Get():brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
+                TextLine(Widen(provider.id),x+22,rowY+24,leftW-44,15,tinyFmt_.Get(),brush_.cyan.Get());
+                TextLine(
+                    Widen(sentinel::identity::ToString(provider.accessMode))+
+                    L" | mask "+std::to_wstring(provider.supportedTypesMask),
+                    x+22,rowY+39,leftW-44,14,tinyFmt_.Get(),brush_.muted.Get());
+                buttons_.push_back({{x+12,rowY,x+leftW-12,rowY+54},L"research_provider_row:"+Widen(provider.id)});
+                rowY+=60.0f;
+            }
+        }
+
+        Rounded(rightX,y,rightW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
+        TextLine(L"Provider Configuration",rightX+16,y+12,rightW-32,28,h1Fmt_.Get(),brush_.text.Get());
+        Text(
+            L"Store connector metadata and a credential alias/vault reference only. Never paste API keys, passwords, cookies, tokens, or session credentials here.",
+            rightX+16,y+42,rightW-32,42,tinyFmt_.Get(),brush_.yellow.Get());
+
+        TextLine(L"Provider ID",rightX+16,y+90,90,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Display name",rightX+rightW*0.50f,y+90,92,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Access mode",rightX+16,y+136,90,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Endpoint / portal hint",rightX+rightW*0.50f,y+136,130,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Credential alias / vault reference",rightX+16,y+182,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Supported research types",rightX+16,y+226,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+
+        const wchar_t* typeLabels[]={L"Records",L"Social",L"Username",L"Contact",L"Image"};
+        const float typeGap=6.0f;
+        const float typeW=(rightW-32.0f-typeGap*4.0f)/5.0f;
+        for(int i=0;i<5;i++) {
+            const bool on=(selectedResearchProviderTypesMask_&(1u<<i))!=0;
+            AddButton(
+                L"research_provider_type:"+std::to_wstring(i),
+                typeLabels[i],
+                rightX+16+i*(typeW+typeGap),y+246,typeW,28,on);
+        }
+
+        TextLine(L"Configuration notes",rightX+16,y+286,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
+
+        const float actionY=y+bodyH-42.0f;
+        AddButton(L"research_provider_save",L"Save Provider",rightX+16,actionY,104,30,true);
+        if(!selectedResearchProviderConfigId_.empty()) {
+            auto selected=runtime_->subjectIdentity.GetResearchProvider(selectedResearchProviderConfigId_);
+            if(selected && selected->id!="manual/authorized")
+                AddButton(L"research_provider_toggle",selected->enabled?L"Disable":L"Enable",rightX+128,actionY,78,30,false);
+        }
+        TextLine(
+            L"Provider records do not execute lookups; a future adapter must separately prove configuration and authorization.",
+            rightX+216,actionY+4,rightW-232,20,tinyFmt_.Get(),brush_.muted.Get());
+    }
+
     void DrawIdentityResearch(float w,float h) {
+        if(researchProviderManagerOpen_) {
+            DrawIdentityResearchProviders(w,h);
+            return;
+        }
+
         PageTitle(
             L"Subjects & Identity / Research",
             L"Authorized public-source research queue; findings remain leads until separately verified");
@@ -4212,6 +4307,7 @@ private:
 
         Rounded(rightX,bodyY,rightW,requestH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Research Request",rightX+16,bodyY+12,210,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"research_provider_manager",L"Providers",rightX+rightW-88,bodyY+12,72,26,false);
         TextLine(L"Type",rightX+16,bodyY+43,80,16,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Authorized provider/source",rightX+rightW*0.50f+5,bodyY+43,rightW*0.50f-21,16,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Query / reference",rightX+16,bodyY+87,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
