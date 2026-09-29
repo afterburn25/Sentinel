@@ -3,6 +3,7 @@
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include "Sentinel/Simulation/TrainingReviewStore.hpp"
 #include "Sentinel/Storage/SqliteDatabase.hpp"
 #include "Sentinel/Operations/Messaging.hpp"
@@ -51,8 +52,25 @@ int main() {
     Require(evaluation.score>=80,"consistent response evaluation unexpectedly low");
     simulation::ModelRegistry registry;
     auto& registered=registry.Register(settings.endpoint,settings.model);
-    registered.evaluationScore=92;
-    registry.Approve(0);
+
+    simulation::EvaluationRun approvalRun;
+    approvalRun.id="platform-eval-1";
+    approvalRun.candidateId=registered.id;
+    approvalRun.candidateName=registered.modelName;
+    approvalRun.overallScore=92;
+    const simulation::EvaluationDimension requiredDimensions[]={
+        simulation::EvaluationDimension::PersonaConsistency,
+        simulation::EvaluationDimension::PolicyCompliance,
+        simulation::EvaluationDimension::StyleConsistency,
+        simulation::EvaluationDimension::MemoryRecall,
+        simulation::EvaluationDimension::TriggerRegression,
+        simulation::EvaluationDimension::ResponseDiversity
+    };
+    for(auto dimension:requiredDimensions)
+        approvalRun.dimensions.push_back({dimension,92,true,"platform test pass",{}});
+
+    Require(registry.Approve(0,approvalRun,"",""),
+        "model registry approval failed");
     registry.Activate(0);
     Require(registry.ActiveIndex()==0,"model registry activation failed");
 
