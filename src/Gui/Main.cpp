@@ -4501,13 +4501,22 @@ private:
         for(HWND control:controls) if(control) ShowWindow(control,show?SW_SHOW:SW_HIDE);
     }
 
+    void ShowIdentityResearchProviderEditors(bool show) {
+        HWND controls[]={
+            researchProviderIdEdit_,researchProviderNameEdit_,researchProviderModeCombo_,
+            researchProviderEndpointEdit_,researchProviderCredentialEdit_,researchProviderNotesEdit_
+        };
+        for(HWND control:controls) if(control) ShowWindow(control,show?SW_SHOW:SW_HIDE);
+    }
+
     void ApplyPageControls() {
         ShowCaseEditors(page_==Page::Cases);
         ShowChatEditor(page_==Page::Simulation);
         ShowPersonaEditors(page_==Page::Persona);
         ShowAgencyEditors(page_==Page::Agency);
         ShowSubjectEditors(page_==Page::Subjects && !cases_.empty());
-        ShowIdentityResearchEditors(page_==Page::IdentityResearch);
+        ShowIdentityResearchEditors(page_==Page::IdentityResearch && !researchProviderManagerOpen_);
+        ShowIdentityResearchProviderEditors(page_==Page::IdentityResearch && researchProviderManagerOpen_);
         const bool showResponseRuleEditors=
             page_==Page::ModelLab ||
             (page_==Page::Persona && personaTab_==PersonaTab::Rules);
@@ -4622,19 +4631,35 @@ private:
             const float requestH=204.0f;
             const float resultY=bodyY+requestH+12.0f;
 
-            const float halfGap=10.0f;
-            const float halfW=(rightW-32.0f-halfGap)/2.0f;
-            MoveControl(researchTypeCombo_,(int)(rightX+16),(int)(bodyY+58),(int)halfW,170,TRUE);
-            MoveControl(researchProviderCombo_,(int)(rightX+16+halfW+halfGap),(int)(bodyY+58),(int)halfW,180,TRUE);
-            MoveControl(researchQueryEdit_,(int)(rightX+16),(int)(bodyY+102),(int)(rightW-32),28,TRUE);
-            MoveControl(researchPurposeEdit_,(int)(rightX+16),(int)(bodyY+146),(int)(rightW-32),28,TRUE);
+            if(researchProviderManagerOpen_) {
+                const float providerLeftW=std::clamp(contentW*0.38f,300.0f,360.0f);
+                const float providerRightX=x+providerLeftW+gap;
+                const float providerRightW=contentW-providerLeftW-gap;
+                const float splitGap=10.0f;
+                const float splitW=(providerRightW-32.0f-splitGap)/2.0f;
+                MoveControl(researchProviderIdEdit_,(int)(providerRightX+16),(int)(y+106),(int)splitW,28,TRUE);
+                MoveControl(researchProviderNameEdit_,(int)(providerRightX+16+splitW+splitGap),(int)(y+106),(int)splitW,28,TRUE);
+                MoveControl(researchProviderModeCombo_,(int)(providerRightX+16),(int)(y+152),(int)splitW,150,TRUE);
+                MoveControl(researchProviderEndpointEdit_,(int)(providerRightX+16+splitW+splitGap),(int)(y+152),(int)splitW,28,TRUE);
+                MoveControl(researchProviderCredentialEdit_,(int)(providerRightX+16),(int)(y+198),(int)(providerRightW-32),28,TRUE);
+                MoveControl(researchProviderNotesEdit_,(int)(providerRightX+16),(int)(y+306),(int)(providerRightW-32),88,TRUE);
+                RECT providerNotesRect{10,7,std::max(24,(int)(providerRightW-52)),80};
+                SendMessageW(researchProviderNotesEdit_,EM_SETRECTNP,0,(LPARAM)&providerNotesRect);
+            } else {
+                const float halfGap=10.0f;
+                const float halfW=(rightW-32.0f-halfGap)/2.0f;
+                MoveControl(researchTypeCombo_,(int)(rightX+16),(int)(bodyY+58),(int)halfW,170,TRUE);
+                MoveControl(researchProviderCombo_,(int)(rightX+16+halfW+halfGap),(int)(bodyY+58),(int)halfW,180,TRUE);
+                MoveControl(researchQueryEdit_,(int)(rightX+16),(int)(bodyY+102),(int)(rightW-32),28,TRUE);
+                MoveControl(researchPurposeEdit_,(int)(rightX+16),(int)(bodyY+146),(int)(rightW-32),28,TRUE);
 
-            MoveControl(researchResultEdit_,(int)(rightX+16),(int)(resultY+58),(int)(rightW-32),58,TRUE);
-            RECT resultRect{10,7,std::max(24,(int)(rightW-52)),50};
-            SendMessageW(researchResultEdit_,EM_SETRECTNP,0,(LPARAM)&resultRect);
-            MoveControl(researchReferenceEdit_,(int)(rightX+16),(int)(resultY+130),(int)(rightW-32),26,TRUE);
-            MoveControl(researchProvenanceEdit_,(int)(rightX+16),(int)(resultY+170),(int)(rightW-32),26,TRUE);
-            MoveControl(researchConfidenceEdit_,(int)(rightX+16),(int)(resultY+210),76,26,TRUE);
+                MoveControl(researchResultEdit_,(int)(rightX+16),(int)(resultY+58),(int)(rightW-32),58,TRUE);
+                RECT resultRect{10,7,std::max(24,(int)(rightW-52)),50};
+                SendMessageW(researchResultEdit_,EM_SETRECTNP,0,(LPARAM)&resultRect);
+                MoveControl(researchReferenceEdit_,(int)(rightX+16),(int)(resultY+130),(int)(rightW-32),26,TRUE);
+                MoveControl(researchProvenanceEdit_,(int)(rightX+16),(int)(resultY+170),(int)(rightW-32),26,TRUE);
+                MoveControl(researchConfidenceEdit_,(int)(rightX+16),(int)(resultY+210),76,26,TRUE);
+            }
         }
 
         if(page_==Page::Persona) {
