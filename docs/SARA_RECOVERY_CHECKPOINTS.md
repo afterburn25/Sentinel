@@ -1224,3 +1224,54 @@ Artifact digests from run #960:
 
 This is the validated SARA **1.0.17** rollback/release point.
 
+## Checkpoint 24 — SARA 1.0.18 response-rule management validated
+
+Validated commit:
+
+`b25fc17876585786fd4c44ff66481e112bda2baf`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #980
+- Run ID: `36617104770`
+- Result: **SUCCESS**
+
+Validated SARA 1.0.18 behavior:
+
+- saved Persona Rules & Learning entries can be paged beyond the newest four rules
+- response-rule paging uses a tested clamped page-window helper
+- paging remains valid after rules are added/deleted and when the current page would otherwise exceed the new page count
+- a saved rule can be loaded into the editor and updated in place
+- Save Changes keeps the original rule ID instead of creating a duplicate
+- rule type, enabled state, priority, existing hit history, and other preserved metadata survive an in-place edit
+- response wording mode and terminal/continue behavior can be edited explicitly
+- New clears loaded-rule edit state so a new rule is created intentionally
+- changing/renaming the active Persona resets stale loaded-rule editor state
+- CI fixture data exercises multiple pages and the visible edit workflow using the default packaged Persona
+- Core regression tests verify edit preservation and paging bounds
+- response matching precedence, alternate-response selection, and match-history semantics remain unchanged
+
+Validated gates:
+
+- canonical SARA version guard: PASS
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- bundled AI PowerShell syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and recovery UI capture: PASS
+- packaged launcher layout: PASS
+- version-aware SARA Setup.exe build: PASS
+
+Artifact digests from run #980:
+
+- Windows package: `sha256:17da933ff8269a9fc564ab572564faf4157436eed031d91fdd9dc76be7c3a9d2`
+- unsigned-development Setup artifact: `sha256:f5edc95917f4cb03beffb6658f0a78116368a4fe97e8f1e90c5dd5ff5e5a882a`
+- UI screenshots: `sha256:6755b65f928c72522bc25f7bfe19fe0f733dbced47e51b7028c64d43c24ccfe1`
+
+This is the validated SARA **1.0.18** rollback/release point.
+
