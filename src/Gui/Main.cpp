@@ -1171,6 +1171,7 @@ public:
             0,0,0,0,hwnd_,(HMENU)1032,GetModuleHandleW(nullptr),nullptr);
         responseRuleTriggerEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1042,GetModuleHandleW(nullptr),nullptr);
         responseRuleResponseEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1043,GetModuleHandleW(nullptr),nullptr);
+        responseRuleFilterEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1044,GetModuleHandleW(nullptr),nullptr);
         trainerModeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1050,GetModuleHandleW(nullptr),nullptr);
         trainerFoundationCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1051,GetModuleHandleW(nullptr),nullptr);
         trainerForkNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1052,GetModuleHandleW(nullptr),nullptr);
@@ -1236,7 +1237,7 @@ public:
         SendMessageW(modelCombo_,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
         HWND advancedEdits[]={personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,personaBackgroundEdit_,
-            responseRuleTriggerEdit_,responseRuleResponseEdit_,
+            responseRuleTriggerEdit_,responseRuleResponseEdit_,responseRuleFilterEdit_,
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,trainerDatasetEdit_,trainerOutputEdit_,trainerInstructionEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
             subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,subjectNotesEdit_,
@@ -1252,7 +1253,7 @@ public:
             caseNumberEdit_,caseTitleEdit_,modelEndpointEdit_,modelNameEdit_,
             personaNameEdit_,personaLocationEdit_,personaInterestsEdit_,
             personaOccupationEdit_,personaEducationEdit_,personaFamilyEdit_,
-            responseRuleTriggerEdit_,responseRuleResponseEdit_,
+            responseRuleTriggerEdit_,responseRuleResponseEdit_,responseRuleFilterEdit_,
             trainerForkNameEdit_,trainerBasePathEdit_,trainerLoraNameEdit_,trainerLoraPathEdit_,
             trainerDatasetEdit_,trainerOutputEdit_,
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,
@@ -2159,7 +2160,7 @@ private:
     HWND researchTypeCombo_{},researchProviderCombo_{},researchQueryEdit_{},researchPurposeEdit_{},researchResultEdit_{},researchReferenceEdit_{},researchProvenanceEdit_{},researchConfidenceEdit_{};
     HWND researchProviderIdEdit_{},researchProviderNameEdit_{},researchProviderModeCombo_{},researchProviderEndpointEdit_{},researchProviderCredentialEdit_{},researchProviderNotesEdit_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
-    HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
+    HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{},responseRuleFilterEdit_{};
     HWND trainerModeCombo_{},trainerFoundationCombo_{};
     HWND trainerForkNameEdit_{},trainerBasePathEdit_{},trainerLoraNameEdit_{},trainerLoraPathEdit_{},trainerDatasetEdit_{},trainerOutputEdit_{},trainerInstructionEdit_{};
     std::unique_ptr<Runtime> runtime_;
@@ -2243,6 +2244,9 @@ private:
     long long selectedResponseRuleId_{0};
     std::string selectedResponseRuleMatchType_;
     size_t responseRulePage_{0};
+    std::string responseRuleSearch_;
+    std::string responseRuleTypeFilter_{"all"};
+    int responseRuleStateFilter_{-1};
     bool personaShowLearnedNotes_{false};
 
     HFONT chatFont_{};
@@ -5035,6 +5039,9 @@ private:
             (page_==Page::Persona && personaTab_==PersonaTab::Rules);
         if(responseRuleTriggerEdit_) ShowWindow(responseRuleTriggerEdit_,showResponseRuleEditors?SW_SHOW:SW_HIDE);
         if(responseRuleResponseEdit_) ShowWindow(responseRuleResponseEdit_,showResponseRuleEditors?SW_SHOW:SW_HIDE);
+        const bool showRuleFilter=
+            page_==Page::Persona && personaTab_==PersonaTab::Rules;
+        if(responseRuleFilterEdit_) ShowWindow(responseRuleFilterEdit_,showRuleFilter?SW_SHOW:SW_HIDE);
 
         HWND trainerAlways[]={
             trainerModeCombo_,trainerFoundationCombo_,trainerInstructionEdit_
@@ -5255,6 +5262,10 @@ private:
                     responseRuleResponseEdit_,
                     (int)(x+contentW*0.50f+86),(int)(py+78),
                     (int)std::max(200.0f,contentW*0.50f-108.0f),30,TRUE);
+                MoveControl(
+                    responseRuleFilterEdit_,
+                    (int)(x+72),(int)(py+148),
+                    (int)std::clamp(contentW*0.23f,180.0f,260.0f),28,TRUE);
             }
         }
 
