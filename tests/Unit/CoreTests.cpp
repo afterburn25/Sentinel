@@ -30,7 +30,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -430,7 +432,7 @@ void TestTrainerFoundationAndJobs()
     std::filesystem::remove_all(root);
 }
 
-sentinel::simulation::EvaluationRun MakePassingEvaluation(
+sentinel::simulation::sentinel::simulation::EvaluationRun MakePassingEvaluation(
     std::string candidateId,
     std::string candidateName,
     std::string foundationId,
@@ -745,12 +747,18 @@ void TestDeploymentRegistryLifecycle()
         if(!value) throw std::runtime_error(message);
     };
 
+    sentinel::simulation::ModelRegistry models;
     sentinel::simulation::DeploymentRegistry deployments;
+
+    auto& firstModel=models.Register("http://127.0.0.1:8101","Candidate A");
     auto firstEval=MakePassingEvaluation(
-        "model-1","Candidate A",
+        firstModel.id,firstModel.modelName,
         "foundation-1","SARA Foundation 1.0",
         "1","Samantha v1");
-    auto& first=deployments.Prepare(firstEval,"Samantha");
+    Require(models.Approve(0,firstEval,"foundation-1","1"),
+        "first deployment candidate could not be approved");
+
+    auto& first=deployments.Prepare(firstModel,firstEval,"Samantha");
     const std::string firstDeploymentId=first.id;
     Require(first.stage==sentinel::simulation::DeploymentStage::Staged,
         "prepared deployment should be staged");
@@ -767,27 +775,50 @@ void TestDeploymentRegistryLifecycle()
         "deployment unlock did not change active lock state");
     deployments.SetLocked(0,true);
 
+    auto& unapprovedModel=models.Register("http://127.0.0.1:8102","Unapproved Candidate");
+    auto unapprovedEval=MakePassingEvaluation(
+        unapprovedModel.id,unapprovedModel.modelName,
+        "foundation-u","Unapproved Foundation",
+        "8","Unapproved Adapter");
+    bool unapprovedRejected=false;
+    try {
+        deployments.Prepare(unapprovedModel,unapprovedEval,"Samantha");
+    } catch(const std::invalid_argument&) {
+        unapprovedRejected=true;
+    }
+    Require(unapprovedRejected,
+        "deployment registry accepted an unapproved model");
+    Require(deployments.Packages().size()==1,
+        "rejected unapproved deployment changed registry state");
+
+    auto& failedModel=models.Register("http://127.0.0.1:8103","Failed Evaluation Candidate");
     auto failedEval=MakePassingEvaluation(
-        "model-rejected","Rejected Candidate",
-        "foundation-rejected","Rejected Foundation",
-        "9","Rejected Adapter");
+        failedModel.id,failedModel.modelName,
+        "foundation-f","Failed Foundation",
+        "9","Failed Adapter");
+    Require(models.Approve(2,failedEval,"foundation-f","9"),
+        "failed-evaluation test candidate could not be initially approved");
     failedEval.dimensions.front().passed=false;
     bool failedPrepareRejected=false;
     try {
-        deployments.Prepare(failedEval,"Samantha");
+        deployments.Prepare(failedModel,failedEval,"Samantha");
     } catch(const std::invalid_argument&) {
         failedPrepareRejected=true;
     }
     Require(failedPrepareRejected,
         "deployment registry accepted an evaluation with a failed required dimension");
     Require(deployments.Packages().size()==1,
-        "rejected deployment preparation changed registry state");
+        "rejected failed-evaluation deployment changed registry state");
 
+    auto& secondModel=models.Register("http://127.0.0.1:8104","Candidate \"B\"");
     auto secondEval=MakePassingEvaluation(
-        "model-2","Candidate \"B\"",
+        secondModel.id,secondModel.modelName,
         "foundation-2","SARA Foundation 2.0",
         "2","Samantha v2");
-    auto& second=deployments.Prepare(secondEval,"Samantha");
+    Require(models.Approve(3,secondEval,"foundation-2","2"),
+        "second deployment candidate could not be approved");
+
+    auto& second=deployments.Prepare(secondModel,secondEval,"Samantha");
     Require(second.previousDeploymentId==firstDeploymentId,
         "prepared deployment did not link previous active package");
     Require(deployments.Activate(1),"second deployment activation failed");
