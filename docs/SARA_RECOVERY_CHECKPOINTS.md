@@ -655,3 +655,55 @@ Artifact digests from run #823:
 - UI screenshots: `sha256:43b5fcb5c6028730882f487b3d924505ce12a3f96db7cfbe4543624e128fefec`
 
 This is the validated rollback point through the authorized, provenance-first Identity Research workflow.
+
+## Checkpoint 14 — Identity Research provider registry and adapter boundary validated
+
+Validated commit:
+
+`6bdfa8aabe8ebc5445f661d4917e6c070fa78122`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #836
+- Run ID: `36506809489`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Identity Research/provider architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- provider-registry and adapter-contract unit tests: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- deterministic packaged Research + Provider Registry UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Provider architecture proven by this checkpoint:
+
+- Identity Research provider configuration is contained under Subjects & Identity / Research
+- provider profiles store provider ID, display name, access mode, supported research types, endpoint/portal hint, credential reference, enabled state, and notes
+- provider records store only credential aliases/vault references; no API keys, passwords, cookies, bearer tokens, or session credentials are required in case/provider metadata
+- the built-in Manual / Authorized Source provider is enabled and non-executable by design
+- API/portal templates ship disabled until explicitly reviewed/configured
+- disabled registered providers cannot be used to queue research
+- providers cannot be used for research types outside their declared capability mask
+- the Provider Registry has explicit Save / Enable / Disable lifecycle and preserves the built-in manual provider
+- a provider adapter contract exists separately from provider metadata
+- adapter execution readiness requires a loaded adapter that reports configured + supported
+- duplicate provider-adapter IDs are rejected
+- provider metadata alone never makes a research provider executable
+- packaged UI visibly reports `Executable adapters: 0 | metadata only` with no live provider adapters loaded
+- the normal Research workspace remains available for investigator-performed authorized sources and still cannot auto-confirm identity
+
+Artifact digests from run #836:
+
+- Windows package: `sha256:6ad250ba8e31a379c890e4519d5b2fd76e02efdb0735aff729c969e04e0f375a`
+- unsigned-development Setup artifact: `sha256:fcf06ca61196415640f481f0d5b2fae1da684fc300caf73dcbf47985402cdb43`
+- UI screenshots: `sha256:3abe78529a3ab707ec3aa219d20a50c88c5426420c5cd5ccdf0f86da5a96c435`
+
+This is the validated rollback point through the provenance-first Identity Research provider registry and disabled-by-default adapter boundary.
