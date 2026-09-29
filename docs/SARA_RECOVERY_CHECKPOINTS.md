@@ -1059,3 +1059,65 @@ Artifact digests from run #906:
 
 This is the validated rollback point for the recovered SARA shell through staged model-stack evaluation and proof-gated Foundation/Persona-LoRA activation.
 
+## Checkpoint 21 — Automatic sentinel-chat startup validated
+
+Validated commit:
+
+`9c99a9cabe92667ae0f7405d5d8f842958024a48`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #928
+- Run ID: `36532107566`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- bundled AI PowerShell startup/configuration syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Automatic local-model startup proven by this checkpoint:
+
+- the default local model identity is now `sentinel-chat`
+- existing local settings are normalized to the stable `sentinel-chat` alias during startup
+- SARA starts and loads the already-installed bundled local AI while the splash remains visible
+- SARA discovers the local backend and attaches the OpenAI-compatible adapter automatically before normal use
+- normal launch no longer requires Browse Models followed by Connect
+- active approved Foundation and Persona LoRA files continue to determine the runtime stack behind the stable `sentinel-chat` API alias
+- an already-running legacy/persona-specific alias is normalized with one controlled backend restart
+- startup performs no model download or repair; missing/incomplete AI components fall back safely and direct the operator to Install / Repair
+- local startup is bounded by a shared deadline and a final app-side hard timeout so the old indefinite splash hang cannot return
+- failure to load the local backend opens SARA with the built-in fallback instead of leaving the splash stuck
+- automatic startup preserves saved temperature and max-token tuning instead of overwriting those values on every launch
+- Refresh Models and Reconnect remain available only as recovery/diagnostic controls
+- CI rejects reintroduction of the old manual Browse/Connect startup requirement
+- CI syntax-checks both bundled AI PowerShell scripts
+- the existing approved splash artwork and permanent 1.0.15 application shell remain intact
+
+Model-stack audit provenance also validated in this run:
+
+- Foundation evaluation, approval, activation and rollback have distinct audit action IDs
+- Persona LoRA evaluation, approval, activation and rollback have distinct audit action IDs
+- lifecycle audit records include relevant Foundation/LoRA/evaluation/persona metadata
+- exported Model Lab diagnostics include persisted Foundation and LoRA evaluation-proof IDs
+
+Artifact digests from run #928:
+
+- Windows package: `sha256:e5ad82f58ec2c24a2c7f07a2aad3e2b5f1de8cb5e12797b4590c828a2acd3b38`
+- unsigned-development Setup artifact: `sha256:5aedf5b9503919d1a45f45cb03d34b5f575f64291879c21f18585ae963cd8c3f`
+- UI screenshots: `sha256:a59293c8c6343c38be89d59143fed8c07df7e8fc49570a294cab7420225a2b2d`
+
+This is the validated rollback point for the recovered SARA shell through automatic `sentinel-chat` startup and audited model-stack lifecycle changes.
+
