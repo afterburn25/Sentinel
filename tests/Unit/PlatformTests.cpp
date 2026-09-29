@@ -109,7 +109,10 @@ int main() {
             "persona_summary TEXT NOT NULL DEFAULT '',recalled_memory TEXT NOT NULL DEFAULT '',"
             "context_json TEXT NOT NULL DEFAULT '{}',status INTEGER NOT NULL DEFAULT 0,"
             "reviewer TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',"
-            "created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,reviewed_utc TEXT NOT NULL DEFAULT '');"
+            "created_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,reviewed_utc TEXT NOT NULL DEFAULT '',"
+            "correction_instruction TEXT NOT NULL DEFAULT '',"
+            "target_output_text TEXT NOT NULL DEFAULT '',"
+            "correction_updated_utc TEXT NOT NULL DEFAULT '');"
             "INSERT INTO persona_conversation_logs("
             "id,conversation_id,persona_name,model_name,event_kind,input_text,output_text,"
             "persona_summary,recalled_memory,context_json,start_delay_ms,typing_delay_ms,policy_status"
@@ -121,6 +124,15 @@ int main() {
         Require(staged.has_value(),"latest persona reply should stage for review");
         Require(staged->status==simulation::TrainingReviewStatus::Pending,
             "new training review item should start pending");
+        Require(reviews.SetCorrectionTarget(
+                staged->id,
+                "Use the exact replacement.",
+                "hey, good to hear from you"),
+            "platform correction target update failed");
+        staged=reviews.Get(staged->id);
+        Require(staged.has_value() &&
+                staged->targetOutputText=="hey, good to hear from you",
+            "platform correction target did not persist");
         Require(reviews.Review(staged->id,simulation::TrainingReviewStatus::Approved,"tester","good example"),
             "training review approval failed");
         auto counts=reviews.Counts();
@@ -137,6 +149,10 @@ int main() {
             "dataset export lost source-log provenance");
         Require(jsonl.find("\"input\":\"hi\"")!=std::string::npos,
             "dataset export lost input text");
+        Require(jsonl.find("\"output\":\"hey, good to hear from you\"")!=std::string::npos,
+            "dataset export did not use the approved correction target");
+        Require(jsonl.find("\"original_output\":\"hey :)\"")!=std::string::npos,
+            "dataset export lost the original reply after correction");
         dataset.close();
         db.Close();
         std::filesystem::remove(datasetPath);
