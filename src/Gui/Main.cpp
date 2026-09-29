@@ -1115,7 +1115,7 @@ public:
         identityProvenanceEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1070,GetModuleHandleW(nullptr),nullptr);
 
         researchTypeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1071,GetModuleHandleW(nullptr),nullptr);
-        researchProviderEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1072,GetModuleHandleW(nullptr),nullptr);
+        researchProviderCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWN|CBS_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1072,GetModuleHandleW(nullptr),nullptr);
         researchQueryEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1073,GetModuleHandleW(nullptr),nullptr);
         researchPurposeEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1074,GetModuleHandleW(nullptr),nullptr);
         researchResultEdit_=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,0,0,0,0,hwnd_,(HMENU)1075,GetModuleHandleW(nullptr),nullptr);
@@ -1151,7 +1151,7 @@ public:
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
             subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,subjectNotesEdit_,
             identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_,
-            researchProviderEdit_,researchQueryEdit_,researchPurposeEdit_,researchResultEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_};
+            researchQueryEdit_,researchPurposeEdit_,researchResultEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -1168,7 +1168,7 @@ public:
             agencyEndpointEdit_,agencyIdEdit_,
             subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,
             identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_,
-            researchProviderEdit_,researchQueryEdit_,researchPurposeEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_
+            researchQueryEdit_,researchPurposeEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_
         };
         for(HWND e:centeredEdits) {
             if(!e) continue;
@@ -1184,7 +1184,7 @@ public:
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
             personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
-            personaWritingStyleCombo_,personaProfileCombo_,trainerModeCombo_,trainerFoundationCombo_,researchTypeCombo_};
+            personaWritingStyleCombo_,personaProfileCombo_,trainerModeCombo_,trainerFoundationCombo_,researchTypeCombo_,researchProviderCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -1225,7 +1225,7 @@ public:
         SendMessageW(identityLeadValueEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Identity lead / finding");
         SendMessageW(identityConfidenceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"0-100");
         SendMessageW(identityProvenanceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"How this lead was obtained / source context");
-        SendMessageW(researchProviderEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Authorized provider / portal / manual source");
+        SendMessageW(researchProviderCombo_,CB_SETCUEBANNER,0,(LPARAM)L"Authorized provider / portal / manual source");
         SendMessageW(researchQueryEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Search term, username, record key, contact, or image reference");
         SendMessageW(researchPurposeEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Case purpose / legal-basis note for this research task");
         SendMessageW(researchResultEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Investigator-recorded finding; do not enter an identity conclusion unless verified");
@@ -1348,6 +1348,7 @@ public:
         };
         fillCombo(researchTypeCombo_,researchTypes,std::size(researchTypes));
         SendMessageW(researchTypeCombo_,CB_SETCURSEL,0,0);
+        RefreshIdentityResearchProviderList();
         RefreshTrainerFoundationList();
         RefreshPersonaProfileList();
         SendMessageW(ageStateCombo_,CB_SETCURSEL,(WPARAM)static_cast<int>(simSettings_.ageState),0);
@@ -2023,7 +2024,7 @@ private:
     HWND agencyEndpointEdit_{},agencyIdEdit_{},operatingStateCombo_{};
     HWND subjectDisplayEdit_{},subjectLegalEdit_{},subjectAliasesEdit_{},subjectUsernamesEdit_{},subjectContactsEdit_{},subjectNotesEdit_{};
     HWND identitySourceTypeEdit_{},identitySourceRefEdit_{},identityLeadValueEdit_{},identityConfidenceEdit_{},identityProvenanceEdit_{};
-    HWND researchTypeCombo_{},researchProviderEdit_{},researchQueryEdit_{},researchPurposeEdit_{},researchResultEdit_{},researchReferenceEdit_{},researchProvenanceEdit_{},researchConfidenceEdit_{};
+    HWND researchTypeCombo_{},researchProviderCombo_{},researchQueryEdit_{},researchPurposeEdit_{},researchResultEdit_{},researchReferenceEdit_{},researchProvenanceEdit_{},researchConfidenceEdit_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
     HWND trainerModeCombo_{},trainerFoundationCombo_{};
@@ -2081,6 +2082,7 @@ private:
     std::string selectedSubjectId_;
     std::string selectedIdentityLeadId_;
     std::string selectedResearchTaskId_;
+    std::vector<sentinel::identity::IdentityResearchProvider> researchProviders_;
     bool subjectDraftNew_{false};
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
@@ -3490,6 +3492,36 @@ private:
         statusText_=verified?L"Identity lead verified":L"Identity lead rejected";
     }
 
+    void RefreshIdentityResearchProviderList(const std::string& selectId={}) {
+        if(!researchProviderCombo_) return;
+        researchProviders_=runtime_->subjectIdentity.ListResearchProviders(false);
+        SendMessageW(researchProviderCombo_,CB_RESETCONTENT,0,0);
+
+        int selected=-1;
+        for(size_t i=0;i<researchProviders_.size();++i) {
+            const auto& provider=researchProviders_[i];
+            std::wstring label=Widen(provider.displayName+" ["+provider.id+"]");
+            SendMessageW(researchProviderCombo_,CB_ADDSTRING,0,(LPARAM)label.c_str());
+            if((!selectId.empty() && provider.id==selectId) ||
+               (selectId.empty() && provider.id=="manual/authorized"))
+                selected=(int)i;
+        }
+        if(selected>=0)
+            SendMessageW(researchProviderCombo_,CB_SETCURSEL,(WPARAM)selected,0);
+        else if(!selectId.empty())
+            SetWindowTextW(researchProviderCombo_,Widen(selectId).c_str());
+    }
+
+    std::string SelectedIdentityResearchProvider() const {
+        const int index=(int)SendMessageW(researchProviderCombo_,CB_GETCURSEL,0,0);
+        if(index>=0 && index<(int)researchProviders_.size())
+            return researchProviders_[(size_t)index].id;
+
+        auto typed=Narrow(EditText(researchProviderCombo_));
+        if(typed.empty()) typed="manual/authorized";
+        return typed;
+    }
+
     sentinel::identity::IdentityResearchType SelectedResearchType() const {
         const int selected=(int)SendMessageW(researchTypeCombo_,CB_GETCURSEL,0,0);
         switch(selected) {
@@ -3515,6 +3547,7 @@ private:
         }
         selectedResearchTaskId_.clear();
         ClearIdentityResearchResultEditors();
+        RefreshIdentityResearchProviderList();
         page_=Page::IdentityResearch;
         ApplyPageControls();
         statusText_=L"Identity Research workspace opened";
@@ -3527,7 +3560,7 @@ private:
             statusText_=L"Identity research task could not be loaded";
             return;
         }
-        SetWindowTextW(researchProviderEdit_,Widen(task->provider).c_str());
+        RefreshIdentityResearchProviderList(task->provider);
         SetWindowTextW(researchQueryEdit_,Widen(task->queryText).c_str());
         SetWindowTextW(researchPurposeEdit_,Widen(task->purpose).c_str());
         SendMessageW(researchTypeCombo_,CB_SETCURSEL,(WPARAM)(int)task->type,0);
@@ -3560,7 +3593,7 @@ private:
             auto task=runtime_->subjectIdentity.QueueResearch(
                 *subjectId,
                 SelectedResearchType(),
-                Narrow(EditText(researchProviderEdit_)),
+                SelectedIdentityResearchProvider(),
                 query,
                 purpose);
             selectedResearchTaskId_=task.id;
@@ -4028,7 +4061,7 @@ private:
         TextLine(L"Case purpose / legal-basis note",rightX+16,bodyY+131,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"research_queue",L"Queue Research",rightX+16,bodyY+172,126,26,true);
         TextLine(
-            L"SARA stores the task; the investigator performs the authorized lookup.",
+            L"Provider metadata only; no secrets stored. Automatic execution remains disabled.",
             rightX+154,bodyY+175,rightW-170,20,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(rightX,resultY,rightW,resultH,brush_.panel.Get(),brush_.border.Get(),10);
@@ -4068,7 +4101,8 @@ private:
         }
 
         TextLine(
-            L"Rejected: "+std::to_wstring(rejected)+L" | case-scoped / provenance-backed",
+            L"Rejected: "+std::to_wstring(rejected)+L" | Providers: "+
+            std::to_wstring(researchProviders_.size())+L" enabled",
             x+16,bodyY+bodyH-24,leftW-32,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
@@ -4304,7 +4338,7 @@ private:
 
     void ShowIdentityResearchEditors(bool show) {
         HWND controls[]={
-            researchTypeCombo_,researchProviderEdit_,researchQueryEdit_,researchPurposeEdit_,
+            researchTypeCombo_,researchProviderCombo_,researchQueryEdit_,researchPurposeEdit_,
             researchResultEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_
         };
         for(HWND control:controls) if(control) ShowWindow(control,show?SW_SHOW:SW_HIDE);
@@ -4434,7 +4468,7 @@ private:
             const float halfGap=10.0f;
             const float halfW=(rightW-32.0f-halfGap)/2.0f;
             MoveControl(researchTypeCombo_,(int)(rightX+16),(int)(bodyY+58),(int)halfW,170,TRUE);
-            MoveControl(researchProviderEdit_,(int)(rightX+16+halfW+halfGap),(int)(bodyY+58),(int)halfW,28,TRUE);
+            MoveControl(researchProviderCombo_,(int)(rightX+16+halfW+halfGap),(int)(bodyY+58),(int)halfW,180,TRUE);
             MoveControl(researchQueryEdit_,(int)(rightX+16),(int)(bodyY+102),(int)(rightW-32),28,TRUE);
             MoveControl(researchPurposeEdit_,(int)(rightX+16),(int)(bodyY+146),(int)(rightW-32),28,TRUE);
 
