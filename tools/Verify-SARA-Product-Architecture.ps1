@@ -7,11 +7,13 @@ $memoryPath = Join-Path $repo "src\Simulation\ConversationMemory.cpp"
 $fallbackModelPath = Join-Path $repo "src\Simulation\RuleBasedTestModel.cpp"
 $modelRegistryPath = Join-Path $repo "src\Simulation\ModelRegistry.cpp"
 $deploymentRegistryPath = Join-Path $repo "src\Simulation\DeploymentRegistry.cpp"
+$trainerStorePath = Join-Path $repo "src\Simulation\TrainerStore.cpp"
 $trainingReviewPath = Join-Path $repo "src\Simulation\TrainingReviewStore.cpp"
 $modelAdapterPath = Join-Path $repo "include\Sentinel\Simulation\IModelAdapter.hpp"
 $openAiModelPath = Join-Path $repo "src\Simulation\OpenAICompatibleModel.cpp"
 $trainerWorkerPath = Join-Path $repo "resources\trainer\train_sara.py"
 $correctionMigrationPath = Join-Path $repo "migrations\0038_training_review_correction_targets.sql"
+$modelStackProofMigrationPath = Join-Path $repo "migrations\0039_model_stack_evaluation_proof.sql"
 $contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
 
 if (-not (Test-Path $contractPath)) {
@@ -32,6 +34,9 @@ if (-not (Test-Path $modelRegistryPath)) {
 if (-not (Test-Path $deploymentRegistryPath)) {
     throw "SARA deployment-registry source is missing: $deploymentRegistryPath"
 }
+if (-not (Test-Path $trainerStorePath)) {
+    throw "SARA Trainer store source is missing: $trainerStorePath"
+}
 if (-not (Test-Path $trainingReviewPath)) {
     throw "SARA training-review source is missing: $trainingReviewPath"
 }
@@ -47,17 +52,22 @@ if (-not (Test-Path $trainerWorkerPath)) {
 if (-not (Test-Path $correctionMigrationPath)) {
     throw "SARA correction-target migration is missing: $correctionMigrationPath"
 }
+if (-not (Test-Path $modelStackProofMigrationPath)) {
+    throw "SARA model-stack evaluation-proof migration is missing: $modelStackProofMigrationPath"
+}
 
 $src = Get-Content $mainPath -Raw
 $memorySrc = Get-Content $memoryPath -Raw
 $fallbackModelSrc = Get-Content $fallbackModelPath -Raw
 $modelRegistrySrc = Get-Content $modelRegistryPath -Raw
 $deploymentRegistrySrc = Get-Content $deploymentRegistryPath -Raw
+$trainerStoreSrc = Get-Content $trainerStorePath -Raw
 $trainingReviewSrc = Get-Content $trainingReviewPath -Raw
 $modelAdapterSrc = Get-Content $modelAdapterPath -Raw
 $openAiModelSrc = Get-Content $openAiModelPath -Raw
 $trainerWorkerSrc = Get-Content $trainerWorkerPath -Raw
 $correctionMigrationSrc = Get-Content $correctionMigrationPath -Raw
+$modelStackProofMigrationSrc = Get-Content $modelStackProofMigrationPath -Raw
 
 $begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
 $end = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_END")
@@ -444,6 +454,53 @@ Write-Host "SARA product architecture contract: PASS"
 Write-Host "Permanent main navigation: $($required -join ' | ')"
 Write-Host "Model Lab remains subordinate with internal tabs."
 Write-Host "Simulation Chat and investigative modules remain protected."
+
+$modelStackEvaluationMainTokens = @(
+    'EvaluateStagedRuntimeStack(',
+    'LatestPassingEvaluationForStack(',
+    'evaluationRuntimeOverride_',
+    'evaluationModelNameOverride_',
+    'foundation_evaluate_selected',
+    'persona_lora_evaluate',
+    'persona_lora_approve',
+    'ApproveSelectedFoundationFromLab()',
+    'ApproveSelectedPersonaLoraVersion()',
+    'approvedEvaluationRunId!=eval.id'
+)
+foreach ($token in $modelStackEvaluationMainTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Foundation/LoRA staged-evaluation workflow is missing: $token"
+    }
+}
+
+$modelStackEvaluationStoreTokens = @(
+    'TrainerStore::ApproveFoundation(',
+    'TrainerStore::ApprovePersonaLora(',
+    'EvaluationPassedApprovalGate(evaluation)',
+    'evaluation.foundationId!=id',
+    'evaluation.adapterId!=std::to_string(id)',
+    'target->approvedEvaluationRunId.empty()',
+    'foundation->approvedEvaluationRunId.empty()',
+    'approved_evaluation_run_id',
+    "VALUES(?,?,?,?,?,0,'')"
+)
+foreach ($token in $modelStackEvaluationStoreTokens) {
+    if (-not $trainerStoreSrc.Contains($token)) {
+        throw "Core Foundation/LoRA evaluation-proof gate is missing: $token"
+    }
+}
+
+$modelStackProofMigrationTokens = @(
+    'approved_evaluation_run_id',
+    'LEGACY_ACTIVE_1.0.15',
+    'model_foundations',
+    'persona_lora_bindings'
+)
+foreach ($token in $modelStackProofMigrationTokens) {
+    if (-not $modelStackProofMigrationSrc.Contains($token)) {
+        throw "Model-stack evaluation-proof migration is missing: $token"
+    }
+}
 
 $evaluationGateMainTokens = @(
     'EvaluationPassedApprovalGate(run)',
