@@ -1121,3 +1121,56 @@ Artifact digests from run #928:
 
 This is the validated rollback point for the recovered SARA shell through automatic `sentinel-chat` startup and audited model-stack lifecycle changes.
 
+## Checkpoint 22 — SARA 1.0.16 versioned release pipeline validated
+
+Validated commit:
+
+`79b71cb99912ece3366a9c287e71bd038780c03a`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #949
+- Run ID: `36540773482`
+- Result: **SUCCESS**
+
+Validated release/version behavior:
+
+- repository-root `VERSION` is the canonical shipped version
+- current release resolved as **1.0.16**
+- CMake reads `VERSION` and exposes it through `SARA_VERSION_STR`
+- Windows executable version metadata is generated from the CMake project version
+- Inno Setup receives the same version through the version-aware installer helper
+- package staging is version-neutral while uploaded artifacts are versioned
+- Windows package artifact: `SARA-1.0.16-windows-x64`
+- installer artifact: `SARA-Setup-1.0.16-UNSIGNED-DEVELOPMENT`
+- release tags are required to match the repository `VERSION`
+- CI rejects hard-coded current-package use of the protected 1.0.15 baseline
+- `sentinel-chat` deterministic local-model selection regression tests pass
+- local startup requires the stable `sentinel-chat` alias and rejects a mismatched local backend
+- external/custom model selection can still preserve an explicitly configured available model
+- exact 1.0.15 splash/recovery baseline protections remain intact
+
+Validated gates:
+
+- canonical SARA version guard: PASS
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- bundled AI PowerShell syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and recovery UI capture: PASS
+- packaged launcher layout: PASS
+- version-aware SARA Setup.exe build: PASS
+
+Artifact digests from run #949:
+
+- Windows package: `sha256:0a32dbb2a54a0ccb0b4b29a45dfa711dfff2c8cf9c89e9548e132920dedc3362`
+- unsigned-development Setup artifact: `sha256:8bd92d3fff0a616e6d89e28412436f8bb99d0727297e5aa3d5746d15a8a48a77`
+- UI screenshots: `sha256:52a01768af2704b16cf8e744eec1fae8f82a94a0bb6ddde0faaa18f139cccf46`
+
+This is the validated SARA **1.0.16** rollback/release point. The protected recovery ancestry remains 1.0.15, while future feature slices advance the application version independently.
+
