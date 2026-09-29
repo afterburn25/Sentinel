@@ -2148,6 +2148,7 @@ private:
     std::string evaluationFoundationOverrideName_;
     std::string evaluationAdapterOverrideId_;
     std::string evaluationAdapterOverrideName_;
+    std::string evaluationModelNameOverride_;
     sentinel::simulation::DeploymentRegistry deploymentRegistry_;
     int selectedDeployment_{-1};
     sentinel::agency::AgencyServerConfig agencyConfig_;
@@ -8177,7 +8178,12 @@ private:
         auto started=std::chrono::steady_clock::now();
 
         try {
-            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(item.endpoint,item.modelName);
+            const auto evaluationModelName=
+                evaluationRuntimeOverride_ && !evaluationModelNameOverride_.empty()
+                    ? evaluationModelNameOverride_
+                    : item.modelName;
+            auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
+                item.endpoint,evaluationModelName);
 
             auto baseContext=simContext_;
             baseContext.history.clear();
@@ -8512,7 +8518,11 @@ private:
         }
 
         try {
-            (void)sentinel::simulation::DiscoverOpenAICompatibleModels(modelItem.endpoint);
+            const auto discovered=
+                sentinel::simulation::DiscoverOpenAICompatibleModels(modelItem.endpoint);
+            if(discovered.empty())
+                throw std::runtime_error("staged runtime returned no model IDs");
+            evaluationModelNameOverride_=discovered.front();
         } catch(const std::exception& e) {
             ApplyPersonaRuntimeBinding();
             statusText_=L"Staged evaluation runtime did not become ready: "+Widen(e.what());
@@ -8533,6 +8543,7 @@ private:
         evaluationFoundationOverrideName_.clear();
         evaluationAdapterOverrideId_.clear();
         evaluationAdapterOverrideName_.clear();
+        evaluationModelNameOverride_.clear();
 
         ApplyPersonaRuntimeBinding();
 
@@ -8766,6 +8777,14 @@ private:
                 statusText_=L"Approve the evaluated foundation before preparing deployment";
                 return;
             }
+            if(foundation->approvedEvaluationRunId.empty()) {
+                statusText_=L"Evaluated foundation has no persisted evaluation approval proof";
+                return;
+            }
+            if(eval.adapterId.empty() && foundation->approvedEvaluationRunId!=eval.id) {
+                statusText_=L"Foundation approval does not match this deployment evaluation";
+                return;
+            }
         }
 
         if(!eval.adapterId.empty()) {
@@ -8774,6 +8793,10 @@ private:
                 auto adapter=runtime_->trainer.GetPersonaLora(adapterId);
                 if(!adapter) {
                     statusText_=L"Evaluation LoRA version no longer exists";
+                    return;
+                }
+                if(adapter->approvedEvaluationRunId!=eval.id) {
+                    statusText_=L"LoRA approval does not match this deployment evaluation";
                     return;
                 }
             } catch(...) {
