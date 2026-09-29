@@ -606,3 +606,52 @@ Artifact digests from run #815:
 - UI screenshots: `sha256:602f51eeabe917cb3f12f9840158bda01c39ce49f230354d593be290be31be86`
 
 This is the validated rollback point for the recovered SARA shell through the newer continuity/typing/Trainer-stability work.
+
+## Checkpoint 13 — Authorized Identity Research workspace validated
+
+Validated commit:
+
+`8f810dfb9aecb28115e6c95a040bf75bc34d1e11`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #823
+- Run ID: `36503119293`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- deterministic packaged Identity Research UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Identity Research recovery proven by this checkpoint:
+
+- research is case-scoped to a selected subject
+- supported research intents are Public Records, Social Profile, Username, Contact, and Image Reference
+- every queued task requires an authorized provider/source plus a case purpose/legal-basis note
+- SARA stores research tasks instead of claiming to perform an unauthorized lookup automatically
+- completed findings retain result reference and provenance
+- completed research may be promoted only to an **unverified identity lead**
+- lead confidence is investigator-supplied and bounded
+- lead verification remains a separate human review action
+- subject confirmation remains a separate explicit investigator action
+- rejected research tasks cannot be promoted later
+- research lifecycle actions are represented in Audit & Compliance
+- deleting a subject transactionally removes its research tasks and identity records
+- the packaged Research workspace visibly states that there are no automatic identity conclusions
+
+Artifact digests from run #823:
+
+- Windows package: `sha256:1721b6b55c05d4faf34bd71fb971fa5c8729e6f8bceb448ffa725f6d8af738ac`
+- unsigned-development Setup artifact: `sha256:b64f5882f3984dfe16ee6d4e297865f5126b102846c6469a6fd1c56e2eb852d0`
+- UI screenshots: `sha256:43b5fcb5c6028730882f487b3d924505ce12a3f96db7cfbe4543624e128fefec`
+
+This is the validated rollback point through the authorized, provenance-first Identity Research workflow.

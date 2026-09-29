@@ -269,6 +269,7 @@ Every future feature restoration must follow this exact sequence:
 - Conversational Trainer persistence / review-before-apply: RESTORED / VALIDATED (Windows Build #781)
 - Integrated Model Lab lifecycle / stale-job recovery: RESTORED / VALIDATED (Windows Build #804)
 - Persona continuity / non-repetition / progressive typing: RESTORED / VALIDATED (Windows Build #815)
+- Authorized Identity Research workspace / provenance-first task queue: RESTORED / VALIDATED (Windows Build #823)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -337,6 +338,8 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] durable persona continuity notes reused across conversations and exposed for review
 - [x] progressive human-like typing render plus Direct2D flicker suppression
 - [x] stable Qwen3.5-capable Trainer dependency floor
+- [x] case-scoped authorized Identity Research queue with provenance, confidence and separate lead promotion/review
+- [x] research findings cannot automatically confirm a subject identity
 
 ### Still genuinely later-only / not yet restored
 
@@ -420,3 +423,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Conversational Trainer checkpoint: PASS — run #781 / commit `c8d0fb6ba902e01880b0ec460c748b79635abc80`
 - Integrated Model Lab lifecycle checkpoint: PASS — run #804 / commit `a701d7986abf6a80447dbfca7a1ee8160298ea3c`
 - Persona continuity / typing checkpoint: PASS — run #815 / commit `2c129f537c078bb839b9feda1e1c4bc3192ad3f4`
+- Identity Research checkpoint: PASS — run #823 / commit `8f810dfb9aecb28115e6c95a040bf75bc34d1e11`
