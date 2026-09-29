@@ -80,6 +80,10 @@ jobs:
         shell: pwsh
         run: python -m py_compile resources/trainer/train_sara.py
 
+      - name: Validate Persona LoRA candidate isolation
+        shell: pwsh
+        run: python resources/trainer/train_sara.py --self-test-candidate-isolation
+
       - name: Verify no SQLite DLL dependency
         shell: pwsh
         run: |
