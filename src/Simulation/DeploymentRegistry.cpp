@@ -1,4 +1,5 @@
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -6,6 +7,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <stdexcept>
 
 namespace sentinel::simulation {
 namespace {
@@ -99,28 +101,28 @@ std::string ToString(DeploymentStage stage) {
 }
 
 DeploymentPackage& DeploymentRegistry::Prepare(
-    std::string candidateId,
-    std::string candidateName,
-    std::string foundationId,
-    std::string foundationName,
-    std::string adapterId,
-    std::string adapterName,
-    std::string personaName,
-    std::string evaluationRunId,
-    int evaluationScore)
+    const EvaluationRun& evaluation,
+    std::string personaName)
 {
+    if(evaluation.id.empty())
+        throw std::invalid_argument("deployment preparation requires an evaluation run id");
+    if(evaluation.candidateId.empty())
+        throw std::invalid_argument("deployment preparation requires an evaluated candidate id");
+    if(!EvaluationPassedApprovalGate(evaluation))
+        throw std::invalid_argument("deployment preparation requires a complete passing evaluation");
+
     DeploymentPackage package;
     package.id="deploy-"+std::to_string(packages_.size()+1);
     package.createdUtc=NowUtc();
-    package.candidateId=std::move(candidateId);
-    package.candidateName=std::move(candidateName);
-    package.foundationId=std::move(foundationId);
-    package.foundationName=std::move(foundationName);
-    package.adapterId=std::move(adapterId);
-    package.adapterName=std::move(adapterName);
+    package.candidateId=evaluation.candidateId;
+    package.candidateName=evaluation.candidateName;
+    package.foundationId=evaluation.foundationId;
+    package.foundationName=evaluation.foundationName;
+    package.adapterId=evaluation.adapterId;
+    package.adapterName=evaluation.adapterName;
     package.personaName=std::move(personaName);
-    package.evaluationRunId=std::move(evaluationRunId);
-    package.evaluationScore=std::clamp(evaluationScore,0,100);
+    package.evaluationRunId=evaluation.id;
+    package.evaluationScore=std::clamp(evaluation.overallScore,0,100);
     package.versionLocked=true;
     package.stage=DeploymentStage::Staged;
     if(activeIndex_>=0 && activeIndex_<(int)packages_.size())
@@ -131,6 +133,7 @@ DeploymentPackage& DeploymentRegistry::Prepare(
 
 bool DeploymentRegistry::Activate(size_t index) {
     if(index>=packages_.size()) return false;
+    if(packages_[index].evaluationRunId.empty()) return false;
 
     if(activeIndex_>=0 && activeIndex_<(int)packages_.size() && activeIndex_!=(int)index) {
         previousIndex_=activeIndex_;
@@ -190,6 +193,7 @@ std::string DeploymentRegistry::BuildManifest(size_t index) const {
     out<<"  \"persona_name\": \""<<JsonEscape(p.personaName)<<"\",\n";
     out<<"  \"evaluation_run_id\": \""<<JsonEscape(p.evaluationRunId)<<"\",\n";
     out<<"  \"evaluation_score\": "<<p.evaluationScore<<",\n";
+    out<<"  \"evaluation_gate\": \"PASS\",\n";
     out<<"  \"version_locked\": "<<(p.versionLocked?"true":"false")<<",\n";
     out<<"  \"stage\": \""<<ToString(p.stage)<<"\"\n";
     out<<"}\n";
