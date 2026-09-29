@@ -6118,8 +6118,11 @@ private:
         try {
             return call(*model_);
         } catch(const std::exception& first) {
-            if(!IsLocalModelEndpoint(simSettings_.endpoint) ||
-               localModelRecoveryInProgress_)
+            if(!sentinel::simulation::ShouldAttemptAutomaticLocalModelRecovery(
+                    simSettings_.endpoint,
+                    simSettings_.model,
+                    BundledAiPrerequisitesPresent(),
+                    localModelRecoveryInProgress_))
                 throw;
 
             const std::string firstError=first.what();
@@ -9320,6 +9323,7 @@ private:
         out<<"SARA MODEL LAB RECOVERY DIAGNOSTICS\n";
         out<<"Generated UTC: "<<CurrentUtcText()<<"\n";
         out<<"Compiled version: "<<SARA_VERSION_STR<<"\n";
+        out<<"Automatic sentinel-chat recoveries this session: "<<localModelRecoveryCount_<<"\n";
         out<<"Recovery branch contract: sara-recovery-from-1.0.15\n\n";
 
         out<<"RUNTIME\n";
