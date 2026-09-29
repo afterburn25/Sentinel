@@ -19,6 +19,7 @@ function Require-Contains {
 $installer = 'installer/Sentinel.iss'
 $gui = 'src/Gui/Main.cpp'
 $workflow = '.github/workflows/windows-build.yml'
+$aiLauncher = 'resources/ai/Start-Sentinel-With-AI.ps1'
 $splash = 'resources/assets/SARA-Splash.png'
 
 # 1.0.15 local-model installer contract.
@@ -61,6 +62,9 @@ Require-Contains $gui 'ApplyPersonaRuntimeBinding(false,75000)'
 Require-Contains $gui 'const std::string alias="sentinel-chat"'
 Require-Contains $gui 'startupTimeoutMs=180000'
 Require-Contains $gui 'Timed out while loading sentinel-chat'
+Require-Contains $aiLauncher '[ValidateRange(10,600)][int]$StartupTimeoutSeconds=60'
+Require-Contains $aiLauncher "$runtimeAlias='sentinel-chat'"
+Require-Contains $aiLauncher '$startupDeadline=(Get-Date).AddSeconds($StartupTimeoutSeconds)'
 foreach ($forbidden in @('RunBundledAiSetup(', 'StartBundledAiService(', 'DiscoverOpenAICompatibleModels(')) {
     if ($autoBlock.Contains($forbidden)) {
         throw "Splash-hang regression: AutoInitializeLocalAi bypasses the bounded startup path: $forbidden"
