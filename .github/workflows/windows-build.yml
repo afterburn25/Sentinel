@@ -58,6 +58,10 @@ jobs:
         run: |
           throw "SARA release tags require a configured Public Trust Artifact Signing identity. Refusing to publish an unsigned release."
 
+      - name: Guard canonical SARA version
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-Version.ps1
+
       - name: Guard exact SARA 1.0.15 recovery baseline
         shell: pwsh
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-1.0.15-Recovery-Baseline.ps1
