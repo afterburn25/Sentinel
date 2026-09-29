@@ -434,7 +434,10 @@ std::wstring ReadTextFileTail(const std::filesystem::path& path,size_t maxChars=
     return Widen(bytes);
 }
 
-bool StartBundledAiService(std::wstring* failure = nullptr,bool forceRestart=false) {
+bool StartBundledAiService(
+    std::wstring* failure = nullptr,
+    bool forceRestart=false,
+    DWORD startupTimeoutMs=180000) {
     const auto aiDir = ExeDir() / L"ai";
     const auto script = aiDir / L"Start-Sentinel-With-AI.ps1";
     const auto setup = ExeDir() / L"Setup-Sentinel-AI.cmd";
@@ -474,9 +477,15 @@ bool StartBundledAiService(std::wstring* failure = nullptr,bool forceRestart=fal
     }
 
     std::filesystem::create_directories(aiDir/L"logs");
+    const DWORD boundedTimeoutMs=std::clamp<DWORD>(startupTimeoutMs,20000,610000);
+    const DWORD scriptTimeoutSeconds=std::clamp<DWORD>(
+        boundedTimeoutMs>15000 ? (boundedTimeoutMs-10000)/1000 : 10,
+        10,600);
+
     std::wstring command =
         L"powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" +
-        script.wstring() + L"\" -NoLaunch";
+        script.wstring() + L"\" -NoLaunch -StartupTimeoutSeconds " +
+        std::to_wstring(scriptTimeoutSeconds);
     if(forceRestart) command+=L" -ForceRestart";
 
     STARTUPINFOW si{};
@@ -489,14 +498,25 @@ bool StartBundledAiService(std::wstring* failure = nullptr,bool forceRestart=fal
         return false;
     }
 
-    const DWORD wait = WaitForSingleObject(pi.hProcess, 180000);
+    const DWORD wait = WaitForSingleObject(pi.hProcess,boundedTimeoutMs);
     DWORD exitCode = 1;
-    if (wait == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &exitCode);
+    if (wait == WAIT_OBJECT_0) {
+        GetExitCodeProcess(pi.hProcess,&exitCode);
+    } else {
+        // The PowerShell launcher has its own shorter timeout and normally
+        // performs server cleanup first. This is a final hard stop so startup
+        // can never leave SARA trapped behind the splash indefinitely.
+        TerminateProcess(pi.hProcess,ERROR_TIMEOUT);
+        WaitForSingleObject(pi.hProcess,5000);
+    }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
 
     if (wait != WAIT_OBJECT_0) {
-        if (failure) *failure = L"Timed out while starting the bundled local AI service. See "+startupLog.wstring();
+        if (failure) {
+            *failure=L"Timed out while loading sentinel-chat. SARA will open in built-in fallback mode. See "+
+                startupLog.wstring();
+        }
         return false;
     }
     if (exitCode != 0) {
@@ -1103,7 +1123,7 @@ public:
             0,0,0,0,hwnd_,(HMENU)1003,GetModuleHandleW(nullptr),nullptr);
         modelEndpointEdit_ = CreateWindowExW(0,L"EDIT",L"http://127.0.0.1:1234/v1/chat/completions",
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1004,GetModuleHandleW(nullptr),nullptr);
-        modelNameEdit_ = CreateWindowExW(0,L"EDIT",L"local-model",
+        modelNameEdit_ = CreateWindowExW(0,L"EDIT",L"sentinel-chat",
             WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1005,GetModuleHandleW(nullptr),nullptr);
         modelCombo_ = CreateWindowExW(0,L"COMBOBOX",L"",
             WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1007,GetModuleHandleW(nullptr),nullptr);
@@ -6254,11 +6274,14 @@ private:
         }
     }
 
-    void ApplyPersonaRuntimeBinding() {
+    bool ApplyPersonaRuntimeBinding(
+        bool forceRestart=true,
+        DWORD startupTimeoutMs=180000)
+    {
         const auto defaultModel=ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf";
         std::filesystem::path modelPath=defaultModel;
         std::filesystem::path loraPath;
-        std::string alias="sentinel-chat";
+        const std::string alias="sentinel-chat";
 
         auto binding=runtime_->trainer.ResolvePersonaLora(simSettings_.persona.name);
         if(binding) {
@@ -6266,8 +6289,6 @@ private:
             if(foundation && !foundation->runtimeGgufPath.empty())
                 modelPath=std::filesystem::path(foundation->runtimeGgufPath);
             loraPath=std::filesystem::path(binding->loraPath);
-            alias="sara-"+simSettings_.persona.name;
-            std::replace(alias.begin(),alias.end(),' ','-');
             trainerRuntimeStatus_=L"Persona LoRA: "+Widen(binding->loraName);
         } else {
             const auto foundations=runtime_->trainer.ListFoundations();
@@ -6276,7 +6297,6 @@ private:
             });
             if(active!=foundations.end() && !active->runtimeGgufPath.empty()) {
                 modelPath=std::filesystem::path(active->runtimeGgufPath);
-                alias="sara-foundation-"+std::to_string(active->version);
                 trainerRuntimeStatus_=L"Foundation: "+Widen(active->name)+
                     L" v"+std::to_wstring(active->version);
             } else {
@@ -6286,28 +6306,50 @@ private:
 
         if(!WriteActiveRuntimeConfig(modelPath,loraPath,alias)) {
             trainerRuntimeStatus_=L"Could not write active runtime configuration";
-            return;
+            return false;
         }
 
-        // Only restart when the configured files are actually present. This
-        // lets investigators define future LoRA bindings before training has
-        // produced the adapter file.
         if(!std::filesystem::exists(modelPath) ||
            (!loraPath.empty() && !std::filesystem::exists(loraPath))) {
-            if(!loraPath.empty())
-                trainerRuntimeStatus_+=L" | adapter file not created yet";
-            return;
+            trainerRuntimeStatus_+=L" | active runtime file is missing";
+            return false;
         }
 
         std::wstring failure;
-        if(StartBundledAiService(&failure,true)) {
-            try {
-                auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
-                std::wstring connectFailure;
-                ConnectDiscoveredLocalModel(models,&connectFailure);
-            } catch(...) {}
-        } else {
-            trainerRuntimeStatus_=L"Persona runtime switch failed: "+failure;
+        if(!StartBundledAiService(&failure,forceRestart,startupTimeoutMs)) {
+            trainerRuntimeStatus_=L"Local runtime start failed: "+failure;
+            return false;
+        }
+
+        try {
+            auto models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+
+            // Upgrades can leave an older llama-server process alive under a
+            // persona-specific alias. Normalize it once to sentinel-chat so
+            // every normal launch has the same model identity.
+            if(std::find(models.begin(),models.end(),"sentinel-chat")==models.end() &&
+               !forceRestart)
+            {
+                std::wstring restartFailure;
+                if(!StartBundledAiService(&restartFailure,true,startupTimeoutMs)) {
+                    trainerRuntimeStatus_=L"Could not normalize local model alias to sentinel-chat: "+restartFailure;
+                    return false;
+                }
+                models=sentinel::simulation::DiscoverOpenAICompatibleModels(simSettings_.endpoint);
+            }
+
+            std::wstring connectFailure;
+            if(!ConnectDiscoveredLocalModel(models,&connectFailure)) {
+                trainerRuntimeStatus_=L"sentinel-chat connection failed: "+connectFailure;
+                return false;
+            }
+
+            simSettings_.model="sentinel-chat";
+            trainerRuntimeStatus_+=L" | sentinel-chat connected";
+            return true;
+        } catch(const std::exception& e) {
+            trainerRuntimeStatus_=L"sentinel-chat discovery failed: "+Widen(e.what());
+            return false;
         }
     }
 
@@ -7203,9 +7245,16 @@ private:
         }
 
         std::string chosen=simSettings_.model;
-        if(chosen.empty() || std::find(models.begin(),models.end(),chosen)==models.end()) {
-            auto preferred=std::find(models.begin(),models.end(),"sentinel-chat");
-            chosen=preferred!=models.end()?*preferred:models.front();
+        if(IsLocalModelEndpoint(simSettings_.endpoint)) {
+            const auto preferred=std::find(models.begin(),models.end(),"sentinel-chat");
+            if(preferred==models.end()) {
+                if(failure)
+                    *failure=L"Bundled backend is running, but the required sentinel-chat alias is not loaded.";
+                return false;
+            }
+            chosen="sentinel-chat";
+        } else if(chosen.empty() || std::find(models.begin(),models.end(),chosen)==models.end()) {
+            chosen=models.front();
         }
 
         try {
@@ -7223,7 +7272,7 @@ private:
             SetWindowTextW(modelNameEdit_,Widen(chosen).c_str());
             sentinel::simulation::SaveSimulationSettings(runtime_->root/"simulation.ini",simSettings_);
             modelStatus_=L"Connected automatically: "+Widen(chosen);
-            statusText_=L"Local AI loaded automatically";
+            statusText_=L"sentinel-chat connected automatically";
             return true;
         } catch(const std::exception& e) {
             if(failure) *failure=Widen(e.what());
@@ -7232,38 +7281,53 @@ private:
     }
 
     void AutoInitializeLocalAi() {
-        // Recovery invariant: startup must never perform a model download, runtime
-        // installation, service launch, or network discovery on the UI thread.
-        // Those operations can take seconds or minutes and previously trapped the
-        // application behind the topmost splash screen.
         if(simSettings_.endpoint.empty())
             simSettings_.endpoint="http://127.0.0.1:1234/v1/chat/completions";
-        if(simSettings_.model.empty())
+
+        // sentinel-chat is the stable local API identity regardless of which
+        // approved Foundation/LoRA files are currently behind the runtime.
+        if(IsLocalModelEndpoint(simSettings_.endpoint))
             simSettings_.model="sentinel-chat";
 
         SetWindowTextW(modelEndpointEdit_,Widen(simSettings_.endpoint).c_str());
         SetWindowTextW(modelNameEdit_,Widen(simSettings_.model).c_str());
 
-        // Always establish an immediately available fallback so the desktop can
-        // finish App::Init and reveal the main window.
+        // Keep a safe fallback available if the verified local runtime is
+        // missing or startup fails. The splash runs on its own thread, so the
+        // bounded local-model startup below can complete while loading remains
+        // responsive rather than forcing the user through Browse -> Connect.
         model_=sentinel::simulation::CreateRuleBasedTestModel();
 
         if(IsLocalModelEndpoint(simSettings_.endpoint)) {
-            if(BundledAiPrerequisitesPresent()) {
-                modelStatus_=L"Local AI is installed. Use Connect/Browse Models to attach the runtime.";
-                statusText_=L"Local AI ready to connect";
-            } else {
+            if(!BundledAiPrerequisitesPresent()) {
                 modelStatus_=
                     L"Local AI model/runtime is missing or incomplete. SARA started safely in built-in mode. "
-                    L"Run Install / Repair Local AI to restore the verified local model.";
+                    L"Run Install / Repair Local AI to restore sentinel-chat.";
                 statusText_=L"Local AI repair required";
+                return;
             }
-        } else {
-            modelStatus_=
-                L"Configured external model connection is deferred until after startup. "
-                L"Use Connect/Browse Models when ready.";
-            statusText_=L"Model connection deferred";
+
+            modelStatus_=L"Loading and connecting sentinel-chat...";
+            statusText_=L"Starting local AI";
+            sentinel::simulation::SaveSimulationSettings(
+                runtime_->root/"simulation.ini",simSettings_);
+
+            // Startup is deliberately bounded. The normal GPU path should
+            // finish under the splash; failure opens SARA with the fallback
+            // model instead of hanging indefinitely.
+            if(!ApplyPersonaRuntimeBinding(false,75000)) {
+                modelStatus_=
+                    L"Automatic sentinel-chat startup failed. SARA opened in built-in fallback mode. "+
+                    trainerRuntimeStatus_+
+                    L" Use AI Diagnostics or Install / Repair Local AI; Browse/Connect is not required.";
+                statusText_=L"sentinel-chat automatic startup failed";
+            }
+            return;
         }
+
+        modelStatus_=
+            L"Configured external model connection is deferred until after startup.";
+        statusText_=L"External model connection deferred";
     }
 
     void InstallOrRepairLocalAi() {
