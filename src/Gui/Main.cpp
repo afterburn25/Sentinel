@@ -4640,8 +4640,8 @@ private:
 
         TextLine(L"Finding / result summary",rightX+16,resultY+40,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
         TextLine(L"Result reference",rightX+16,resultY+114,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Provenance",rightX+16,resultY+154,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Lead confidence",rightX+16,resultY+194,100,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Provenance",rightX+16,resultY+154,rightW-136,16,tinyFmt_.Get(),brush_.muted.Get());
+        TextLine(L"Confidence",rightX+rightW-104,resultY+154,88,16,tinyFmt_.Get(),brush_.muted.Get(),DWRITE_TEXT_ALIGNMENT_TRAILING);
 
         const float actionY=resultY+resultH-36.0f;
         if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Queued) {
@@ -5075,8 +5075,8 @@ private:
                 RECT resultRect{10,7,std::max(24,(int)(rightW-52)),50};
                 SendMessageW(researchResultEdit_,EM_SETRECTNP,0,(LPARAM)&resultRect);
                 MoveControl(researchReferenceEdit_,(int)(rightX+16),(int)(resultY+130),(int)(rightW-32),26,TRUE);
-                MoveControl(researchProvenanceEdit_,(int)(rightX+16),(int)(resultY+170),(int)(rightW-32),26,TRUE);
-                MoveControl(researchConfidenceEdit_,(int)(rightX+16),(int)(resultY+210),76,26,TRUE);
+                MoveControl(researchProvenanceEdit_,(int)(rightX+16),(int)(resultY+170),(int)(rightW-132),26,TRUE);
+                MoveControl(researchConfidenceEdit_,(int)(rightX+rightW-104),(int)(resultY+170),88,26,TRUE);
             }
         }
 
