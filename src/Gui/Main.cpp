@@ -6078,16 +6078,57 @@ private:
             }
             else if(mode==sentinel::simulation::TrainingMode::Correction) {
                 auto staged=runtime_->trainingReviews.StageLatestReply(currentConversationId_);
-                if(staged) {
-                    payload=staged->id;
-                    reply=
-                        "I captured that correction and staged the latest Simulation reply as review item "+
-                        staged->id+
-                        ". The correction remains reviewable; it does not change live model weights.";
-                } else {
+                if(!staged) {
                     reply=
                         "I saved the correction note in this Trainer conversation. "
                         "There is no recent Simulation reply available to stage yet.";
+                } else {
+                    payload=staged->id;
+                    if(!model_) {
+                        reply=
+                            "I staged the latest Simulation reply as review item "+staged->id+
+                            ", but no model is connected to generate a correction preview. "
+                            "Connect the local model or use TARGET: followed by the exact corrected reply. "
+                            "Nothing has been approved or applied to live weights.";
+                    } else {
+                        auto correctionContext=simContext_;
+                        correctionContext.personaSummary=BuildPersonaSummary();
+                        auto target=model_->GenerateCorrectionPreview(
+                            staged->inputText,
+                            staged->outputText,
+                            instruction,
+                            correctionContext);
+
+                        if(target.empty() || target==staged->outputText) {
+                            reply=
+                                "I staged review item "+staged->id+
+                                ", but no distinct corrected target was produced. "
+                                "With the built-in fallback, use TARGET: followed by the exact reply you want. "
+                                "The original response remains unchanged and nothing is approved automatically.";
+                        } else {
+                            const auto decision=sentinel::simulation::EvaluateSimulationPolicy(
+                                simSettings_.ageState,target);
+                            if(!decision.allowed || decision.requiresSupervisor) {
+                                reply=
+                                    "The proposed correction was not stored as training data because it did not clear "
+                                    "the simulation-policy review gate: "+decision.reason+
+                                    ". The staged original remains available for review.";
+                            } else if(runtime_->trainingReviews.SetCorrectionTarget(
+                                          staged->id,instruction,target)) {
+                                reply=
+                                    "I staged review item "+staged->id+
+                                    " and created a separate proposed training target:\n\n"+
+                                    target+
+                                    "\n\nThe target is PENDING human review in Model Lab / Datasets. "
+                                    "It does not change the live model, persona LoRA, or active runtime until the reviewed "
+                                    "dataset is later trained, evaluated, approved, and activated.";
+                            } else {
+                                reply=
+                                    "The reply was staged, but the proposed correction target could not be saved. "
+                                    "No live model state was changed.";
+                            }
+                        }
+                    }
                 }
             }
             else if(mode==sentinel::simulation::TrainingMode::PersonaLora) {
@@ -9420,13 +9461,14 @@ private:
 
         size_t added=0;
         for(const auto& item:approved) {
+            const auto target=sentinel::simulation::TrainingTargetText(item);
             const bool exists=std::any_of(
                 trainingData_.Examples().begin(),trainingData_.Examples().end(),
                 [&](const auto& e){
                     return e.persona==item.personaName &&
                            e.sourceConversationId==item.conversationId &&
                            e.input==item.inputText &&
-                           e.targetResponse==item.outputText;
+                           e.targetResponse==target;
                 });
             if(exists) continue;
 
@@ -9451,9 +9493,9 @@ private:
                 item.conversationId,
                 item.inputText,
                 item.outputText,
-                {},
-                item.outputText,
-                "Reviewed");
+                item.correctionInstruction,
+                target,
+                item.correctionInstruction.empty()?"Reviewed":"Correction");
             example.reviewer=item.reviewer;
             trainingData_.SetState(
                 trainingData_.Examples().size()-1,
@@ -9546,7 +9588,7 @@ private:
     void DrawDatasets(float w,float h) {
         PageTitle(
             L"Model Lab / Datasets",
-            L"Review, approve, reject, and export the real training examples captured by SARA 1.0.15");
+            L"Review original replies and corrected training targets before anything enters a training dataset");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -9689,16 +9731,26 @@ private:
             TextLine(Widen(item.modelName),detailX+86,bodyY+109,detailW-102,22,tinyFmt_.Get(),brush_.text.Get());
 
             TextLine(L"Input",detailX+16,bodyY+148,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
-            Rounded(detailX+14,bodyY+168,detailW-28,92,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Rounded(detailX+14,bodyY+166,detailW-28,60,brush_.sidebar.Get(),brush_.border.Get(),7);
             Text(item.inputText.empty()?L"(no input text)":Widen(item.inputText),
-                detailX+26,bodyY+178,detailW-52,72,smallFmt_.Get(),brush_.text.Get());
+                detailX+26,bodyY+174,detailW-52,44,smallFmt_.Get(),brush_.text.Get());
 
-            TextLine(L"Output",detailX+16,bodyY+274,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
-            Rounded(detailX+14,bodyY+294,detailW-28,112,brush_.sidebar.Get(),brush_.border.Get(),7);
+            TextLine(L"Original Reply",detailX+16,bodyY+234,detailW-32,18,tinyFmt_.Get(),brush_.muted.Get());
+            Rounded(detailX+14,bodyY+252,detailW-28,44,brush_.sidebar.Get(),brush_.border.Get(),7);
             Text(Widen(item.outputText),
-                detailX+26,bodyY+304,detailW-52,92,smallFmt_.Get(),brush_.text.Get());
+                detailX+26,bodyY+258,detailW-52,32,tinyFmt_.Get(),brush_.text.Get());
 
-            const float actionY=std::min(bodyY+bodyH-42.0f,bodyY+422.0f);
+            const auto trainingTarget=sentinel::simulation::TrainingTargetText(item);
+            const std::wstring targetLabel=item.correctionInstruction.empty()
+                ? L"Training Target (original)"
+                : L"Training Target (corrected — review required)";
+            TextLine(targetLabel,detailX+16,bodyY+304,detailW-32,18,tinyFmt_.Get(),
+                item.correctionInstruction.empty()?brush_.muted.Get():brush_.yellow.Get());
+            Rounded(detailX+14,bodyY+322,detailW-28,48,brush_.sidebar.Get(),brush_.border.Get(),7);
+            Text(Widen(trainingTarget),
+                detailX+26,bodyY+328,detailW-52,36,tinyFmt_.Get(),brush_.text.Get());
+
+            const float actionY=std::min(bodyY+bodyH-42.0f,bodyY+388.0f);
             AddButton(L"training_approve",L"Approve",detailX+16,actionY,76,30,true);
             AddButton(L"training_reject",L"Reject",detailX+100,actionY,70,30,false);
             AddButton(L"dataset_export_snapshot",L"Snapshot File",detailX+178,actionY,104,30,false);
