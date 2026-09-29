@@ -1510,6 +1510,15 @@ public:
             else if (b.id==L"identity_research_open") OpenIdentityResearch();
             else if (b.id==L"identity_research_back") { page_=Page::Subjects; ApplyPageControls(); statusText_=L"Returned to Subjects & Identity"; }
             else if (b.id==L"research_queue") QueueIdentityResearchFromEditors();
+            else if (b.id==L"research_provider_manager") OpenResearchProviderManager();
+            else if (b.id==L"research_provider_back") CloseResearchProviderManager();
+            else if (b.id==L"research_provider_new") NewResearchProviderConfig();
+            else if (b.id==L"research_provider_save") SaveResearchProviderConfig();
+            else if (b.id==L"research_provider_toggle") ToggleSelectedResearchProviderConfig();
+            else if (b.id.rfind(L"research_provider_row:",0)==0)
+                SelectResearchProviderConfig(Narrow(b.id.substr(22)));
+            else if (b.id.rfind(L"research_provider_type:",0)==0)
+                ToggleResearchProviderType((int)std::stol(b.id.substr(23)));
             else if (b.id.rfind(L"research_task:",0)==0) SelectIdentityResearchTask(Narrow(b.id.substr(14)));
             else if (b.id==L"research_complete") CompleteSelectedIdentityResearch();
             else if (b.id==L"research_promote") PromoteSelectedIdentityResearch();
@@ -3543,6 +3552,131 @@ private:
         auto typed=Narrow(EditText(researchProviderCombo_));
         if(typed.empty()) typed="manual/authorized";
         return typed;
+    }
+
+    void ClearResearchProviderConfigEditors() {
+        selectedResearchProviderConfigId_.clear();
+        selectedResearchProviderTypesMask_=
+            1u<<static_cast<unsigned int>(SelectedResearchType());
+        SetWindowTextW(researchProviderIdEdit_,L"");
+        SetWindowTextW(researchProviderNameEdit_,L"");
+        SendMessageW(researchProviderModeCombo_,CB_SETCURSEL,0,0);
+        SetWindowTextW(researchProviderEndpointEdit_,L"");
+        SetWindowTextW(researchProviderCredentialEdit_,L"");
+        SetWindowTextW(researchProviderNotesEdit_,L"");
+    }
+
+    void OpenResearchProviderManager() {
+        researchProviderManagerOpen_=true;
+        ClearResearchProviderConfigEditors();
+        ApplyPageControls();
+        statusText_=L"Identity Research provider registry opened";
+    }
+
+    void CloseResearchProviderManager() {
+        researchProviderManagerOpen_=false;
+        RefreshIdentityResearchProviderList();
+        ApplyPageControls();
+        statusText_=L"Returned to Identity Research";
+    }
+
+    void NewResearchProviderConfig() {
+        ClearResearchProviderConfigEditors();
+        statusText_=L"New provider configuration";
+    }
+
+    void SelectResearchProviderConfig(const std::string& id) {
+        auto provider=runtime_->subjectIdentity.GetResearchProvider(id);
+        if(!provider) {
+            statusText_=L"Research provider could not be loaded";
+            return;
+        }
+        selectedResearchProviderConfigId_=provider->id;
+        selectedResearchProviderTypesMask_=provider->supportedTypesMask;
+        SetWindowTextW(researchProviderIdEdit_,Widen(provider->id).c_str());
+        SetWindowTextW(researchProviderNameEdit_,Widen(provider->displayName).c_str());
+        SendMessageW(researchProviderModeCombo_,CB_SETCURSEL,(WPARAM)(int)provider->accessMode,0);
+        SetWindowTextW(researchProviderEndpointEdit_,Widen(provider->endpointHint).c_str());
+        SetWindowTextW(researchProviderCredentialEdit_,Widen(provider->credentialReference).c_str());
+        SetWindowTextW(researchProviderNotesEdit_,Widen(provider->notes).c_str());
+        statusText_=L"Research provider selected";
+    }
+
+    void ToggleResearchProviderType(int index) {
+        if(index<0 || index>4) return;
+        const unsigned int bit=1u<<static_cast<unsigned int>(index);
+        const unsigned int next=selectedResearchProviderTypesMask_^bit;
+        if(next==0) {
+            statusText_=L"A provider must support at least one research type";
+            return;
+        }
+        selectedResearchProviderTypesMask_=next;
+        statusText_=L"Provider capabilities changed; Save to persist";
+    }
+
+    void SaveResearchProviderConfig() {
+        sentinel::identity::IdentityResearchProvider provider;
+        provider.id=Narrow(EditText(researchProviderIdEdit_));
+        provider.displayName=Narrow(EditText(researchProviderNameEdit_));
+        provider.accessMode=(sentinel::identity::IdentityResearchAccessMode)std::clamp(
+            (int)SendMessageW(researchProviderModeCombo_,CB_GETCURSEL,0,0),0,2);
+        provider.supportedTypesMask=selectedResearchProviderTypesMask_;
+        provider.endpointHint=Narrow(EditText(researchProviderEndpointEdit_));
+        provider.credentialReference=Narrow(EditText(researchProviderCredentialEdit_));
+        provider.notes=Narrow(EditText(researchProviderNotesEdit_));
+
+        if(provider.id.empty() || provider.displayName.empty()) {
+            statusText_=L"Provider ID and display name are required";
+            return;
+        }
+        if(provider.credentialReference.size()>180) {
+            statusText_=L"Credential reference is too long; store only an alias or vault-key reference";
+            return;
+        }
+
+        auto existing=runtime_->subjectIdentity.GetResearchProvider(provider.id);
+        provider.enabled=existing?existing->enabled:
+            provider.accessMode==sentinel::identity::IdentityResearchAccessMode::Manual;
+
+        try {
+            auto saved=runtime_->subjectIdentity.SaveResearchProvider(std::move(provider));
+            selectedResearchProviderConfigId_=saved.id;
+            selectedResearchProviderTypesMask_=saved.supportedTypesMask;
+            RefreshIdentityResearchProviderList();
+            statusText_=saved.enabled
+                ? L"Research provider saved and enabled"
+                : L"Research provider saved disabled; review configuration before enabling";
+        } catch(const std::exception& e) {
+            statusText_=L"Research provider could not be saved";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Research Provider",MB_OK|MB_ICONERROR);
+        }
+    }
+
+    void ToggleSelectedResearchProviderConfig() {
+        if(selectedResearchProviderConfigId_.empty()) {
+            statusText_=L"Select a registered provider first";
+            return;
+        }
+        if(selectedResearchProviderConfigId_=="manual/authorized") {
+            statusText_=L"The built-in Manual / Authorized provider remains enabled";
+            return;
+        }
+        auto provider=runtime_->subjectIdentity.GetResearchProvider(selectedResearchProviderConfigId_);
+        if(!provider) return;
+
+        if(!provider->enabled &&
+           provider->accessMode!=sentinel::identity::IdentityResearchAccessMode::Manual &&
+           (provider->endpointHint.empty() || provider->credentialReference.empty()))
+        {
+            statusText_=L"Portal/API providers need an endpoint hint and credential reference before enabling";
+            return;
+        }
+
+        if(runtime_->subjectIdentity.SetResearchProviderEnabled(provider->id,!provider->enabled)) {
+            RefreshIdentityResearchProviderList();
+            SelectResearchProviderConfig(provider->id);
+            statusText_=provider->enabled?L"Research provider disabled":L"Research provider enabled";
+        }
     }
 
     sentinel::identity::IdentityResearchType SelectedResearchType() const {
