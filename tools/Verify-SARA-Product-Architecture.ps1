@@ -193,6 +193,9 @@ $identityResearchTokens = @(
     'research_promote',
     'IdentityResearchQueued',
     'PromoteResearchToLead(',
+    'ListResearchProviders(false)',
+    'SelectedIdentityResearchProvider()',
+    'researchProviderCombo_',
     'L"NO AUTOMATIC IDENTITY CONCLUSIONS"'
 )
 foreach ($token in $identityResearchTokens) {
