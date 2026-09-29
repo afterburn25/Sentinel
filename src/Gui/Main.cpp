@@ -6586,6 +6586,13 @@ private:
         simSettings_.persona=*profile;
         simSettings_.minDelayMs=profile->responseStartMinMs;
         simSettings_.maxDelayMs=profile->responseStartMaxMs;
+
+        // Rule editor state is persona-scoped. Never carry an opened rule or
+        // page cursor from one persona into another persona's rule workspace.
+        responseRulePage_=0;
+        personaShowLearnedNotes_=false;
+        StartNewPersonaResponseRule(false);
+
         LoadProfileEditors();
         LoadPersonaMedia();
         simContext_.personaSummary=BuildPersonaSummary();
