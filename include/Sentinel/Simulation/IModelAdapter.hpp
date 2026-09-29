@@ -53,6 +53,12 @@ public:
         int age,
         std::string_view background,
         const ModelContext& context) = 0;
+
+    [[nodiscard]] virtual std::string GenerateCorrectionPreview(
+        std::string_view originalInput,
+        std::string_view originalResponse,
+        std::string_view trainerInstruction,
+        const ModelContext& context) = 0;
 };
 
 std::unique_ptr<IModelAdapter> CreateRuleBasedTestModel();
