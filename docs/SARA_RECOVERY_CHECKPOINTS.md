@@ -561,3 +561,48 @@ Artifact digests from run #804:
 - UI screenshots: `sha256:7bb30a184ad73831a5e49265d51d04700feaf0f6e9aa36cf3fb8a46fa1d51421`
 
 This is the current consolidated rollback point for the recovered SARA operational shell and Model Lab lifecycle.
+
+## Checkpoint 12 — Persona continuity, non-repetition, progressive typing, and Trainer stability validated
+
+Validated commit:
+
+`2c129f537c078bb839b9feda1e1c4bc3192ad3f4`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #815
+- Run ID: `36470959719`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- full packaged UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Behavior / memory recovery validated by this checkpoint:
+
+- persona memory tracks prior asked questions across conversations so SARA can avoid repeating already-answered prompts
+- short participant answers preserve the surrounding question/context instead of becoming context-free memory fragments
+- durable persona continuity notes can be reused across later conversations for the same persona
+- transient/non-durable learning notes are filtered out rather than polluting long-term persona memory
+- continuity notes are exposed for investigator review instead of remaining hidden model state
+- Simulation typing is progressively rendered rather than appearing as an instantaneous full message
+- Win32 background erasing is suppressed behind Direct2D to reduce the visible black/flicker bounce reported during the rollback period
+- the Trainer dependency set now requires a stable Transformers build with Qwen3.5 support
+
+Artifact digests from run #815:
+
+- Windows package: `sha256:b791d3b5f8375805d4b506a4b1312a2754b34ee57f1e4bf1f5f7500d2194341f`
+- unsigned-development Setup artifact: `sha256:c899e075d0f09bb60352fa1ba2aae08e82e5a4d6154df32bf5b2747490cc7a2f`
+- UI screenshots: `sha256:602f51eeabe917cb3f12f9840158bda01c39ce49f230354d593be290be31be86`
+
+This is the validated rollback point for the recovered SARA shell through the newer continuity/typing/Trainer-stability work.
