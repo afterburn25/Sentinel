@@ -30,7 +30,7 @@ These limitations are intentionally explicit so unfinished security properties a
 
 ## GitHub Actions build
 
-The repository includes `.github/workflows/windows-build.yml`. Every push to `main` or `develop`, every pull request, and every `v*` tag builds Sentinel on GitHub's Windows/MSVC runner, runs CTest, installs the binaries into a package directory, generates `SHA256SUMS.txt`, and uploads a downloadable `Sentinel-0.2.0-windows-x64` artifact.
+The repository includes `.github/workflows/windows-build.yml`. Every supported push, pull request, and `v*` release tag builds SARA on GitHub's Windows/MSVC runner, runs CTest, installs the binaries into a package staging directory, generates `SHA256SUMS.txt`, builds the Inno Setup installer, and uploads versioned `SARA-<VERSION>-windows-x64` and `SARA-Setup-<VERSION>` artifacts.
 
 The workflow uses `vcpkg.json` to provide SQLite3 and `CMakePresets.json` for the Windows x64 Release configuration.
 
