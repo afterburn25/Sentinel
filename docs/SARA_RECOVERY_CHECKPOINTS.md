@@ -1004,3 +1004,58 @@ Artifact digests from run #887:
 
 This is the validated rollback point for the recovered SARA shell through Persona LoRA candidate isolation.
 
+## Checkpoint 20 — Evaluated Foundation and Persona LoRA activation validated
+
+Validated commit:
+
+`6638b78ec3818a02aa68cd06a8da18cdd8b6ffff`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #906
+- Run ID: `36529343424`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- Persona LoRA candidate-isolation self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Foundation / Persona LoRA activation proof proven by this checkpoint:
+
+- Foundation Fork records persist the evaluation run that approved them
+- Persona LoRA bindings persist the evaluation run that approved them
+- existing active 1.0.15 runtime rows receive an explicit legacy-active proof marker during migration rather than being silently invalidated
+- newly created Foundation Forks cannot activate without a deployable runtime and passing evaluation proof
+- newly bound or trained Persona LoRAs remain inactive candidates
+- Persona LoRA approval requires a passing evaluation for the exact binding ID and its Foundation
+- Persona LoRA activation requires its Foundation to be the evaluated, approved, currently active Foundation
+- rollback refuses unproven Foundation or LoRA versions
+- Model Lab can stage a selected Foundation or LoRA in the bundled local runtime for Evaluation/Test without changing its persistent active binding
+- staged evaluation records the exact staged Foundation/LoRA IDs and restores the active runtime afterward
+- the staged evaluator uses the currently configured SARA local endpoint and the model ID actually discovered from the staged runtime
+- Foundation and LoRA workspaces expose Evaluate -> Approve -> Activate progression
+- deployment preparation verifies persisted Foundation/LoRA approval proof before packaging a runtime stack
+- direct core APIs cannot activate unevaluated or non-deployable model-stack records
+- manual LoRA binding now registers a candidate instead of silently replacing the active runtime
+- the protected 1.0.15 startup, splash, installer, permanent application shell and navigation remain unchanged
+
+Artifact digests from run #906:
+
+- Windows package: `sha256:b636bbcabc5a479ebff1738de8648b0beb533d85312adf1b644b778f628b4f1f`
+- unsigned-development Setup artifact: `sha256:d3fcdd6d7c5cd99ab53878be5b603dc721fa08020fae0cd0c8ff4fd919ef821d`
+- UI screenshots: `sha256:dedd46926e73f0992f79b7776fd45ae73b23b7945a14ae05daeff083a6f8720a`
+
+This is the validated rollback point for the recovered SARA shell through staged model-stack evaluation and proof-gated Foundation/Persona-LoRA activation.
+
