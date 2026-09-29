@@ -37,12 +37,16 @@ bool ModelRegistry::Approve(
     if(evaluation.foundationId!=currentFoundationId || evaluation.adapterId!=currentAdapterId) return false;
 
     model.evaluationScore=std::clamp(evaluation.overallScore,0,100);
+    model.approvedEvaluationRunId=evaluation.id;
+    model.approvedFoundationId=evaluation.foundationId;
+    model.approvedAdapterId=evaluation.adapterId;
     if(model.stage==ModelStage::Candidate) model.stage=ModelStage::Approved;
     return model.stage==ModelStage::Approved || model.stage==ModelStage::Active;
 }
 void ModelRegistry::Activate(size_t i) {
     if(i>=models_.size()) return;
     if(models_[i].stage!=ModelStage::Approved && models_[i].stage!=ModelStage::Active) return;
+    if(models_[i].approvedEvaluationRunId.empty()) return;
     if(activeIndex_>=0 && activeIndex_<(int)models_.size()) {
         previousActiveIndex_=activeIndex_;
         models_[(size_t)activeIndex_].stage=ModelStage::Approved;
@@ -58,6 +62,7 @@ void ModelRegistry::Retire(size_t i) {
 bool ModelRegistry::Rollback() {
     if(previousActiveIndex_<0 || previousActiveIndex_>=(int)models_.size()) return false;
     int target=previousActiveIndex_;
+    if(models_[(size_t)target].approvedEvaluationRunId.empty()) return false;
     if(activeIndex_>=0 && activeIndex_<(int)models_.size()) models_[(size_t)activeIndex_].stage=ModelStage::Approved;
     activeIndex_=target;
     models_[(size_t)activeIndex_].stage=ModelStage::Active;
@@ -71,7 +76,8 @@ void ModelRegistry::Save(const std::filesystem::path& path) const {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream out(path,std::ios::trunc);
     for(const auto& m:models_)
-        out<<m.id<<"\t"<<m.endpoint<<"\t"<<m.modelName<<"\t"<<m.evaluationScore<<"\t"<<m.latencyMs<<"\t"<<(int)m.stage<<"\n";
+        out<<m.id<<"\t"<<m.endpoint<<"\t"<<m.modelName<<"\t"<<m.evaluationScore<<"\t"<<m.latencyMs<<"\t"<<(int)m.stage
+           <<"\t"<<m.approvedEvaluationRunId<<"\t"<<m.approvedFoundationId<<"\t"<<m.approvedAdapterId<<"\n";
 }
 void ModelRegistry::Load(const std::filesystem::path& path) {
     std::ifstream in(path);
@@ -85,9 +91,25 @@ void ModelRegistry::Load(const std::filesystem::path& path) {
             if(pos==std::string::npos) { p.push_back(line.substr(start)); break; }
             p.push_back(line.substr(start,pos-start)); start=pos+1;
         }
-        if(p.size()!=6) continue;
+        if(p.size()!=6 && p.size()!=9) continue;
         try {
-            RegisteredModel m{p[0],p[1],p[2],std::stoi(p[3]),std::stoll(p[4]),(ModelStage)std::stoi(p[5])};
+            RegisteredModel m;
+            m.id=p[0];
+            m.endpoint=p[1];
+            m.modelName=p[2];
+            m.evaluationScore=std::stoi(p[3]);
+            m.latencyMs=std::stoll(p[4]);
+            m.stage=(ModelStage)std::stoi(p[5]);
+            if(p.size()==9) {
+                m.approvedEvaluationRunId=p[6];
+                m.approvedFoundationId=p[7];
+                m.approvedAdapterId=p[8];
+            } else if(m.stage==ModelStage::Approved || m.stage==ModelStage::Active) {
+                // Legacy model-registry rows predate exact approval proof. Demote them so
+                // they must pass a current evaluation before activation/deployment.
+                m.stage=ModelStage::Candidate;
+                m.evaluationScore=0;
+            }
             if(m.stage==ModelStage::Active) activeIndex_=(int)models_.size();
             models_.push_back(std::move(m));
         } catch(...) {}
