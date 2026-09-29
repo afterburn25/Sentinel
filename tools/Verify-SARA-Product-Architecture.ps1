@@ -10,6 +10,7 @@ $deploymentRegistryPath = Join-Path $repo "src\Simulation\DeploymentRegistry.cpp
 $trainingReviewPath = Join-Path $repo "src\Simulation\TrainingReviewStore.cpp"
 $modelAdapterPath = Join-Path $repo "include\Sentinel\Simulation\IModelAdapter.hpp"
 $openAiModelPath = Join-Path $repo "src\Simulation\OpenAICompatibleModel.cpp"
+$trainerWorkerPath = Join-Path $repo "resources\trainer\train_sara.py"
 $correctionMigrationPath = Join-Path $repo "migrations\0038_training_review_correction_targets.sql"
 $contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
 
@@ -40,6 +41,9 @@ if (-not (Test-Path $modelAdapterPath)) {
 if (-not (Test-Path $openAiModelPath)) {
     throw "SARA OpenAI-compatible model source is missing: $openAiModelPath"
 }
+if (-not (Test-Path $trainerWorkerPath)) {
+    throw "SARA Trainer worker source is missing: $trainerWorkerPath"
+}
 if (-not (Test-Path $correctionMigrationPath)) {
     throw "SARA correction-target migration is missing: $correctionMigrationPath"
 }
@@ -52,6 +56,7 @@ $deploymentRegistrySrc = Get-Content $deploymentRegistryPath -Raw
 $trainingReviewSrc = Get-Content $trainingReviewPath -Raw
 $modelAdapterSrc = Get-Content $modelAdapterPath -Raw
 $openAiModelSrc = Get-Content $openAiModelPath -Raw
+$trainerWorkerSrc = Get-Content $trainerWorkerPath -Raw
 $correctionMigrationSrc = Get-Content $correctionMigrationPath -Raw
 
 $begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
@@ -366,6 +371,25 @@ foreach ($token in $correctionModelTokens) {
     if (-not $openAiModelSrc.Contains($token)) {
         throw "Connected-model correction preview is missing: $token"
     }
+}
+
+$trainerCandidateTokens = @(
+    'VALUES(?,?,?,?,1.0,0)',
+    'Persona LoRA candidate complete:',
+    'Candidate remains inactive until explicitly reviewed/evaluated and activated in SARA Model Lab.'
+)
+foreach ($token in $trainerCandidateTokens) {
+    if (-not $trainerWorkerSrc.Contains($token)) {
+        throw "Trainer candidate-isolation contract is missing: $token"
+    }
+}
+if ($trainerWorkerSrc.Contains(
+        'UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP WHERE persona_name=?')) {
+    throw "Trainer worker may not deactivate the live Persona LoRA when training completes."
+}
+if ($trainerWorkerSrc.Contains(
+        'INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,1.0,1)')) {
+    throw "Trainer worker may not auto-activate a newly trained Persona LoRA."
 }
 
 $correctionMigrationTokens = @(
