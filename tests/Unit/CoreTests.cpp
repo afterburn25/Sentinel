@@ -256,6 +256,39 @@ void TestResponseRuleMatcher()
     Require(selectedA=="one" || selectedA=="two" || selectedA=="three",
         "response-rule alternate selection returned an invalid variant");
 
+    Require(sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "favorite","all",-1),
+        "response-rule search did not match trigger text");
+    Require(sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "blue","all",-1),
+        "response-rule search did not match response text");
+    Require(!sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "music","all",-1),
+        "response-rule search matched unrelated text");
+    Require(sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "","contains",-1),
+        "response-rule type filter rejected matching type");
+    Require(!sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "","exact",-1),
+        "response-rule type filter accepted wrong type");
+    Require(sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",true,
+            "","all",1),
+        "enabled response-rule state filter rejected enabled rule");
+    Require(!sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",false,
+            "","all",1),
+        "enabled response-rule state filter accepted disabled rule");
+    Require(sentinel::simulation::ResponseRulePassesFilter(
+            "favorite color","blue mostly","contains",false,
+            "","all",0),
+        "disabled response-rule state filter rejected disabled rule");
+
     const auto emptyPage=sentinel::simulation::ComputeResponseRulePageWindow(0,5,4);
     Require(emptyPage.pageIndex==0 && emptyPage.pageCount==1 &&
             emptyPage.start==0 && emptyPage.end==0,
