@@ -8437,14 +8437,15 @@ private:
     }
 
     bool EnsureEvaluationModelSelected() {
-        if(selectedRegistryModel_>=0 &&
-           selectedRegistryModel_<(int)modelRegistry_.Models().size())
-            return true;
-
         if(simSettings_.endpoint.empty() || simSettings_.model.empty()) {
-            statusText_=L"Configure or register a model before evaluating a runtime stack";
+            statusText_=L"Configure or connect the SARA local model before evaluating a runtime stack";
             return false;
         }
+
+        if(selectedRegistryModel_>=0 &&
+           selectedRegistryModel_<(int)modelRegistry_.Models().size() &&
+           modelRegistry_.Models()[(size_t)selectedRegistryModel_].endpoint==simSettings_.endpoint)
+            return true;
 
         auto& item=modelRegistry_.Register(simSettings_.endpoint,simSettings_.model);
         selectedRegistryModel_=(int)(&item-modelRegistry_.Models().data());
