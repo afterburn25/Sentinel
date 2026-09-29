@@ -268,9 +268,11 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
 
 $previousSaraDataRoot = $env:SARA_DATA_ROOT
+$previousSaraCaptureFixture = $env:SARA_CAPTURE_FIXTURE
 $captureDataRoot = Join-Path ([IO.Path]::GetTempPath()) ("sara-recovery-ui-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $captureDataRoot | Out-Null
 $env:SARA_DATA_ROOT = $captureDataRoot
+$env:SARA_CAPTURE_FIXTURE = "identity-research-v1"
 
 $proc = Start-Process -FilePath $AppPath -WorkingDirectory (Split-Path $AppPath) -PassThru
 try {
@@ -332,13 +334,9 @@ try {
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[1]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "03-cases.png")
 
-    # Build one disposable case/subject through the real packaged UI so the
-    # internal Identity Research workspace can be captured without touching
-    # any real SARA user data.
-    Set-SaraControlText -Window $main -ControlId 1001 -Text "CI-RESEARCH-001"
-    Set-SaraControlText -Window $main -ControlId 1002 -Text "Identity Research UI Capture"
-    Click-SaraClient -Window $main -X 818 -Y 197
-
+    # Runtime seeded a disposable case/subject because SARA_CAPTURE_FIXTURE
+    # is set on the disposable data root. Navigate to Subjects and prove the
+    # internal Research page really opened before accepting its screenshot.
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[2]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04-subjects-identity.png")
 
@@ -350,18 +348,16 @@ try {
     $subjectX = 248.0
     $subjectContentW = $subjectClientWidth - $subjectX - 28.0
     $subjectLeftW = [Math]::Min(286.0,[Math]::Max(248.0,$subjectContentW * 0.34))
-    $subjectBodyY = 78.0 + 94.0 + 78.0 + 12.0
-    $newSubjectX = [int]($subjectX + $subjectLeftW - 92.0 + 38.0)
-    Click-SaraClient -Window $main -X $newSubjectX -Y ([int]($subjectBodyY + 26.0))
-    Set-SaraControlText -Window $main -ControlId 1060 -Text "Research Capture Subject"
-
     $subjectRightX = $subjectX + $subjectLeftW + 14.0
     $subjectRightW = $subjectContentW - $subjectLeftW - 14.0
-    $saveSubjectX = [int]($subjectRightX + $subjectRightW - 190.0 + 29.0)
-    Click-SaraClient -Window $main -X $saveSubjectX -Y ([int]($subjectBodyY + 26.0))
-
+    $subjectBodyY = 78.0 + 94.0 + 78.0 + 12.0
     $researchX = [int]($subjectRightX + $subjectRightW - 370.0 + 42.0)
     Click-SaraClient -Window $main -X $researchX -Y ([int]($subjectBodyY + 26.0))
+
+    $researchType = [SaraRecoveryUiNative]::GetDlgItem($main, 1071)
+    if ($researchType -eq [IntPtr]::Zero -or -not [SaraRecoveryUiNative]::IsWindowVisible($researchType)) {
+        throw "Identity Research did not open in the packaged SARA UI."
+    }
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04b-identity-research.png")
 
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[3]
@@ -469,6 +465,11 @@ finally {
         Remove-Item Env:SARA_DATA_ROOT -ErrorAction SilentlyContinue
     } else {
         $env:SARA_DATA_ROOT = $previousSaraDataRoot
+    }
+    if ($null -eq $previousSaraCaptureFixture) {
+        Remove-Item Env:SARA_CAPTURE_FIXTURE -ErrorAction SilentlyContinue
+    } else {
+        $env:SARA_CAPTURE_FIXTURE = $previousSaraCaptureFixture
     }
     Remove-Item -LiteralPath $captureDataRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

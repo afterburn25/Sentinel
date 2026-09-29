@@ -713,6 +713,39 @@ struct Runtime {
             "Qwen/Qwen3.5-9B",
             (ExeDir()/L"ai"/L"models"/L"Qwen3.5-9B-Q4_K_M.gguf").string());
         keys.Initialize();
+
+        wchar_t fixture[128]{};
+        const DWORD fixtureLength=GetEnvironmentVariableW(
+            L"SARA_CAPTURE_FIXTURE",fixture,(DWORD)std::size(fixture));
+        if(fixtureLength>0 && fixtureLength<std::size(fixture) &&
+           std::wstring(fixture)==L"identity-research-v1")
+        {
+            sqlite3_stmt* countStmt{};
+            long long caseCount=0;
+            if(sqlite3_prepare_v2(db.Handle(),"SELECT COUNT(*) FROM cases",-1,&countStmt,nullptr)==SQLITE_OK &&
+               sqlite3_step(countStmt)==SQLITE_ROW)
+                caseCount=sqlite3_column_int64(countStmt,0);
+            sqlite3_finalize(countStmt);
+
+            if(caseCount==0) {
+                sentinel::SqliteTransaction tx(db);
+                const auto actor=sentinel::UserId::Random();
+                auto rec=cases.CreateCase({
+                    "CI-RESEARCH-001",
+                    "Identity Research UI Capture",
+                    "Disposable packaged-UI fixture",
+                    actor
+                });
+                keys.CreateCaseKey(rec.id);
+                caseRepo.Update(rec);
+                audit.Append({actor,sentinel::AuditAction::CaseCreated,"case",rec.id.ToString(),
+                    AuditMetadata("capture_fixture=identity-research-v1")});
+                auto subject=subjectIdentity.CreateSubject(rec.id,"Research Capture Subject");
+                audit.Append({actor,sentinel::AuditAction::SubjectCreated,"subject",subject.id.ToString(),
+                    AuditMetadata("capture_fixture=identity-research-v1")});
+                tx.Commit();
+            }
+        }
     }
 
     std::vector<sentinel::EvidenceSummary> Evidence(const sentinel::CaseId& id) {

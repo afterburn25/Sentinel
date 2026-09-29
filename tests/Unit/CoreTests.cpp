@@ -970,6 +970,13 @@ void TestSubjectIdentityStore()
     Require(listB.size()==1 && listB.front().id==other.id,
         "case scoping leaked subjects across investigations");
 
+    Require(store.DeleteSubject(subject.id),
+        "subject with identity research tasks could not be deleted");
+    Require(store.ListForCase(caseA).empty(),
+        "deleted subject still appears in case subject list");
+    Require(store.ListResearch(subject.id).empty(),
+        "identity research tasks survived subject deletion");
+
     db.Close();
     std::filesystem::remove_all(root);
 }

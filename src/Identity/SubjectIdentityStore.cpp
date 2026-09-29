@@ -207,6 +207,16 @@ bool SubjectIdentityStore::DeleteSubject(const SubjectId& id) {
     auto* db=db_.Handle();
     SqliteTransaction tx(db_);
 
+    sqlite3_stmt* research{};
+    if(sqlite3_prepare_v2(db,"DELETE FROM identity_research_tasks WHERE subject_id=?",-1,&research,nullptr)!=SQLITE_OK)
+        return false;
+    Bind(research,1,id.ToString());
+    if(sqlite3_step(research)!=SQLITE_DONE) {
+        sqlite3_finalize(research);
+        return false;
+    }
+    sqlite3_finalize(research);
+
     sqlite3_stmt* identities{};
     if(sqlite3_prepare_v2(db,"DELETE FROM subject_identities WHERE subject_id=?",-1,&identities,nullptr)!=SQLITE_OK)
         return false;
