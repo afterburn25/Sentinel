@@ -19,6 +19,7 @@
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/TrainingData.hpp"
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
+#include "Sentinel/Identity/IdentityResearchProviderAdapter.hpp"
 #include "Sentinel/Operations/SupervisorStateStore.hpp"
 #include "Sentinel/Agency/AgencyServer.hpp"
 
@@ -808,6 +809,66 @@ void TestVersionedDatasetSnapshots()
 
 
 
+
+void TestIdentityResearchProviderAdapters()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    sentinel::identity::IdentityResearchProviderAdapterRegistry registry;
+    registry.Register(std::make_unique<
+        sentinel::identity::ManualIdentityResearchProviderAdapter>());
+
+    Require(registry.Find("manual/authorized")!=nullptr,
+        "manual identity research adapter was not registered");
+    Require(!registry.CanExecute(
+        "manual/authorized",
+        sentinel::identity::IdentityResearchType::PublicRecords),
+        "manual identity research adapter must never report automatic execution readiness");
+    Require(registry.ExecutableCount()==0,
+        "manual identity research adapter was counted as executable");
+
+    struct UnitAdapter final
+        : sentinel::identity::IIdentityResearchProviderAdapter {
+        std::string ProviderId() const override { return "unit-username-provider"; }
+        bool Configured() const noexcept override { return true; }
+        bool Supports(sentinel::identity::IdentityResearchType type) const noexcept override {
+            return type==sentinel::identity::IdentityResearchType::Username;
+        }
+        sentinel::identity::IdentityResearchExecutionResult Execute(
+            const sentinel::identity::IdentityResearchExecutionRequest& request) override {
+            sentinel::identity::IdentityResearchExecutionResult out;
+            out.completed=true;
+            out.resultSummary="unit result for "+request.queryText;
+            out.resultReference="unit://result";
+            out.provenance="unit adapter";
+            return out;
+        }
+    };
+
+    registry.Register(std::make_unique<UnitAdapter>());
+    Require(registry.ExecutableCount()==1,
+        "configured identity research adapter count mismatch");
+    Require(registry.CanExecute(
+        "unit-username-provider",
+        sentinel::identity::IdentityResearchType::Username),
+        "configured username adapter was not executable for its supported type");
+    Require(!registry.CanExecute(
+        "unit-username-provider",
+        sentinel::identity::IdentityResearchType::PublicRecords),
+        "username adapter incorrectly reported public-record support");
+
+    bool duplicateRejected=false;
+    try {
+        registry.Register(std::make_unique<UnitAdapter>());
+    } catch(const std::exception&) {
+        duplicateRejected=true;
+    }
+    Require(duplicateRejected,
+        "duplicate identity research adapter provider id was accepted");
+}
+
 void TestSubjectIdentityStore()
 {
     auto Require=[](bool value,const char* message) {
@@ -1504,6 +1565,9 @@ int main()
         std::cout << "[core] versioned dataset snapshots..." << std::endl;
         TestVersionedDatasetSnapshots();
         std::cout << "[core] versioned dataset snapshots PASS" << std::endl;
+        std::cout << "[core] identity research provider adapters..." << std::endl;
+        TestIdentityResearchProviderAdapters();
+        std::cout << "[core] identity research provider adapters PASS" << std::endl;
         std::cout << "[core] subject identity store..." << std::endl;
         TestSubjectIdentityStore();
         std::cout << "[core] subject identity store PASS" << std::endl;
