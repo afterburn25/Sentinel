@@ -10122,6 +10122,16 @@ private:
         if(binding->personaName==simSettings_.persona.name)
             ApplyPersonaRuntimeBinding();
 
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::PersonaLoraActivated,
+            "persona_lora",
+            std::to_string(binding->id),
+            AuditMetadata(
+                "persona="+binding->personaName+
+                " foundation="+binding->foundationId+
+                " evaluation="+binding->approvedEvaluationRunId)
+        });
         statusText_=L"Activated LoRA version: "+Widen(binding->loraName);
     }
 
@@ -10144,6 +10154,16 @@ private:
         if(persona==simSettings_.persona.name)
             ApplyPersonaRuntimeBinding();
 
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::PersonaLoraRolledBack,
+            "persona_lora",
+            std::to_string(previous->id),
+            AuditMetadata(
+                "persona="+persona+
+                " foundation="+previous->foundationId+
+                " evaluation="+previous->approvedEvaluationRunId)
+        });
         statusText_=L"LoRA rollback restored: "+Widen(previous->loraName);
     }
 
@@ -10500,6 +10520,16 @@ private:
         }
         RefreshTrainerFoundationList(foundation->id);
         ApplyPersonaRuntimeBinding();
+        auto activated=runtime_->trainer.GetFoundation(foundation->id);
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::FoundationActivated,
+            "model_foundation",
+            foundation->id,
+            AuditMetadata(
+                "name="+foundation->name+
+                " evaluation="+(activated?activated->approvedEvaluationRunId:foundation->approvedEvaluationRunId))
+        });
         statusText_=L"Foundation activated: "+Widen(foundation->name);
     }
 
@@ -10520,6 +10550,16 @@ private:
         RefreshTrainerFoundationList(previous->id);
         selectedModelLabFoundationId_=previous->id;
         ApplyPersonaRuntimeBinding();
+        auto restored=runtime_->trainer.GetFoundation(previous->id);
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::FoundationRolledBack,
+            "model_foundation",
+            previous->id,
+            AuditMetadata(
+                "name="+previous->name+
+                " evaluation="+(restored?restored->approvedEvaluationRunId:previous->approvedEvaluationRunId))
+        });
         statusText_=L"Foundation rollback restored "+Widen(previous->name);
     }
 
