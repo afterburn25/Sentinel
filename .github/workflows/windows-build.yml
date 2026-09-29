@@ -1,4 +1,4 @@
-# SARA release: 1.0.15
+# SARA release version comes from /VERSION
 name: Windows Build
 
 on:
@@ -14,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: sara-v115-${{ github.workflow }}-${{ github.ref }}
+  group: sara-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,6 +34,306 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve SARA version
+        id: sara_version
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && (env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '' || env.AZURE_SUBSCRIPTION_ID == '' || env.ARTIFACT_SIGNING_ENDPOINT == '' || env.ARTIFACT_SIGNING_ACCOUNT == '' || env.ARTIFACT_SIGNING_PROFILE == '') }}
+        shell: pwsh
+        run: |
+          throw "SARA release tags require a configured Public Trust Artifact Signing identity. Refusing to publish an unsigned release."
+
+      - name: Guard exact SARA 1.0.15 recovery baseline
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-1.0.15-Recovery-Baseline.ps1
+
+      - name: Guard SARA product architecture
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Verify-SARA-Product-Architecture.ps1
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg_installed
+            ${{ env.LOCALAPPDATA }}/vcpkg/archives
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Verify exact approved SARA splash PNG
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pillow
+          python -c "from PIL import Image; import hashlib; p=r'resources/assets/SARA-Splash.png'; raw=open(p,'rb').read(); im=Image.open(p); assert im.format=='PNG'; assert im.size==(1672,941), im.size; assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'; print('Exact approved SARA splash verified:', im.format, im.size)"
+
+      - name: Configure
+        shell: pwsh
+        run: cmake --preset windows-msvc-release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build --preset windows-msvc-release --parallel
+
+      - name: Test
+        shell: pwsh
+        run: ctest --preset windows-msvc-release --output-on-failure -V
+
+      - name: Validate SARA Trainer worker syntax
+        shell: pwsh
+        run: python -m py_compile resources/trainer/train_sara.py
+
+      - name: Validate bundled AI startup script syntax
+        shell: pwsh
+        run: |
+          foreach ($script in @(
+            'resources/ai/Start-Sentinel-With-AI.ps1',
+            'resources/ai/Configure-Sentinel.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script : $($_.Message)" }
+              throw "Bundled AI script contains PowerShell syntax errors: $script"
+            }
+          }
+
+      - name: Validate Persona LoRA candidate isolation
+        shell: pwsh
+        run: python resources/trainer/train_sara.py --self-test-candidate-isolation
+
+      - name: Verify no SQLite DLL dependency
+        shell: pwsh
+        run: |
+          $exe = "out/build/windows-msvc-release/Release/SentinelCli.exe"
+          if (-not (Test-Path $exe)) { throw "SentinelCli.exe missing before dependency check" }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+          $vsRoot = & $vswhere -latest -products * -property installationPath
+          if (-not $vsRoot) { throw "Visual Studio installation not found" }
+
+          $devCmd = Join-Path $vsRoot "Common7\Tools\VsDevCmd.bat"
+          if (-not (Test-Path $devCmd)) { throw "VsDevCmd.bat not found" }
+
+          $outputFile = Join-Path $env:RUNNER_TEMP "sentinel-dependencies.txt"
+          $cmd = '"' + $devCmd + '" -arch=x64 -host_arch=x64 >nul && dumpbin /dependents "' + $exe + '" > "' + $outputFile + '"'
+          cmd.exe /d /s /c $cmd
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin dependency inspection failed" }
+
+          $deps = Get-Content $outputFile -Raw
+          $deps | Write-Host
+          if ($deps -match '(?i)sqlite3\.dll') {
+            throw "SentinelCli.exe still depends on sqlite3.dll"
+          }
+
+      - name: Install package
+        shell: pwsh
+        run: >-
+          cmake --install out/build/windows-msvc-release
+          --config Release
+          --prefix package/SARA-windows-x64
+
+      - name: Launch packaged SARA and capture recovery UI
+        shell: pwsh
+        run: >-
+          pwsh -NoProfile -ExecutionPolicy Bypass
+          -File tools/Capture-SARA-1.0.15-Recovery-UI.ps1
+          -AppPath "package/SARA-windows-x64/SARA.exe"
+          -OutputDir "recovery-ui-screenshots"
+
+      - name: Upload recovery UI screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-${{ steps.sara_version.outputs.version }}-Recovery-UI-Screenshots
+          path: recovery-ui-screenshots/
+
+      - name: Azure login for Artifact Signing
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Sentinel executables with Microsoft Artifact Signing
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\package\SARA-windows-x64
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: SARA - Synthetic Adaptive Response Agent
+          description-url: https://github.com/afterburn25/Sentinel
+
+      - name: Verify Authenticode signatures
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/SARA-windows-x64
+          $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
+          if (-not $executables) { throw "No executables found for signature verification" }
+
+          foreach ($exe in $executables) {
+            $signature = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($signature.Status) - $($signature.SignerCertificate.Subject)"
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid or missing Authenticode signature: $($exe.FullName)"
+            }
+          }
+
+      - name: Record unsigned development-build status
+        if: ${{ env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '' || env.AZURE_SUBSCRIPTION_ID == '' || env.ARTIFACT_SIGNING_ENDPOINT == '' || env.ARTIFACT_SIGNING_ACCOUNT == '' || env.ARTIFACT_SIGNING_PROFILE == '' }}
+        shell: pwsh
+        run: |
+          @"
+          SARA DEVELOPMENT BUILD - NOT AUTHENTICODE SIGNED
+
+          This build was produced without a configured trusted code-signing identity.
+          Windows SmartScreen may show "Windows protected your PC" for unsigned or low-reputation builds.
+
+          Production releases should be signed using Microsoft Artifact Signing.
+          Repository: https://github.com/afterburn25/Sentinel
+          Commit: ${{ github.sha }}
+          "@ | Set-Content -Encoding utf8 package/SARA-windows-x64/SIGNING-STATUS.txt
+
+      - name: Create SHA-256 manifest
+        shell: pwsh
+        run: |
+          $root = Resolve-Path package/SARA-windows-x64
+          $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $relative = [IO.Path]::GetRelativePath($root, $file.FullName).Replace('\\','/')
+            "$hash  $relative"
+          }
+          $lines | Set-Content -Encoding ascii "$root/SHA256SUMS.txt"
+
+      - name: Verify packaged launcher layout
+        shell: pwsh
+        run: |
+          $root = "package/SARA-windows-x64"
+          if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
+          if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
+          if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
+          $splash = "$root/assets/SARA-Splash.png"
+          if (-not (Test-Path $splash)) { throw "SARA full-resolution splash PNG missing" }
+          python -c "from PIL import Image; import hashlib; raw=open(r'$splash','rb').read(); im=Image.open(r'$splash'); assert im.format=='PNG'; assert im.size==(1672,941), im.size; assert hashlib.sha256(raw).hexdigest()=='dc298f498c76975af80aa14fd1e9125ae64746c54181c340f138869a24548cb4'"
+          if (Test-Path "$root/assets/SARA-Splash.jpg") { throw "Legacy blurry JPG splash must not be packaged" }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+
+      - name: Build SARA Setup.exe
+        shell: pwsh
+        run: |
+          $iscc = "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Build-SARA-Installer.ps1 -IsccPath $iscc
+
+      - name: Sign SARA Setup.exe
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\\installer\\output
+          files-folder-filter: exe
+          files-folder-recurse: false
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: SARA Installer
+          description-url: https://github.com/afterburn25/Sentinel
+      - name: Verify SARA Setup Authenticode signature
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        shell: pwsh
+        run: |
+          $version = '${{ steps.sara_version.outputs.version }}'
+          $setup = "installer\\output\\SARA-Setup-$version.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          Write-Host "SARA Setup signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
+          if ($signature.Status -ne "Valid") {
+            throw "Signed SARA Setup.exe failed Authenticode verification"
+          }
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-${{ steps.sara_version.outputs.version }}-windows-x64
+          path: package/SARA-windows-x64/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record SARA Setup signature and SHA-256
+        shell: pwsh
+        run: |
+          $version = '${{ steps.sara_version.outputs.version }}'
+          $setup = "installer\\output\\SARA-Setup-$version.exe"
+          if (-not (Test-Path $setup)) { throw "SARA Setup.exe missing before release-status recording" }
+
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          $signature = Get-AuthenticodeSignature -LiteralPath $setup
+          $signer = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "NONE" }
+
+          @"
+          SARA SETUP ${{ steps.sara_version.outputs.version }}
+          SHA256=$hash
+          AUTHENTICODE_STATUS=$($signature.Status)
+          SIGNER=$signer
+          COMMIT=${{ github.sha }}
+          "@ | Set-Content -Encoding ascii "installer\\output\\SARA-Setup-$version-SHA256.txt"
+
+          Write-Host "SARA Setup SHA-256: $hash"
+          Write-Host "Authenticode status: $($signature.Status)"
+          Write-Host "Signer: $signer"
+
+      - name: Upload signed SARA Setup
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-Setup-${{ steps.sara_version.outputs.version }}
+          path: |
+            installer/output/SARA-Setup-${{ steps.sara_version.outputs.version }}.exe
+            installer/output/SARA-Setup-${{ steps.sara_version.outputs.version }}-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unsigned SARA Setup development build
+        if: ${{ env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '' || env.AZURE_SUBSCRIPTION_ID == '' || env.ARTIFACT_SIGNING_ENDPOINT == '' || env.ARTIFACT_SIGNING_ACCOUNT == '' || env.ARTIFACT_SIGNING_PROFILE == '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-Setup-${{ steps.sara_version.outputs.version }}-UNSIGNED-DEVELOPMENT
+          path: |
+            installer/output/SARA-Setup-${{ steps.sara_version.outputs.version }}.exe
+            installer/output/SARA-Setup-${{ steps.sara_version.outputs.version }}-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+) {
+            throw "Invalid SARA VERSION value: $version"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "SARA version: $version"
+
       - name: Require trusted signing for release tags
         if: ${{ startsWith(github.ref, 'refs/tags/v') && (env.AZURE_CLIENT_ID == '' || env.AZURE_TENANT_ID == '' || env.AZURE_SUBSCRIPTION_ID == '' || env.ARTIFACT_SIGNING_ENDPOINT == '' || env.ARTIFACT_SIGNING_ACCOUNT == '' || env.ARTIFACT_SIGNING_PROFILE == '') }}
         shell: pwsh
@@ -135,14 +435,14 @@ jobs:
         run: >-
           cmake --install out/build/windows-msvc-release
           --config Release
-          --prefix package/SARA-1.0.15-windows-x64
+          --prefix package/SARA-windows-x64
 
       - name: Launch packaged SARA and capture 1.0.15 recovery UI
         shell: pwsh
         run: >-
           pwsh -NoProfile -ExecutionPolicy Bypass
           -File tools/Capture-SARA-1.0.15-Recovery-UI.ps1
-          -AppPath "package/SARA-1.0.15-windows-x64/SARA.exe"
+          -AppPath "package/SARA-windows-x64/SARA.exe"
           -OutputDir "recovery-ui-screenshots"
 
       - name: Upload 1.0.15 recovery UI screenshots
@@ -166,7 +466,7 @@ jobs:
           endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}\package\SARA-1.0.15-windows-x64
+          files-folder: ${{ github.workspace }}\package\SARA-windows-x64
           files-folder-filter: exe
           files-folder-recurse: true
           file-digest: SHA256
@@ -179,7 +479,7 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.15-windows-x64
+          $root = Resolve-Path package/SARA-windows-x64
           $executables = Get-ChildItem $root -Filter *.exe -File -Recurse
           if (-not $executables) { throw "No executables found for signature verification" }
 
@@ -204,12 +504,12 @@ jobs:
           Production releases should be signed using Microsoft Artifact Signing.
           Repository: https://github.com/afterburn25/Sentinel
           Commit: ${{ github.sha }}
-          "@ | Set-Content -Encoding utf8 package/SARA-1.0.15-windows-x64/SIGNING-STATUS.txt
+          "@ | Set-Content -Encoding utf8 package/SARA-windows-x64/SIGNING-STATUS.txt
 
       - name: Create SHA-256 manifest
         shell: pwsh
         run: |
-          $root = Resolve-Path package/SARA-1.0.15-windows-x64
+          $root = Resolve-Path package/SARA-windows-x64
           $files = Get-ChildItem $root -File -Recurse | Sort-Object FullName
           $lines = foreach ($file in $files) {
             $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -221,7 +521,7 @@ jobs:
       - name: Verify packaged launcher layout
         shell: pwsh
         run: |
-          $root = "package/SARA-1.0.15-windows-x64"
+          $root = "package/SARA-windows-x64"
           if (-not (Test-Path "$root/SARA.exe")) { throw "SARA.exe GUI missing" }
           if (-not (Test-Path "$root/bin/SentinelCli.exe")) { throw "SentinelCli.exe missing" }
           if (-not (Test-Path "$root/migrations")) { throw "migrations folder missing" }
@@ -243,7 +543,8 @@ jobs:
           $iscc = "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe"
           & $iscc "installer\\Sentinel.iss"
           if ($LASTEXITCODE -ne 0) { throw "Sentinel installer build failed" }
-          $setup = "installer\\output\\SARA-Setup-1.0.15.exe"
+          $version = '${{ steps.sara_version.outputs.version }}'
+          $setup = "installer\\output\\SARA-Setup-$version.exe"
           if (-not (Test-Path $setup)) { throw "SARA Setup.exe was not created" }
 
       - name: Sign SARA Setup.exe
@@ -265,7 +566,8 @@ jobs:
         if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' && env.ARTIFACT_SIGNING_ENDPOINT != '' && env.ARTIFACT_SIGNING_ACCOUNT != '' && env.ARTIFACT_SIGNING_PROFILE != '' }}
         shell: pwsh
         run: |
-          $setup = "installer\\output\\SARA-Setup-1.0.15.exe"
+          $version = '${{ steps.sara_version.outputs.version }}'
+          $setup = "installer\\output\\SARA-Setup-$version.exe"
           $signature = Get-AuthenticodeSignature -LiteralPath $setup
           Write-Host "SARA Setup signature: $($signature.Status) - $($signature.SignerCertificate.Subject)"
           if ($signature.Status -ne "Valid") {
@@ -276,14 +578,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SARA-1.0.15-windows-x64
-          path: package/SARA-1.0.15-windows-x64/
+          path: package/SARA-windows-x64/
           if-no-files-found: error
           retention-days: 30
 
       - name: Record SARA Setup signature and SHA-256
         shell: pwsh
         run: |
-          $setup = "installer\\output\\SARA-Setup-1.0.15.exe"
+          $version = '${{ steps.sara_version.outputs.version }}'
+          $setup = "installer\\output\\SARA-Setup-$version.exe"
           if (-not (Test-Path $setup)) { throw "SARA Setup.exe missing before release-status recording" }
 
           $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
