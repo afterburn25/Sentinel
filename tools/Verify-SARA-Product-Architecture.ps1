@@ -171,6 +171,28 @@ foreach ($token in $requiredWorkflowNames) {
     }
 }
 
+$startupModelTokens = @(
+    'simSettings_.model="sentinel-chat"',
+    'ApplyPersonaRuntimeBinding(false,75000)',
+    'const std::string alias="sentinel-chat"',
+    'Connected automatically: ',
+    'sentinel-chat connected automatically',
+    'StartupTimeoutSeconds',
+    'Timed out while loading sentinel-chat'
+)
+foreach ($token in $startupModelTokens) {
+    if (-not $src.Contains($token) -and -not $trainerWorkerSrc.Contains($token)) {
+        # StartupTimeoutSeconds is in the bundled PowerShell launcher and is
+        # guarded separately by the recovery baseline; all other tokens live in Main.cpp.
+        if ($token -ne 'StartupTimeoutSeconds') {
+            throw "Protected automatic sentinel-chat startup wiring is missing: $token"
+        }
+    }
+}
+if ($src.Contains('Use Connect/Browse Models to attach the runtime.')) {
+    throw "Manual Browse/Connect startup regression detected."
+}
+
 $typingWorkflowTokens = @(
     'simTypingStartedTick_',
     'simTypingDurationMs_',
