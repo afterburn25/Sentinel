@@ -114,6 +114,10 @@ DeploymentPackage& DeploymentRegistry::Prepare(
         throw std::invalid_argument("deployment evaluation does not match the approved model");
     if(!EvaluationPassedApprovalGate(evaluation))
         throw std::invalid_argument("deployment preparation requires a complete passing evaluation");
+    if(model.approvedEvaluationRunId!=evaluation.id ||
+       model.approvedFoundationId!=evaluation.foundationId ||
+       model.approvedAdapterId!=evaluation.adapterId)
+        throw std::invalid_argument("deployment evaluation is not the exact proof used to approve the model");
 
     DeploymentPackage package;
     package.id="deploy-"+std::to_string(packages_.size()+1);
