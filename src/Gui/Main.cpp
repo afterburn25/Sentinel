@@ -5387,6 +5387,77 @@ private:
         return out;
     }
 
+    std::vector<PersonaResponseRuleView> FilteredPersonaResponseRules() const {
+        auto rules=PersonaResponseRules(0);
+        rules.erase(
+            std::remove_if(rules.begin(),rules.end(),[&](const auto& rule){
+                return !sentinel::simulation::ResponseRulePassesFilter(
+                    rule.trigger,
+                    rule.response,
+                    rule.matchType,
+                    rule.enabled,
+                    responseRuleSearch_,
+                    responseRuleTypeFilter_,
+                    responseRuleStateFilter_);
+            }),
+            rules.end());
+        return rules;
+    }
+
+    void SyncSelectedResponseRuleWithFilters(
+        const std::vector<PersonaResponseRuleView>& filteredRules)
+    {
+        if(selectedResponseRuleId_<=0) return;
+        const auto found=std::find_if(
+            filteredRules.begin(),filteredRules.end(),
+            [&](const auto& rule){ return rule.id==selectedResponseRuleId_; });
+        if(found==filteredRules.end())
+            StartNewPersonaResponseRule(false);
+    }
+
+    void ApplyPersonaResponseRuleSearch() {
+        responseRuleSearch_=Narrow(EditText(responseRuleFilterEdit_));
+        responseRulePage_=0;
+        const auto filtered=FilteredPersonaResponseRules();
+        SyncSelectedResponseRuleWithFilters(filtered);
+        statusText_=L"Rule search applied: "+
+            std::to_wstring(filtered.size())+L" match"+
+            (filtered.size()==1?L"":L"es");
+    }
+
+    void ClearPersonaResponseRuleFilters() {
+        responseRuleSearch_.clear();
+        responseRuleTypeFilter_="all";
+        responseRuleStateFilter_=-1;
+        responseRulePage_=0;
+        if(responseRuleFilterEdit_) SetWindowTextW(responseRuleFilterEdit_,L"");
+        statusText_=L"Response-rule filters cleared";
+    }
+
+    void CyclePersonaResponseRuleTypeFilter() {
+        if(responseRuleTypeFilter_=="all") responseRuleTypeFilter_="smart";
+        else if(responseRuleTypeFilter_=="smart") responseRuleTypeFilter_="contains";
+        else if(responseRuleTypeFilter_=="contains") responseRuleTypeFilter_="exact";
+        else responseRuleTypeFilter_="all";
+        responseRulePage_=0;
+        const auto filtered=FilteredPersonaResponseRules();
+        SyncSelectedResponseRuleWithFilters(filtered);
+        statusText_=L"Rule type filter: "+Widen(responseRuleTypeFilter_);
+    }
+
+    void CyclePersonaResponseRuleStateFilter() {
+        if(responseRuleStateFilter_==-1) responseRuleStateFilter_=1;
+        else if(responseRuleStateFilter_==1) responseRuleStateFilter_=0;
+        else responseRuleStateFilter_=-1;
+        responseRulePage_=0;
+        const auto filtered=FilteredPersonaResponseRules();
+        SyncSelectedResponseRuleWithFilters(filtered);
+        const std::wstring label=
+            responseRuleStateFilter_==1?L"enabled":
+            responseRuleStateFilter_==0?L"disabled":L"all";
+        statusText_=L"Rule state filter: "+label;
+    }
+
     int PersonaResponseRuleCount() const {
         sqlite3_stmt* s{};
         int count=0;
@@ -5528,7 +5599,7 @@ private:
     }
 
     void PreviousPersonaResponseRulePage() {
-        const auto rules=PersonaResponseRules(0);
+        const auto rules=FilteredPersonaResponseRules();
         const auto page=sentinel::simulation::ComputeResponseRulePageWindow(
             rules.size(),responseRulePage_,4);
         responseRulePage_=page.pageIndex;
@@ -5539,7 +5610,7 @@ private:
     }
 
     void NextPersonaResponseRulePage() {
-        const auto rules=PersonaResponseRules(0);
+        const auto rules=FilteredPersonaResponseRules();
         const auto page=sentinel::simulation::ComputeResponseRulePageWindow(
             rules.size(),responseRulePage_,4);
         responseRulePage_=page.pageIndex;
@@ -5628,6 +5699,12 @@ private:
         statusText_=changed
             ? L"Rule #"+std::to_wstring(id)+L" enabled state changed"
             : L"Response rule could not be updated";
+        if(changed) {
+            const auto filtered=FilteredPersonaResponseRules();
+            responseRulePage_=sentinel::simulation::ComputeResponseRulePageWindow(
+                filtered.size(),responseRulePage_,4).pageIndex;
+            SyncSelectedResponseRuleWithFilters(filtered);
+        }
     }
 
     void AddPersonaResponseRule(const std::string& matchType) {
@@ -5716,9 +5793,10 @@ private:
         sqlite3_finalize(s);
         if(selectedResponseRuleId_==id)
             StartNewPersonaResponseRule(false);
-        const auto rules=PersonaResponseRules(0);
+        const auto rules=FilteredPersonaResponseRules();
         responseRulePage_=sentinel::simulation::ComputeResponseRulePageWindow(
             rules.size(),responseRulePage_,4).pageIndex;
+        SyncSelectedResponseRuleWithFilters(rules);
         statusText_=L"Response rule deleted";
     }
 
