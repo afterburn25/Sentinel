@@ -3979,7 +3979,7 @@ private:
         const float resultH=bodyH-requestH-12.0f;
 
         Rounded(x,bodyY,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Research Queue",x+16,bodyY+12,160,28,h1Fmt_.Get(),brush_.text.Get());
+        TextLine(L"Research Tasks",x+16,bodyY+12,leftW-104,28,h1Fmt_.Get(),brush_.text.Get());
         AddButton(L"identity_research_back",L"Back",x+leftW-76,bodyY+12,60,28,false);
         TextLine(
             L"NO AUTOMATIC IDENTITY CONCLUSIONS",
@@ -4028,7 +4028,7 @@ private:
         TextLine(L"Case purpose / legal-basis note",rightX+16,bodyY+131,rightW-32,16,tinyFmt_.Get(),brush_.muted.Get());
         AddButton(L"research_queue",L"Queue Research",rightX+16,bodyY+172,126,26,true);
         TextLine(
-            L"SARA records the task; an investigator performs or authorizes the actual source lookup.",
+            L"SARA stores the task; the investigator performs the authorized lookup.",
             rightX+154,bodyY+175,rightW-170,20,tinyFmt_.Get(),brush_.muted.Get());
 
         Rounded(rightX,resultY,rightW,resultH,brush_.panel.Get(),brush_.border.Get(),10);
@@ -4068,7 +4068,7 @@ private:
         }
 
         TextLine(
-            L"Rejected: "+std::to_wstring(rejected)+L" | research data remains case-scoped and provenance-backed.",
+            L"Rejected: "+std::to_wstring(rejected)+L" | case-scoped / provenance-backed",
             x+16,bodyY+bodyH-24,leftW-32,18,tinyFmt_.Get(),brush_.muted.Get());
     }
 
