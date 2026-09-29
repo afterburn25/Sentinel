@@ -908,3 +908,52 @@ Artifact digests from run #880:
 
 This is the validated rollback point for the recovered SARA shell through reviewed correction targets and offline shadow-learning data integrity.
 
+## Checkpoint 19 — Persona LoRA training candidate isolation validated
+
+Validated commit:
+
+`3a9bd0d66a041f98697eff8c483ececcd209554b`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #887
+- Run ID: `36524609266`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- Persona LoRA candidate-isolation worker self-test: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Persona LoRA training isolation proven by this checkpoint:
+
+- completing a Persona LoRA training job no longer deactivates the currently active adapter
+- the trained GGUF adapter is registered with `active=0`
+- training completion therefore cannot silently change the live persona runtime
+- the worker explicitly reports the produced artifact as a candidate
+- the candidate remains available in Personas & LoRAs history for explicit operator action
+- the existing active LoRA remains the resolver result until an investigator deliberately activates another version
+- an executable worker self-test seeds an active adapter, registers a newly trained candidate, and proves the active row remains active while the new row remains inactive
+- CI architecture guards reject reintroduction of the old worker-side deactivate-and-auto-activate SQL
+- Foundation Fork training already remains CANDIDATE on completion and is unchanged by this checkpoint
+- manual LoRA/Foundation activation still requires further evaluation-gate hardening; this checkpoint intentionally does not overstate that boundary
+
+Artifact digests from run #887:
+
+- Windows package: `sha256:89c875c67142f1efa84431aba1e24e424dcb18f7eec2ee9fbbb7a0b39a731d4f`
+- unsigned-development Setup artifact: `sha256:fc53ccad840d172f38b6c8fd2c58452c24b84ce78f23f6c875c08d949d68d1aa`
+- UI screenshots: `sha256:66bd2d1ea758bb9f1e73b7b4eda60f55e38077d296a2bdf62a934867f40dff7b`
+
+This is the validated rollback point for the recovered SARA shell through non-activating Persona LoRA training output.
+
