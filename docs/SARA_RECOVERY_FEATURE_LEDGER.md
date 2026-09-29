@@ -273,6 +273,7 @@ Every future feature restoration must follow this exact sequence:
 - Identity Research provider registry / adapter boundary: RESTORED / VALIDATED (Windows Build #836)
 - Identity Research encrypted report preservation: RESTORED / VALIDATED (Windows Build #838)
 - Identity Research provider request/result exchange / portal assist: RESTORED / VALIDATED (Windows Build #844)
+- Exact Model Lab approval/deployment evaluation-proof binding: RESTORED / VALIDATED (Windows Build #865)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -334,6 +335,9 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] isolated Trainer environment with explicit CUDA QLoRA preparation
 - [x] deployable Foundation Fork GGUF generation plus activation/rollback history
 - [x] evaluation/runtime-stack gating for approval and deployment
+- [x] core model approval persists exact passing evaluation / foundation / adapter proof
+- [x] model activation and rollback reject unproven legacy approvals
+- [x] deployment preparation requires the exact evaluation proof used to approve the model
 - [x] rule hit ledger, alternate response pools and terminal/continue behavior
 - [x] Persona LoRA exact-version activation/compare/rollback history
 - [x] trainer worker heartbeat and stale-job-only recovery
