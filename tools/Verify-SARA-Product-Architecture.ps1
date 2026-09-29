@@ -358,7 +358,11 @@ $evaluationGateModelTokens = @(
     'EvaluationPassedApprovalGate(evaluation)',
     'evaluation.candidateId!=model.id',
     'evaluation.foundationId!=currentFoundationId',
-    'evaluation.adapterId!=currentAdapterId'
+    'evaluation.adapterId!=currentAdapterId',
+    'model.approvedEvaluationRunId=evaluation.id',
+    'model.approvedFoundationId=evaluation.foundationId',
+    'model.approvedAdapterId=evaluation.adapterId',
+    'models_[i].approvedEvaluationRunId.empty()'
 )
 foreach ($token in $evaluationGateModelTokens) {
     if (-not $modelRegistrySrc.Contains($token)) {
@@ -372,6 +376,9 @@ $evaluationGateDeploymentTokens = @(
     'model.stage!=ModelStage::Approved',
     'evaluation.candidateId!=model.id',
     'EvaluationPassedApprovalGate(evaluation)',
+    'model.approvedEvaluationRunId!=evaluation.id',
+    'model.approvedFoundationId!=evaluation.foundationId',
+    'model.approvedAdapterId!=evaluation.adapterId',
     'deployment preparation requires a complete passing evaluation',
     'package.evaluationRunId=evaluation.id'
 )
