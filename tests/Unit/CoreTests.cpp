@@ -1,4 +1,5 @@
 #include "Sentinel/Core/Types.hpp"
+#include "Sentinel/Audit/AuditService.hpp"
 #include "Sentinel/Evidence/SevContainer.hpp"
 #include "Sentinel/Evidence/EvidenceService.hpp"
 #include "Sentinel/Security/Crypto.hpp"
@@ -148,6 +149,31 @@ void TestResponseRuleMatcher()
     Require(selectedA=="one" || selectedA=="two" || selectedA=="three",
         "response-rule alternate selection returned an invalid variant");
 }
+
+void TestModelStackAuditActionIds()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    Require((uint32_t)sentinel::AuditAction::FoundationEvaluated==605,
+        "FoundationEvaluated audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::FoundationApproved==606,
+        "FoundationApproved audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::FoundationActivated==607,
+        "FoundationActivated audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::FoundationRolledBack==608,
+        "FoundationRolledBack audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::PersonaLoraEvaluated==609,
+        "PersonaLoraEvaluated audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::PersonaLoraApproved==610,
+        "PersonaLoraApproved audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::PersonaLoraActivated==611,
+        "PersonaLoraActivated audit action id changed");
+    Require((uint32_t)sentinel::AuditAction::PersonaLoraRolledBack==612,
+        "PersonaLoraRolledBack audit action id changed");
+}
+
 
 void TestIdsAndHashes()
 {
@@ -1885,6 +1911,9 @@ int main()
         std::cout << "[core] ids/hashes..." << std::endl;
         TestIdsAndHashes();
         std::cout << "[core] ids/hashes PASS" << std::endl;
+        std::cout << "[core] model-stack audit action ids..." << std::endl;
+        TestModelStackAuditActionIds();
+        std::cout << "[core] model-stack audit action ids PASS" << std::endl;
         std::cout << "[core] training review recent list..." << std::endl;
         TestTrainingReviewRecentList();
         std::cout << "[core] training review recent list PASS" << std::endl;
