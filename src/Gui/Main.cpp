@@ -5329,14 +5329,20 @@ private:
     std::vector<PersonaResponseRuleView> PersonaResponseRules(size_t limit=8) const {
         std::vector<PersonaResponseRuleView> out;
         sqlite3_stmt* s{};
-        const char* sql=
+        const char* sqlLimited=
             "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal "
             "FROM persona_response_rules WHERE persona_name=? "
             "ORDER BY priority DESC,id DESC LIMIT ?";
-        if(sqlite3_prepare_v2(runtime_->db.Handle(),sql,-1,&s,nullptr)!=SQLITE_OK)
+        const char* sqlAll=
+            "SELECT id,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal "
+            "FROM persona_response_rules WHERE persona_name=? "
+            "ORDER BY priority DESC,id DESC";
+        if(sqlite3_prepare_v2(
+                runtime_->db.Handle(),limit==0?sqlAll:sqlLimited,-1,&s,nullptr)!=SQLITE_OK)
             return out;
         sqlite3_bind_text(s,1,simSettings_.persona.name.c_str(),-1,SQLITE_TRANSIENT);
-        sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,50));
+        if(limit!=0)
+            sqlite3_bind_int(s,2,(int)std::min<size_t>(limit,1000));
         while(sqlite3_step(s)==SQLITE_ROW) {
             PersonaResponseRuleView item;
             item.id=sqlite3_column_int64(s,0);
@@ -5505,7 +5511,7 @@ private:
     }
 
     void NextPersonaResponseRulePage() {
-        const auto rules=PersonaResponseRules(50);
+        const auto rules=PersonaResponseRules(0);
         constexpr size_t pageSize=4;
         const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
         if(responseRulePage_+1<pageCount) {
@@ -5681,7 +5687,7 @@ private:
         sqlite3_finalize(s);
         if(selectedResponseRuleId_==id)
             StartNewPersonaResponseRule(false);
-        const auto rules=PersonaResponseRules(50);
+        const auto rules=PersonaResponseRules(0);
         constexpr size_t pageSize=4;
         const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
         if(responseRulePage_>=pageCount) responseRulePage_=pageCount-1;
@@ -8275,7 +8281,7 @@ private:
             }
         }
         else if(personaTab_==PersonaTab::Rules) {
-            const auto rules=PersonaResponseRules(50);
+            const auto rules=PersonaResponseRules(0);
             size_t enabledRules=0;
             for(const auto& rule:rules) if(rule.enabled) ++enabledRules;
 
@@ -8306,16 +8312,42 @@ private:
                 L"rule_terminal_toggle",
                 responseRuleTerminal_?L"Terminal":L"Continue",
                 x+142,actionY,88,28,false);
-            AddButton(L"rule_add_smart",L"Smart",x+238,actionY,68,28,true);
-            AddButton(L"rule_add_contains",L"Contains",x+314,actionY,78,28,false);
-            AddButton(L"rule_add_exact",L"Exact",x+400,actionY,64,28,false);
-            AddButton(L"rule_test",L"Test",x+472,actionY,54,28,false);
-            AddButton(L"rule_clear",L"Clear",x+534,actionY,62,28,false);
+
+            if(selectedResponseRuleId_>0) {
+                AddButton(L"rule_save",L"Save Changes",x+238,actionY,102,28,true);
+                AddButton(L"rule_new",L"New",x+348,actionY,58,28,false);
+                TextLine(
+                    L"Editing #"+std::to_wstring(selectedResponseRuleId_)+
+                    L" / "+Widen(selectedResponseRuleMatchType_),
+                    x+414,actionY+4,126,20,tinyFmt_.Get(),brush_.cyan.Get());
+            } else {
+                AddButton(L"rule_add_smart",L"Smart",x+238,actionY,68,28,true);
+                AddButton(L"rule_add_contains",L"Contains",x+314,actionY,78,28,false);
+                AddButton(L"rule_add_exact",L"Exact",x+400,actionY,64,28,false);
+            }
+            AddButton(L"rule_test",L"Test",x+548,actionY,54,28,false);
+            AddButton(L"rule_clear",L"Clear All",x+610,actionY,72,28,false);
+
+            constexpr size_t rulePageSize=4;
+            const size_t rulePageCount=
+                rules.empty()?1:(rules.size()+rulePageSize-1)/rulePageSize;
+            if(responseRulePage_>=rulePageCount)
+                responseRulePage_=rulePageCount-1;
 
             TextLine(
                 std::to_wstring(enabledRules)+L" enabled / "+
                 std::to_wstring(rules.size())+L" saved for "+Widen(simSettings_.persona.name),
-                x+22,py+154,contentW-44,20,tinyFmt_.Get(),brush_.cyan.Get());
+                x+22,py+154,contentW-260,20,tinyFmt_.Get(),brush_.cyan.Get());
+
+            if(!personaShowLearnedNotes_) {
+                AddButton(L"rule_prev",L"<",x+contentW-226,py+148,34,26,false);
+                TextLine(
+                    L"Page "+std::to_wstring(responseRulePage_+1)+L" / "+
+                    std::to_wstring(rulePageCount),
+                    x+contentW-184,py+151,100,20,tinyFmt_.Get(),brush_.muted.Get(),
+                    DWRITE_TEXT_ALIGNMENT_CENTER);
+                AddButton(L"rule_next",L">",x+contentW-76,py+148,34,26,false);
+            }
 
             const float listY=py+180.0f;
             const float rowH=64.0f;
@@ -8359,10 +8391,12 @@ private:
                     L"Enter a trigger and approved response above, choose the wording mode, then add Smart, Contains, or Exact.",
                     x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
             } else {
-                const size_t visible=std::min<size_t>(rules.size(),4);
-                for(size_t i=0;i<visible;i++) {
-                    const auto& rule=rules[i];
-                    const float ry=listY+i*(rowH+6.0f);
+                const size_t pageStart=responseRulePage_*rulePageSize;
+                const size_t pageEnd=std::min(rules.size(),pageStart+rulePageSize);
+                const size_t visible=pageEnd-pageStart;
+                for(size_t row=0;row<visible;row++) {
+                    const auto& rule=rules[pageStart+row];
+                    const float ry=listY+row*(rowH+6.0f);
                     Rounded(x+18,ry,contentW-36,rowH,brush_.sidebar.Get(),brush_.border.Get(),8);
 
                     const std::wstring typeLabel=
@@ -8400,12 +8434,11 @@ private:
                         L"Delete",x+contentW-76,ry+18,58,28,false);
                 }
 
-                if(rules.size()>visible) {
-                    TextLine(
-                        L"Showing newest "+std::to_wstring(visible)+L" of "+
-                        std::to_wstring(rules.size())+L" saved rules.",
-                        x+22,listY+visible*(rowH+6.0f)+4,contentW-44,18,tinyFmt_.Get(),brush_.muted.Get());
-                }
+                TextLine(
+                    L"Showing "+std::to_wstring(pageStart+1)+L"-"+
+                    std::to_wstring(pageEnd)+L" of "+
+                    std::to_wstring(rules.size())+L" saved rules.",
+                    x+22,listY+visible*(rowH+6.0f)+4,contentW-44,18,tinyFmt_.Get(),brush_.muted.Get());
             }
             }
         }
