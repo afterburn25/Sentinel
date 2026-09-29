@@ -1,6 +1,6 @@
-# Sentinel 0.2.0 — Native Core & Secure Case Store
+# SARA — Synthetic Adaptive Response Agent
 
-This repository is the first native C++ implementation baseline for Sentinel.
+This repository contains the native Windows SARA application and its protected recovery/development line.
 
 ## Implemented in this scaffold
 
@@ -59,6 +59,8 @@ ctest --test-dir build -C Debug --output-on-failure
 
 ## Version
 
-- Application baseline: 0.2.0
+- Current application version: **1.0.16** (canonical value in `VERSION`)
+- Protected recovery baseline: **1.0.15**
+- Version policy: see `docs/SARA_VERSIONING.md`
 - Evidence container: SEV1
-- Audit canonicalization: audit-v1
+- Audit canonicalization: audit-v2 with legacy audit-v1 verification compatibility
