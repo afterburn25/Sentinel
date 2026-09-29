@@ -3,6 +3,7 @@ param()
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
 $mainPath = Join-Path $repo "src\Gui\Main.cpp"
+$auditHeaderPath = Join-Path $repo "include\Sentinel\Audit\AuditService.hpp"
 $memoryPath = Join-Path $repo "src\Simulation\ConversationMemory.cpp"
 $fallbackModelPath = Join-Path $repo "src\Simulation\RuleBasedTestModel.cpp"
 $modelRegistryPath = Join-Path $repo "src\Simulation\ModelRegistry.cpp"
@@ -21,6 +22,9 @@ if (-not (Test-Path $contractPath)) {
 }
 if (-not (Test-Path $mainPath)) {
     throw "SARA GUI source is missing: $mainPath"
+}
+if (-not (Test-Path $auditHeaderPath)) {
+    throw "SARA audit action contract is missing: $auditHeaderPath"
 }
 if (-not (Test-Path $memoryPath)) {
     throw "SARA conversation-memory source is missing: $memoryPath"
@@ -57,6 +61,7 @@ if (-not (Test-Path $modelStackProofMigrationPath)) {
 }
 
 $src = Get-Content $mainPath -Raw
+$auditHeaderSrc = Get-Content $auditHeaderPath -Raw
 $memorySrc = Get-Content $memoryPath -Raw
 $fallbackModelSrc = Get-Content $fallbackModelPath -Raw
 $modelRegistrySrc = Get-Content $modelRegistryPath -Raw
@@ -454,6 +459,22 @@ Write-Host "SARA product architecture contract: PASS"
 Write-Host "Permanent main navigation: $($required -join ' | ')"
 Write-Host "Model Lab remains subordinate with internal tabs."
 Write-Host "Simulation Chat and investigative modules remain protected."
+
+$modelStackAuditEnumTokens = @(
+    'FoundationEvaluated=605',
+    'FoundationApproved=606',
+    'FoundationActivated=607',
+    'FoundationRolledBack=608',
+    'PersonaLoraEvaluated=609',
+    'PersonaLoraApproved=610',
+    'PersonaLoraActivated=611',
+    'PersonaLoraRolledBack=612'
+)
+foreach ($token in $modelStackAuditEnumTokens) {
+    if (-not $auditHeaderSrc.Contains($token)) {
+        throw "Model-stack audit action enum contract is missing: $token"
+    }
+}
 
 $modelStackAuditTokens = @(
     'AuditAction::FoundationEvaluated',
