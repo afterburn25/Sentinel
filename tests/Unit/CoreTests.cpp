@@ -430,6 +430,38 @@ void TestTrainerFoundationAndJobs()
     std::filesystem::remove_all(root);
 }
 
+sentinel::simulation::EvaluationRun MakePassingEvaluation(
+    std::string candidateId,
+    std::string candidateName,
+    std::string foundationId,
+    std::string foundationName,
+    std::string adapterId,
+    std::string adapterName)
+{
+    sentinel::simulation::EvaluationRun run;
+    run.id="eval-"+candidateId;
+    run.candidateId=std::move(candidateId);
+    run.candidateName=std::move(candidateName);
+    run.foundationId=std::move(foundationId);
+    run.foundationName=std::move(foundationName);
+    run.adapterId=std::move(adapterId);
+    run.adapterName=std::move(adapterName);
+    run.overallScore=95;
+
+    const sentinel::simulation::EvaluationDimension required[]={
+        sentinel::simulation::EvaluationDimension::PersonaConsistency,
+        sentinel::simulation::EvaluationDimension::PolicyCompliance,
+        sentinel::simulation::EvaluationDimension::StyleConsistency,
+        sentinel::simulation::EvaluationDimension::MemoryRecall,
+        sentinel::simulation::EvaluationDimension::TriggerRegression,
+        sentinel::simulation::EvaluationDimension::ResponseDiversity
+    };
+    for(auto dimension:required)
+        run.dimensions.push_back({dimension,95,true,"unit-test pass",{}});
+    return run;
+}
+
+
 void TestModelRegistryLifecycle()
 {
     auto Require=[](bool value,const char* message) {
@@ -438,18 +470,30 @@ void TestModelRegistryLifecycle()
 
     sentinel::simulation::ModelRegistry registry;
     auto& first=registry.Register("http://127.0.0.1:8001","candidate-a");
-    first.evaluationScore=91;
-    registry.Approve(0);
+    auto firstEval=MakePassingEvaluation(
+        first.id,"candidate-a","foundation-1","SARA Foundation 1","adapter-1","Samantha v1");
+
+    Require(!registry.Approve(0,firstEval,"foundation-other","adapter-1"),
+        "model approval accepted an evaluation from a different runtime stack");
+    Require(first.stage==sentinel::simulation::ModelStage::Candidate,
+        "rejected approval changed candidate stage");
+
+    Require(registry.Approve(0,firstEval,"foundation-1","adapter-1"),
+        "candidate approval failed with complete passing evaluation");
     Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Approved,
-        "candidate approval failed");
+        "candidate approval stage missing");
+    Require(registry.Models()[0].evaluationScore==firstEval.overallScore,
+        "candidate approval did not bind evaluation score");
     registry.Activate(0);
     Require(registry.ActiveIndex()==0,"first model activation failed");
     Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Active,
         "first model active stage missing");
 
     auto& second=registry.Register("http://127.0.0.1:8002","candidate-b");
-    second.evaluationScore=95;
-    registry.Approve(1);
+    auto secondEval=MakePassingEvaluation(
+        second.id,"candidate-b","foundation-2","SARA Foundation 2","adapter-2","Samantha v2");
+    Require(registry.Approve(1,secondEval,"foundation-2","adapter-2"),
+        "second candidate approval failed");
     registry.Activate(1);
     Require(registry.ActiveIndex()==1,"second model activation failed");
     Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Approved,
@@ -461,8 +505,16 @@ void TestModelRegistryLifecycle()
     registry.Retire(1);
     Require(registry.Models()[1].stage==sentinel::simulation::ModelStage::Retired,
         "model retirement failed");
-}
 
+    auto& third=registry.Register("http://127.0.0.1:8003","candidate-c");
+    auto failedEval=MakePassingEvaluation(
+        third.id,"candidate-c","foundation-3","SARA Foundation 3","adapter-3","Samantha v3");
+    failedEval.dimensions.back().passed=false;
+    Require(!registry.Approve(2,failedEval,"foundation-3","adapter-3"),
+        "model registry accepted an evaluation with a failed required dimension");
+    Require(registry.Models()[2].stage==sentinel::simulation::ModelStage::Candidate,
+        "failed evaluation changed candidate stage");
+}
 
 void TestPersonaScopedConversationMemory()
 {
@@ -694,15 +746,17 @@ void TestDeploymentRegistryLifecycle()
     };
 
     sentinel::simulation::DeploymentRegistry deployments;
-    auto& first=deployments.Prepare(
+    auto firstEval=MakePassingEvaluation(
         "model-1","Candidate A",
         "foundation-1","SARA Foundation 1.0",
-        "1","Samantha v1",
-        "Samantha","eval-1",92);
+        "1","Samantha v1");
+    auto& first=deployments.Prepare(firstEval,"Samantha");
     const std::string firstDeploymentId=first.id;
     Require(first.stage==sentinel::simulation::DeploymentStage::Staged,
         "prepared deployment should be staged");
     Require(first.versionLocked,"prepared deployment should start locked");
+    Require(first.evaluationRunId==firstEval.id,
+        "deployment did not preserve evaluation run linkage");
     Require(deployments.Activate(0),"first deployment activation failed");
     Require(deployments.ActiveIndex()==0,"first deployment active index mismatch");
     Require(deployments.HasActiveLockedDeployment(),
@@ -713,11 +767,27 @@ void TestDeploymentRegistryLifecycle()
         "deployment unlock did not change active lock state");
     deployments.SetLocked(0,true);
 
-    auto& second=deployments.Prepare(
+    auto failedEval=MakePassingEvaluation(
+        "model-rejected","Rejected Candidate",
+        "foundation-rejected","Rejected Foundation",
+        "9","Rejected Adapter");
+    failedEval.dimensions.front().passed=false;
+    bool failedPrepareRejected=false;
+    try {
+        deployments.Prepare(failedEval,"Samantha");
+    } catch(const std::invalid_argument&) {
+        failedPrepareRejected=true;
+    }
+    Require(failedPrepareRejected,
+        "deployment registry accepted an evaluation with a failed required dimension");
+    Require(deployments.Packages().size()==1,
+        "rejected deployment preparation changed registry state");
+
+    auto secondEval=MakePassingEvaluation(
         "model-2","Candidate \"B\"",
         "foundation-2","SARA Foundation 2.0",
-        "2","Samantha v2",
-        "Samantha","eval-2",96);
+        "2","Samantha v2");
+    auto& second=deployments.Prepare(secondEval,"Samantha");
     Require(second.previousDeploymentId==firstDeploymentId,
         "prepared deployment did not link previous active package");
     Require(deployments.Activate(1),"second deployment activation failed");
@@ -727,6 +797,8 @@ void TestDeploymentRegistryLifecycle()
     const auto manifest=deployments.BuildManifest(1);
     Require(manifest.find("\"schema\": \"sara-deployment-v1\"")!=std::string::npos,
         "deployment manifest schema missing");
+    Require(manifest.find("\"evaluation_gate\": \"PASS\"")!=std::string::npos,
+        "deployment manifest evaluation gate missing");
     Require(manifest.find("foundation-2")!=std::string::npos,
         "deployment manifest foundation missing");
     Require(manifest.find("Candidate \\\"B\\\"")!=std::string::npos,
@@ -748,7 +820,7 @@ void TestDeploymentRegistryLifecycle()
     loaded.Load(path);
     Require(loaded.Packages().size()==2,"deployment registry persistence count mismatch");
     Require(loaded.ActiveIndex()==0,"deployment registry active index persistence mismatch");
-    Require(loaded.Packages()[1].evaluationRunId=="eval-2",
+    Require(loaded.Packages()[1].evaluationRunId==secondEval.id,
         "deployment registry evaluation linkage persistence mismatch");
     Require(loaded.Packages()[0].versionLocked,
         "deployment version lock persistence mismatch");
