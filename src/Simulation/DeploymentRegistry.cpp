@@ -1,5 +1,6 @@
 #include "Sentinel/Simulation/DeploymentRegistry.hpp"
 #include "Sentinel/Simulation/EvaluationSuite.hpp"
+#include "Sentinel/Simulation/ModelRegistry.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -101,21 +102,24 @@ std::string ToString(DeploymentStage stage) {
 }
 
 DeploymentPackage& DeploymentRegistry::Prepare(
+    const RegisteredModel& model,
     const EvaluationRun& evaluation,
     std::string personaName)
 {
+    if(model.stage!=ModelStage::Approved && model.stage!=ModelStage::Active)
+        throw std::invalid_argument("deployment preparation requires an approved model");
     if(evaluation.id.empty())
         throw std::invalid_argument("deployment preparation requires an evaluation run id");
-    if(evaluation.candidateId.empty())
-        throw std::invalid_argument("deployment preparation requires an evaluated candidate id");
+    if(evaluation.candidateId.empty() || evaluation.candidateId!=model.id)
+        throw std::invalid_argument("deployment evaluation does not match the approved model");
     if(!EvaluationPassedApprovalGate(evaluation))
         throw std::invalid_argument("deployment preparation requires a complete passing evaluation");
 
     DeploymentPackage package;
     package.id="deploy-"+std::to_string(packages_.size()+1);
     package.createdUtc=NowUtc();
-    package.candidateId=evaluation.candidateId;
-    package.candidateName=evaluation.candidateName;
+    package.candidateId=model.id;
+    package.candidateName=model.modelName;
     package.foundationId=evaluation.foundationId;
     package.foundationName=evaluation.foundationName;
     package.adapterId=evaluation.adapterId;
