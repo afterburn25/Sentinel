@@ -277,6 +277,8 @@ Every future feature restoration must follow this exact sequence:
 - Reviewed correction targets / shadow-learning data integrity: RESTORED / VALIDATED (Windows Build #880)
 - Persona LoRA training candidate isolation: RESTORED / VALIDATED (Windows Build #887)
 - Foundation / Persona LoRA staged evaluation and activation proof: RESTORED / VALIDATED (Windows Build #906)
+- Automatic sentinel-chat startup: RESTORED / VALIDATED (Windows Build #928)
+- Foundation / Persona LoRA audit provenance: RESTORED / VALIDATED (Windows Build #928)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -349,6 +351,11 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] staged Foundation/LoRA evaluation loads candidate runtime files without changing persistent active bindings
 - [x] Foundation and Persona LoRA activation require persisted passing evaluation proof
 - [x] LoRA activation requires its evaluated Foundation to be the active Foundation
+- [x] sentinel-chat automatically starts and connects during normal SARA loading; Browse/Connect is not required
+- [x] automatic local-AI startup is bounded and falls back safely rather than hanging behind the splash
+- [x] active Foundation/LoRA stacks retain the stable sentinel-chat API alias
+- [x] automatic startup preserves saved model tuning values
+- [x] Foundation/LoRA evaluate/approve/activate/rollback lifecycle changes are recorded in Audit & Compliance
 - [x] newly trained Persona LoRAs are registered inactive and cannot silently replace the live adapter
 - [x] CI worker self-test proves the existing active LoRA survives candidate registration unchanged
 - [x] rule hit ledger, alternate response pools and terminal/continue behavior
