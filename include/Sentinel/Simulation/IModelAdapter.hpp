@@ -74,4 +74,9 @@ std::vector<std::string> DiscoverOpenAICompatibleModels(
     std::string endpoint,
     std::string apiKey = {});
 
+std::string SelectPreferredOpenAICompatibleModel(
+    const std::vector<std::string>& models,
+    std::string_view configuredModel,
+    bool requireSentinelChat);
+
 }
