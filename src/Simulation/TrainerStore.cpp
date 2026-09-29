@@ -1,4 +1,5 @@
 #include "Sentinel/Simulation/TrainerStore.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 
 #include <sqlite3.h>
 #include <algorithm>
@@ -43,13 +44,13 @@ ModelFoundation ReadFoundation(sqlite3_stmt* s) {
     ModelFoundation f;
     f.id=Col(s,0); f.name=Col(s,1); f.parentId=Col(s,2); f.sourceModel=Col(s,3);
     f.trainableSourcePath=Col(s,4); f.runtimeGgufPath=Col(s,5); f.version=sqlite3_column_int(s,6);
-    f.status=Col(s,7); f.notes=Col(s,8); return f;
+    f.status=Col(s,7); f.notes=Col(s,8); f.approvedEvaluationRunId=Col(s,9); return f;
 }
 PersonaLoraBinding ReadBinding(sqlite3_stmt* s) {
     PersonaLoraBinding b;
     b.id=sqlite3_column_int64(s,0); b.personaName=Col(s,1); b.foundationId=Col(s,2);
     b.loraName=Col(s,3); b.loraPath=Col(s,4); b.weight=sqlite3_column_double(s,5);
-    b.active=sqlite3_column_int(s,6)!=0; return b;
+    b.active=sqlite3_column_int(s,6)!=0; b.approvedEvaluationRunId=Col(s,7); return b;
 }
 
 TrainerDialogueSession ReadDialogueSession(sqlite3_stmt* s) {
@@ -103,8 +104,8 @@ void TrainerStore::EnsureDefaultFoundation(std::string_view name,std::string_vie
     if(count>0) return;
     const auto id=NewId("foundation");
     Check(sqlite3_prepare_v2(db,
-        "INSERT INTO model_foundations(id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes) "
-        "VALUES(?,?, '', ?, '', ?, 1, 'ACTIVE', 'Initial SARA runtime foundation')",
+        "INSERT INTO model_foundations(id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes,approved_evaluation_run_id) "
+        "VALUES(?,?, '', ?, '', ?, 1, 'ACTIVE', 'Initial SARA runtime foundation','LEGACY_ACTIVE_1.0.15')",
         -1,&s,nullptr),db,"prepare default foundation");
     sqlite3_bind_text(s,1,id.c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,2,std::string(name).c_str(),-1,SQLITE_TRANSIENT);
@@ -116,7 +117,7 @@ void TrainerStore::EnsureDefaultFoundation(std::string_view name,std::string_vie
 std::vector<ModelFoundation> TrainerStore::ListFoundations() const {
     std::vector<ModelFoundation> out; auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes "
+        "SELECT id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes,approved_evaluation_run_id "
         "FROM model_foundations ORDER BY created_utc ASC",-1,&s,nullptr),db,"prepare foundation list");
     while(sqlite3_step(s)==SQLITE_ROW) out.push_back(ReadFoundation(s));
     sqlite3_finalize(s); return out;
@@ -125,7 +126,7 @@ std::vector<ModelFoundation> TrainerStore::ListFoundations() const {
 std::optional<ModelFoundation> TrainerStore::GetFoundation(std::string_view id) const {
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes "
+        "SELECT id,name,parent_id,source_model,trainable_source_path,runtime_gguf_path,version,status,notes,approved_evaluation_run_id "
         "FROM model_foundations WHERE id=? LIMIT 1",-1,&s,nullptr),db,"prepare foundation get");
     sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
     std::optional<ModelFoundation> out; if(sqlite3_step(s)==SQLITE_ROW) out=ReadFoundation(s);
@@ -133,14 +134,25 @@ std::optional<ModelFoundation> TrainerStore::GetFoundation(std::string_view id) 
 }
 
 
-bool TrainerStore::ApproveFoundation(std::string_view id) {
+bool TrainerStore::ApproveFoundation(
+    std::string_view id,
+    const EvaluationRun& evaluation)
+{
     if(id.empty()) return false;
+    auto target=GetFoundation(id);
+    if(!target) return false;
+    if(target->status=="RETIRED" || target->status=="TRAINING") return false;
+    if(evaluation.id.empty() || !EvaluationPassedApprovalGate(evaluation)) return false;
+    if(evaluation.foundationId!=id || !evaluation.adapterId.empty()) return false;
+
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "UPDATE model_foundations SET status='APPROVED',updated_utc=CURRENT_TIMESTAMP "
-        "WHERE id=? AND status IN ('DRAFT','TRAINING','CANDIDATE','APPROVED')",
+        "UPDATE model_foundations "
+        "SET status='APPROVED',approved_evaluation_run_id=?,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND status IN ('DRAFT','CANDIDATE','APPROVED','ACTIVE')",
         -1,&s,nullptr),db,"prepare foundation approve");
-    sqlite3_bind_text(s,1,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,1,evaluation.id.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(s,2,std::string(id).c_str(),-1,SQLITE_TRANSIENT);
     Check(sqlite3_step(s),db,"approve foundation");
     const bool changed=sqlite3_changes(db)>0;
     sqlite3_finalize(s);
@@ -151,6 +163,7 @@ bool TrainerStore::ActivateFoundation(std::string_view id) {
     if(id.empty()) return false;
     auto target=GetFoundation(id);
     if(!target || (target->status!="APPROVED" && target->status!="ACTIVE")) return false;
+    if(target->approvedEvaluationRunId.empty()) return false;
     if(target->status=="ACTIVE") return true;
 
     std::string previousId;
@@ -220,6 +233,7 @@ bool TrainerStore::RollbackFoundation() {
     auto previous=PreviousFoundation();
     if(!previous) return false;
     if(previous->status!="APPROVED" && previous->status!="ACTIVE") return false;
+    if(previous->approvedEvaluationRunId.empty()) return false;
     return ActivateFoundation(previous->id);
 }
 
@@ -256,71 +270,43 @@ PersonaLoraBinding TrainerStore::BindPersonaLora(
     double weight)
 {
     if(personaName.empty()) throw std::runtime_error("persona name is required");
-    SqliteTransaction tx(db_);
+    if(foundationId.empty()) throw std::runtime_error("foundation id is required");
+    if(loraName.empty() || loraPath.empty()) throw std::runtime_error("LoRA name and path are required");
+
+    auto foundation=GetFoundation(foundationId);
+    if(!foundation) throw std::runtime_error("foundation does not exist");
+
     auto* db=db_.Handle();
     sqlite3_stmt* s{};
-
-    long long previousId=0;
-    Check(sqlite3_prepare_v2(db,
-        "SELECT id FROM persona_lora_bindings "
-        "WHERE persona_name=? AND active=1 "
-        "ORDER BY updated_utc DESC,id DESC LIMIT 1",
-        -1,&s,nullptr),db,"prepare current persona lora lookup");
-    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
-    if(sqlite3_step(s)==SQLITE_ROW) previousId=sqlite3_column_int64(s,0);
-    sqlite3_finalize(s);
-
-    Check(sqlite3_prepare_v2(db,
-        "UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP "
-        "WHERE persona_name=?",
-        -1,&s,nullptr),db,"prepare deactivate persona loras");
-    sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
-    Check(sqlite3_step(s),db,"deactivate persona loras");
-    sqlite3_finalize(s);
-
     Check(sqlite3_prepare_v2(db,
         "INSERT INTO persona_lora_bindings("
-        "persona_name,foundation_id,lora_name,lora_path,weight,active"
-        ") VALUES(?,?,?,?,?,1)",
-        -1,&s,nullptr),db,"prepare persona lora bind");
+        "persona_name,foundation_id,lora_name,lora_path,weight,active,approved_evaluation_run_id"
+        ") VALUES(?,?,?,?,?,0,'')",
+        -1,&s,nullptr),db,"prepare persona lora candidate bind");
     sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,2,std::string(foundationId).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,3,std::string(loraName).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_text(s,4,std::string(loraPath).c_str(),-1,SQLITE_TRANSIENT);
     sqlite3_bind_double(s,5,std::clamp(weight,0.0,4.0));
-    Check(sqlite3_step(s),db,"bind persona lora");
+    Check(sqlite3_step(s),db,"bind persona lora candidate");
     const auto id=sqlite3_last_insert_rowid(db);
     sqlite3_finalize(s);
 
-    if(previousId>0 && previousId!=id) {
-        Check(sqlite3_prepare_v2(db,
-            "INSERT INTO persona_lora_activation_history("
-            "persona_name,from_binding_id,to_binding_id"
-            ") VALUES(?,?,?)",
-            -1,&s,nullptr),db,"prepare persona lora activation history");
-        sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
-        sqlite3_bind_int64(s,2,previousId);
-        sqlite3_bind_int64(s,3,id);
-        Check(sqlite3_step(s),db,"insert persona lora activation history");
-        sqlite3_finalize(s);
-    }
-
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active,approved_evaluation_run_id "
         "FROM persona_lora_bindings WHERE id=?",
         -1,&s,nullptr),db,"prepare bound lora get");
     sqlite3_bind_int64(s,1,id);
     PersonaLoraBinding out;
     if(sqlite3_step(s)==SQLITE_ROW) out=ReadBinding(s);
     sqlite3_finalize(s);
-    tx.Commit();
     return out;
 }
 
 std::optional<PersonaLoraBinding> TrainerStore::ResolvePersonaLora(std::string_view personaName) const {
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active,approved_evaluation_run_id "
         "FROM persona_lora_bindings WHERE persona_name=? AND active=1 ORDER BY updated_utc DESC,id DESC LIMIT 1",
         -1,&s,nullptr),db,"prepare persona lora resolve");
     sqlite3_bind_text(s,1,std::string(personaName).c_str(),-1,SQLITE_TRANSIENT);
@@ -333,7 +319,7 @@ std::optional<PersonaLoraBinding> TrainerStore::GetPersonaLora(long long id) con
     if(id<=0) return std::nullopt;
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active,approved_evaluation_run_id "
         "FROM persona_lora_bindings WHERE id=? LIMIT 1",
         -1,&s,nullptr),db,"prepare persona lora get");
     sqlite3_bind_int64(s,1,id);
@@ -343,9 +329,46 @@ std::optional<PersonaLoraBinding> TrainerStore::GetPersonaLora(long long id) con
     return out;
 }
 
+bool TrainerStore::ApprovePersonaLora(
+    long long id,
+    const EvaluationRun& evaluation)
+{
+    auto target=GetPersonaLora(id);
+    if(!target) return false;
+    if(evaluation.id.empty() || !EvaluationPassedApprovalGate(evaluation)) return false;
+    if(evaluation.adapterId!=std::to_string(id)) return false;
+    if(evaluation.foundationId!=target->foundationId) return false;
+
+    auto foundation=GetFoundation(target->foundationId);
+    if(!foundation ||
+       (foundation->status!="APPROVED" && foundation->status!="ACTIVE") ||
+       foundation->approvedEvaluationRunId.empty())
+        return false;
+
+    auto* db=db_.Handle();
+    sqlite3_stmt* s{};
+    Check(sqlite3_prepare_v2(db,
+        "UPDATE persona_lora_bindings "
+        "SET approved_evaluation_run_id=?,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=?",
+        -1,&s,nullptr),db,"prepare persona lora approve");
+    sqlite3_bind_text(s,1,evaluation.id.c_str(),-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int64(s,2,id);
+    Check(sqlite3_step(s),db,"approve persona lora");
+    const bool changed=sqlite3_changes(db)>0;
+    sqlite3_finalize(s);
+    return changed;
+}
+
 bool TrainerStore::ActivatePersonaLora(long long id) {
     auto target=GetPersonaLora(id);
     if(!target) return false;
+    if(target->approvedEvaluationRunId.empty()) return false;
+    auto foundation=GetFoundation(target->foundationId);
+    if(!foundation ||
+       (foundation->status!="APPROVED" && foundation->status!="ACTIVE") ||
+       foundation->approvedEvaluationRunId.empty())
+        return false;
     if(target->active) return true;
 
     SqliteTransaction tx(db_);
@@ -420,7 +443,7 @@ std::optional<PersonaLoraBinding> TrainerStore::PreviousPersonaLora(
 
 bool TrainerStore::RollbackPersonaLora(std::string_view personaName) {
     auto previous=PreviousPersonaLora(personaName);
-    if(!previous) return false;
+    if(!previous || previous->approvedEvaluationRunId.empty()) return false;
     return ActivatePersonaLora(previous->id);
 }
 
@@ -441,7 +464,9 @@ std::string TrainerStore::BuildPersonaLoraManifest(long long id) const {
     out<<"  \"lora_name\": \""<<JsonEscape(binding->loraName)<<"\",\n";
     out<<"  \"lora_path\": \""<<JsonEscape(binding->loraPath)<<"\",\n";
     out<<"  \"weight\": "<<binding->weight<<",\n";
-    out<<"  \"active\": "<<(binding->active?"true":"false")<<"\n";
+    out<<"  \"active\": "<<(binding->active?"true":"false")<<",\n";
+    out<<"  \"approved_evaluation_run_id\": \""
+       <<JsonEscape(binding->approvedEvaluationRunId)<<"\"\n";
     out<<"}\n";
     return out.str();
 }
@@ -454,7 +479,7 @@ std::vector<PersonaLoraBinding> TrainerStore::ListPersonaLoras(
     if(personaName.empty()) return out;
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
-        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active "
+        "SELECT id,persona_name,foundation_id,lora_name,lora_path,weight,active,approved_evaluation_run_id "
         "FROM persona_lora_bindings WHERE persona_name=? "
         "ORDER BY active DESC,updated_utc DESC,id DESC LIMIT ?",
         -1,&s,nullptr),db,"prepare persona lora list");
