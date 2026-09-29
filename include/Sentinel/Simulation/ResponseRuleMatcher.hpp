@@ -15,6 +15,14 @@ struct ResponseRuleMatchQuality {
     [[nodiscard]] bool Matched() const noexcept { return score>0; }
 };
 
+struct ResponseRulePageWindow {
+    std::size_t pageIndex{};
+    std::size_t pageCount{1};
+    std::size_t start{};
+    std::size_t end{};
+};
+
+
 [[nodiscard]] std::string NormalizeResponseRuleText(std::string_view input);
 
 [[nodiscard]] ResponseRuleMatchQuality EvaluateResponseRuleMatch(
@@ -36,5 +44,10 @@ struct ResponseRuleMatchQuality {
 [[nodiscard]] std::string SelectResponseRuleVariant(
     std::string_view responseText,
     std::string_view deterministicBasis);
+
+[[nodiscard]] ResponseRulePageWindow ComputeResponseRulePageWindow(
+    std::size_t totalItems,
+    std::size_t requestedPage,
+    std::size_t pageSize) noexcept;
 
 }
