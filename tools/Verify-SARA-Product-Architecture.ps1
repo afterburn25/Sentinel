@@ -328,7 +328,10 @@ $correctionReviewMainTokens = @(
     'PENDING human review in Model Lab / Datasets',
     'Training Target (corrected',
     'item.correctionInstruction',
-    'item.correctionInstruction.empty()?"Reviewed":"Correction"'
+    'item.correctionInstruction.empty()?"Reviewed":"Correction"',
+    'existing.originalResponse==item.outputText',
+    'TrainingExampleState::Rejected',
+    'capture-review-corrected'
 )
 foreach ($token in $correctionReviewMainTokens) {
     if (-not $src.Contains($token)) {
