@@ -47,7 +47,9 @@ Require-Contains $gui 'if(splashThread) WaitForSingleObject(splashThread,INFINIT
 Require-Contains $gui 'ShowWindow(hwnd,show);'
 
 
-# Startup must not perform slow AI repair/service/network work while the splash is waiting.
+# Startup may attach the already-installed local model during the splash,
+# but it must do so only through the bounded runtime-binding path. Downloads,
+# repair, and unbounded direct service/network calls remain forbidden here.
 $guiText = Get-Content -LiteralPath $gui -Raw
 $autoStart = $guiText.IndexOf('    void AutoInitializeLocalAi() {')
 $repairStart = $guiText.IndexOf('    void InstallOrRepairLocalAi()', $autoStart)
@@ -55,9 +57,13 @@ if ($autoStart -lt 0 -or $repairStart -lt 0) {
     throw 'Unable to locate AutoInitializeLocalAi recovery boundary.'
 }
 $autoBlock = $guiText.Substring($autoStart, $repairStart - $autoStart)
+Require-Contains $gui 'ApplyPersonaRuntimeBinding(false,75000)'
+Require-Contains $gui 'const std::string alias="sentinel-chat"'
+Require-Contains $gui 'startupTimeoutMs=180000'
+Require-Contains $gui 'Timed out while loading sentinel-chat'
 foreach ($forbidden in @('RunBundledAiSetup(', 'StartBundledAiService(', 'DiscoverOpenAICompatibleModels(')) {
     if ($autoBlock.Contains($forbidden)) {
-        throw "Splash-hang regression: AutoInitializeLocalAi contains blocking startup work: $forbidden"
+        throw "Splash-hang regression: AutoInitializeLocalAi bypasses the bounded startup path: $forbidden"
     }
 }
 
