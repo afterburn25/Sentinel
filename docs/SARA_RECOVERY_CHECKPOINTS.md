@@ -802,3 +802,56 @@ Artifact digests from run #844:
 - UI screenshots: `sha256:410887117f78219810673c52857d6ba7b70326417239ecef8fde1399165fbf96`
 
 This is the validated rollback point through credential-free provider exchange, encrypted result preservation, and no-data-injection portal assist.
+
+## Checkpoint 17 — Exact Model Lab evaluation proof binding validated
+
+Validated commit:
+
+`80131dbd83a26962219fc7fbc5aae2af6f0c3b14`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #865
+- Run ID: `36522649886`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Evaluation / deployment proof recovery proven by this checkpoint:
+
+- model approval is enforced inside the core ModelRegistry instead of only by GUI button flow
+- approval requires a complete passing EvaluationRun for the exact candidate
+- approval is bound to the evaluated Foundation Fork and Persona LoRA / adapter IDs
+- the exact evaluation-run ID, foundation ID and adapter ID used for approval persist with the registered model
+- model activation refuses approved-state records that do not carry persisted evaluation proof
+- model rollback refuses to reactivate a previous model that lacks persisted approval proof
+- legacy six-field model-registry rows that predate exact approval proof are safely demoted from APPROVED/ACTIVE to CANDIDATE on load so they must be reevaluated
+- deployment preparation requires both an approved model and the exact passing EvaluationRun that approved that model
+- a different passing evaluation for the same candidate cannot be substituted at deployment time
+- deployment packages derive candidate/runtime identity from the validated model/evaluation objects rather than caller-provided strings
+- deployment manifests explicitly record `"evaluation_gate": "PASS"`
+- regression coverage rejects runtime-stack mismatch, failed required dimensions, unapproved deployment candidates, and mismatched approval-evaluation proof
+- CI architecture guards now protect the core evaluation/deployment boundary against later regression
+- the protected 1.0.15 startup, splash, installer, permanent application shell and navigation were not replaced
+
+Artifact digests from run #865:
+
+- Windows package: `sha256:3bb8465eac8d070c78178444931959ce2114f5c538df3a025cf2b46daf859167`
+- unsigned-development Setup artifact: `sha256:7e70de2f8f32292d3e5a0ec96bf51fa4da2e00be2d667c82a6a6e832dadbc05f`
+- UI screenshots: `sha256:0c652b4155fb33694204a033a446f39b2715022ff61073942a4152c14bd0bf32`
+
+This is the validated rollback point for the recovered SARA shell through exact Model Lab approval/deployment evaluation-proof enforcement.
+
