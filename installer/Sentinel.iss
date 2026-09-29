@@ -1,8 +1,10 @@
 #define MyAppName "SARA"
-#define MyAppVersion "1.0.15"
+#ifndef MyAppVersion
+  #error MyAppVersion must be supplied from the repository VERSION file.
+#endif
 #define MyAppPublisher "SARA Project"
 #define MyAppExeName "SARA.exe"
-#define PackageDir "..\package\SARA-1.0.15-windows-x64"
+#define PackageDir "..\package\SARA-windows-x64"
 
 [Setup]
 AppId={{A6717D99-89F5-4C14-B4BE-2B42EACBC108}
@@ -17,7 +19,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
-OutputBaseFilename=SARA-Setup-1.0.15
+OutputBaseFilename=SARA-Setup-{#MyAppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -27,11 +29,11 @@ RestartApplications=no
 UsePreviousAppDir=yes
 SetupLogging=yes
 UninstallDisplayIcon={app}\SARA.exe
-VersionInfoVersion=1.0.15.0
+VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany=SARA Project
 VersionInfoDescription=SARA Installer
 VersionInfoProductName=SARA
-VersionInfoProductVersion=1.0.15.0
+VersionInfoProductVersion={#MyAppVersion}.0
 
 [Files]
 Source: "{#PackageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
