@@ -4867,12 +4867,12 @@ private:
 
         const float modelButtonGap=8.0f;
         const float modelButtonW=(sideW-40.0f-modelButtonGap)/2.0f;
-        AddButton(L"sim_browse_models",L"Browse Models",rx+16,y+164,modelButtonW,32,false);
+        AddButton(L"sim_browse_models",L"Refresh Models",rx+16,y+164,modelButtonW,32,false);
         AddButton(L"sim_install_ai",L"Install / Repair",rx+16+modelButtonW+modelButtonGap,y+164,modelButtonW,32,true);
 
         TextLine(L"Available model",rx+16,y+204,112,18,tinyFmt_.Get(),brush_.muted.Get());
-        TextLine(L"Manual model",rx+16,y+258,106,18,tinyFmt_.Get(),brush_.muted.Get());
-        AddButton(L"sim_model",L"Connect",rx+sideW-98,y+278,82,30,true);
+        TextLine(L"Manual override",rx+16,y+258,106,18,tinyFmt_.Get(),brush_.muted.Get());
+        AddButton(L"sim_model",L"Reconnect",rx+sideW-98,y+278,82,30,true);
 
         StatusDot(rx+22,y+326,4,modelStatus_.find(L"Connected")!=std::wstring::npos?brush_.green.Get():brush_.yellow.Get());
         TextLine(modelStatus_,rx+34,y+313,sideW-50,28,tinyFmt_.Get(),brush_.text.Get());
