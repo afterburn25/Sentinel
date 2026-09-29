@@ -392,6 +392,20 @@ try {
     Click-SaraClient -Window $main -X $personaRulesX -Y 202
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06b-persona-rules-learning.png")
 
+    # Open the first fixture rule. The Open control is rendered in the first
+    # response-rule row. This verifies the packaged editor can enter in-place
+    # edit state without creating a duplicate rule.
+    $rulesContentX = 248.0
+    $rulesContentW = $personaClientWidth - $rulesContentX - 28.0
+    $ruleOpenX = [int]($rulesContentX + $rulesContentW - 214.0 + 25.0)
+    Click-SaraClient -Window $main -X $ruleOpenX -Y 450
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06c-persona-rule-edit.png")
+
+    # Six fixture rules create two pages at four rows per page.
+    $ruleNextX = [int]($rulesContentX + $rulesContentW - 76.0 + 17.0)
+    Click-SaraClient -Window $main -X $ruleNextX -Y 399
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "06d-persona-rules-page-2.png")
+
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[5]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "07-channels-messaging.png")
 
