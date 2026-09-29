@@ -1123,6 +1123,13 @@ public:
         researchProvenanceEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1077,GetModuleHandleW(nullptr),nullptr);
         researchConfidenceEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_NUMBER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1078,GetModuleHandleW(nullptr),nullptr);
 
+        researchProviderIdEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1079,GetModuleHandleW(nullptr),nullptr);
+        researchProviderNameEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1080,GetModuleHandleW(nullptr),nullptr);
+        researchProviderModeCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1081,GetModuleHandleW(nullptr),nullptr);
+        researchProviderEndpointEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1082,GetModuleHandleW(nullptr),nullptr);
+        researchProviderCredentialEdit_=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,0,0,hwnd_,(HMENU)1083,GetModuleHandleW(nullptr),nullptr);
+        researchProviderNotesEdit_=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL,0,0,0,0,hwnd_,(HMENU)1084,GetModuleHandleW(nullptr),nullptr);
+
         personaCommunicationCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1034,GetModuleHandleW(nullptr),nullptr);
         personaCognitiveCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1041,GetModuleHandleW(nullptr),nullptr);
         personaSlangCombo_=CreateWindowExW(0,L"COMBOBOX",L"",WS_CHILD|WS_VSCROLL|CBS_DROPDOWNLIST,0,0,0,0,hwnd_,(HMENU)1035,GetModuleHandleW(nullptr),nullptr);
@@ -1151,7 +1158,8 @@ public:
             scenarioNameEdit_,scenarioObjectiveEdit_,scenarioSeedEdit_,minDelayEdit_,maxDelayEdit_,agencyEndpointEdit_,agencyIdEdit_,
             subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,subjectNotesEdit_,
             identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_,
-            researchQueryEdit_,researchPurposeEdit_,researchResultEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_};
+            researchQueryEdit_,researchPurposeEdit_,researchResultEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_,
+            researchProviderIdEdit_,researchProviderNameEdit_,researchProviderEndpointEdit_,researchProviderCredentialEdit_,researchProviderNotesEdit_};
         for(HWND e:advancedEdits) {
             SendMessageW(e,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(e,L"DarkMode_Explorer",nullptr);
@@ -1168,7 +1176,8 @@ public:
             agencyEndpointEdit_,agencyIdEdit_,
             subjectDisplayEdit_,subjectLegalEdit_,subjectAliasesEdit_,subjectUsernamesEdit_,subjectContactsEdit_,
             identitySourceTypeEdit_,identitySourceRefEdit_,identityLeadValueEdit_,identityConfidenceEdit_,identityProvenanceEdit_,
-            researchQueryEdit_,researchPurposeEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_
+            researchQueryEdit_,researchPurposeEdit_,researchReferenceEdit_,researchProvenanceEdit_,researchConfidenceEdit_,
+            researchProviderIdEdit_,researchProviderNameEdit_,researchProviderEndpointEdit_,researchProviderCredentialEdit_
         };
         for(HWND e:centeredEdits) {
             if(!e) continue;
@@ -1184,7 +1193,8 @@ public:
         HWND personaCombos[]={personaAgeCombo_,ageStateCombo_,personaGenderCombo_,personaPronounsCombo_,personaRelationshipCombo_,
             personaPersonalityCombo_,personaSocialCombo_,personaConfidenceCombo_,modelCombo_,operatingStateCombo_,
             personaCommunicationCombo_,personaCognitiveCombo_,personaSlangCombo_,personaGrammarCombo_,personaTypoCombo_,personaEmojiCombo_,
-            personaWritingStyleCombo_,personaProfileCombo_,trainerModeCombo_,trainerFoundationCombo_,researchTypeCombo_,researchProviderCombo_};
+            personaWritingStyleCombo_,personaProfileCombo_,trainerModeCombo_,trainerFoundationCombo_,
+            researchTypeCombo_,researchProviderCombo_,researchProviderModeCombo_};
         for(HWND combo:personaCombos) {
             SendMessageW(combo,WM_SETFONT,(WPARAM)(uiFont_?uiFont_:GetStockObject(DEFAULT_GUI_FONT)),TRUE);
             SetWindowTheme(combo,L"DarkMode_Explorer",nullptr);
@@ -1232,6 +1242,12 @@ public:
         SendMessageW(researchReferenceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Result URL / record ID / evidence reference");
         SendMessageW(researchProvenanceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"How, when, and from which authorized source the result was obtained");
         SendMessageW(researchConfidenceEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"0-100");
+        SendMessageW(researchProviderIdEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"stable-provider-id");
+        SendMessageW(researchProviderNameEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Provider display name");
+        SendMessageW(researchProviderEndpointEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Endpoint / portal hint; no credentials");
+        SendMessageW(researchProviderCredentialEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Credential alias / vault reference only");
+        SendMessageW(researchProviderNotesEdit_,EM_SETCUEBANNER,TRUE,(LPARAM)L"Configuration notes; never store secrets here");
+        SendMessageW(researchProviderNotesEdit_,EM_SETLIMITTEXT,4000,0);
         SendMessageW(researchResultEdit_,EM_SETLIMITTEXT,12000,0);
         SendMessageW(researchConfidenceEdit_,WM_SETTEXT,0,(LPARAM)L"50");
         SendMessageW(subjectNotesEdit_,EM_SETLIMITTEXT,12000,0);
@@ -1348,6 +1364,9 @@ public:
         };
         fillCombo(researchTypeCombo_,researchTypes,std::size(researchTypes));
         SendMessageW(researchTypeCombo_,CB_SETCURSEL,0,0);
+        const wchar_t* researchProviderModes[]={L"Manual",L"Portal",L"API"};
+        fillCombo(researchProviderModeCombo_,researchProviderModes,std::size(researchProviderModes));
+        SendMessageW(researchProviderModeCombo_,CB_SETCURSEL,0,0);
         RefreshIdentityResearchProviderList();
         RefreshTrainerFoundationList();
         RefreshPersonaProfileList();
@@ -2025,6 +2044,7 @@ private:
     HWND subjectDisplayEdit_{},subjectLegalEdit_{},subjectAliasesEdit_{},subjectUsernamesEdit_{},subjectContactsEdit_{},subjectNotesEdit_{};
     HWND identitySourceTypeEdit_{},identitySourceRefEdit_{},identityLeadValueEdit_{},identityConfidenceEdit_{},identityProvenanceEdit_{};
     HWND researchTypeCombo_{},researchProviderCombo_{},researchQueryEdit_{},researchPurposeEdit_{},researchResultEdit_{},researchReferenceEdit_{},researchProvenanceEdit_{},researchConfidenceEdit_{};
+    HWND researchProviderIdEdit_{},researchProviderNameEdit_{},researchProviderModeCombo_{},researchProviderEndpointEdit_{},researchProviderCredentialEdit_{},researchProviderNotesEdit_{};
     HWND personaCommunicationCombo_{},personaCognitiveCombo_{},personaSlangCombo_{},personaGrammarCombo_{},personaTypoCombo_{},personaEmojiCombo_{};
     HWND responseRuleTriggerEdit_{},responseRuleResponseEdit_{};
     HWND trainerModeCombo_{},trainerFoundationCombo_{};
@@ -2083,6 +2103,9 @@ private:
     std::string selectedIdentityLeadId_;
     std::string selectedResearchTaskId_;
     std::vector<sentinel::identity::IdentityResearchProvider> researchProviders_;
+    bool researchProviderManagerOpen_{false};
+    std::string selectedResearchProviderConfigId_;
+    unsigned int selectedResearchProviderTypesMask_{1u};
     bool subjectDraftNew_{false};
     std::vector<PersonaMediaItem> personaMedia_;
     int selectedPersonaMedia_{-1};
