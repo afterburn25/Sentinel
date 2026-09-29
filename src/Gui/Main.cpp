@@ -4527,6 +4527,16 @@ private:
         });
         if(!selectedExists) {
             selectedResearchTaskId_=tasks.empty()?"":tasks.front().id;
+            if(!tasks.empty()) {
+                const auto& task=tasks.front();
+                RefreshIdentityResearchProviderList(task.provider);
+                SetWindowTextW(researchQueryEdit_,Widen(task.queryText).c_str());
+                SetWindowTextW(researchPurposeEdit_,Widen(task.purpose).c_str());
+                SendMessageW(researchTypeCombo_,CB_SETCURSEL,(WPARAM)(int)task.type,0);
+                SetWindowTextW(researchResultEdit_,Widen(task.resultSummary).c_str());
+                SetWindowTextW(researchReferenceEdit_,Widen(task.resultReference).c_str());
+                SetWindowTextW(researchProvenanceEdit_,Widen(task.provenance).c_str());
+            }
         }
 
         std::optional<sentinel::identity::IdentityResearchTask> selectedTask;
