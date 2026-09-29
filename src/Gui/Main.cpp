@@ -4095,7 +4095,7 @@ private:
 
     void DrawIdentityResearchProviders(float w,float h) {
         PageTitle(
-            L"Subjects & Identity / Research Providers",
+            L"Identity Research / Providers",
             L"Authorized provider metadata only; execution requires a separately loaded and configured adapter");
 
         const float x=kSidebar+28.0f;
@@ -4116,9 +4116,9 @@ private:
         }
 
         Rounded(x,y,leftW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
-        TextLine(L"Provider Registry",x+16,y+12,leftW-122,28,h1Fmt_.Get(),brush_.text.Get());
-        AddButton(L"research_provider_back",L"Back",x+leftW-100,y+12,44,28,false);
-        AddButton(L"research_provider_new",L"New",x+leftW-50,y+12,34,28,true);
+        TextLine(L"Providers",x+16,y+12,leftW-142,28,h1Fmt_.Get(),brush_.text.Get());
+        AddButton(L"research_provider_back",L"Back",x+leftW-122,y+12,52,28,false);
+        AddButton(L"research_provider_new",L"New",x+leftW-62,y+12,46,28,true);
         TextLine(L"DISABLED BY DEFAULT UNLESS MANUAL",x+16,y+43,leftW-32,18,tinyFmt_.Get(),brush_.yellow.Get());
 
         float rowY=y+68.0f;
@@ -4179,8 +4179,8 @@ private:
                 AddButton(L"research_provider_toggle",selected->enabled?L"Disable":L"Enable",rightX+128,actionY,78,30,false);
         }
         TextLine(
-            L"Executable adapters loaded: "+std::to_wstring(runtime_->identityResearchAdapters.ExecutableCount())+
-            L" | Provider metadata alone never enables automatic research.",
+            L"Executable adapters: "+std::to_wstring(runtime_->identityResearchAdapters.ExecutableCount())+
+            L" | metadata only",
             rightX+216,actionY+4,rightW-232,20,tinyFmt_.Get(),brush_.muted.Get());
     }
 
