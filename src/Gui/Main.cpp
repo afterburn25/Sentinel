@@ -8399,11 +8399,14 @@ private:
             return;
         }
 
-        modelRegistry_.Approve((size_t)selectedRegistryModel_);
-        if(item.stage!=sentinel::simulation::ModelStage::Approved &&
-           item.stage!=sentinel::simulation::ModelStage::Active)
+        const auto [currentFoundationId,currentAdapterId]=CurrentEvaluationRuntimeIds();
+        if(!modelRegistry_.Approve(
+                (size_t)selectedRegistryModel_,
+                run,
+                currentFoundationId,
+                currentAdapterId))
         {
-            statusText_=L"Candidate model could not be approved from its current state";
+            statusText_=L"Candidate model approval was rejected by the evaluation gate";
             return;
         }
 
@@ -8512,11 +8515,8 @@ private:
         }
 
         auto& package=deploymentRegistry_.Prepare(
-            modelItem.id,modelItem.modelName,
-            eval.foundationId,eval.foundationName,
-            eval.adapterId,eval.adapterName,
-            simSettings_.persona.name,
-            eval.id,eval.overallScore);
+            eval,
+            simSettings_.persona.name);
 
         selectedDeployment_=(int)deploymentRegistry_.Packages().size()-1;
         deploymentRegistry_.Save(runtime_->root/"deployment-registry.tsv");
