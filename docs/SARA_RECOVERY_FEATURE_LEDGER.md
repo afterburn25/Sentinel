@@ -275,6 +275,7 @@ Every future feature restoration must follow this exact sequence:
 - Identity Research provider request/result exchange / portal assist: RESTORED / VALIDATED (Windows Build #844)
 - Exact Model Lab approval/deployment evaluation-proof binding: RESTORED / VALIDATED (Windows Build #865)
 - Reviewed correction targets / shadow-learning data integrity: RESTORED / VALIDATED (Windows Build #880)
+- Persona LoRA training candidate isolation: RESTORED / VALIDATED (Windows Build #887)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -342,6 +343,8 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] correction instructions generate separate reviewable training targets instead of relabeling original replies
 - [x] corrected targets reset to PENDING when edited and only approved targets export as supervised JSONL output
 - [x] versioned datasets preserve correction provenance and supersede stale approved targets for future snapshots
+- [x] newly trained Persona LoRAs are registered inactive and cannot silently replace the live adapter
+- [x] CI worker self-test proves the existing active LoRA survives candidate registration unchanged
 - [x] rule hit ledger, alternate response pools and terminal/continue behavior
 - [x] Persona LoRA exact-version activation/compare/rollback history
 - [x] trainer worker heartbeat and stale-job-only recovery
