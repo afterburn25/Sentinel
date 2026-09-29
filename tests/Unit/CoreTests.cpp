@@ -93,6 +93,113 @@ void TestResponseRuleMatchLog()
     std::filesystem::remove_all(root);
 }
 
+void TestResponseRuleEditPersistence()
+{
+    auto Require=[](bool value,const char* message) {
+        if(!value) throw std::runtime_error(message);
+    };
+
+    const auto root=std::filesystem::temp_directory_path()/
+        ("sara-rule-edit-"+sentinel::Uuid::Random().ToString());
+    std::filesystem::create_directories(root);
+
+    sentinel::SqliteDatabase db;
+    db.Open(root/"rules.db");
+    sentinel::MigrationService migrations(db);
+    migrations.ApplyDirectory(std::filesystem::path(SENTINEL_SOURCE_DIR)/"migrations");
+
+    db.Execute(
+        "INSERT INTO persona_response_rules("
+        "persona_name,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal"
+        ") VALUES("
+        "'Samantha','contains','favorite color','blue mostly','persona_variation',1,140,1);");
+
+    sqlite3_stmt* q{};
+    Require(sqlite3_prepare_v2(db.Handle(),
+        "SELECT id FROM persona_response_rules WHERE persona_name='Samantha' LIMIT 1",
+        -1,&q,nullptr)==SQLITE_OK,
+        "could not prepare response-rule edit test lookup");
+    Require(sqlite3_step(q)==SQLITE_ROW,
+        "response-rule edit test row missing");
+    const long long ruleId=sqlite3_column_int64(q,0);
+    sqlite3_finalize(q);
+
+    sentinel::simulation::ResponseRuleMatchLog log(db);
+    log.Append(
+        "Samantha","conversation-edit",ruleId,"contains",95,
+        "favorite color","what is your favorite color","persona_variation","blue mostly");
+    Require(log.CountForRule("Samantha",ruleId)==1,
+        "response-rule edit test did not create historical hit");
+
+    sqlite3_stmt* update{};
+    Require(sqlite3_prepare_v2(db.Handle(),
+        "UPDATE persona_response_rules SET "
+        "trigger_text=?,response_text=?,response_mode=?,terminal=?,updated_utc=CURRENT_TIMESTAMP "
+        "WHERE id=? AND persona_name=?",
+        -1,&update,nullptr)==SQLITE_OK,
+        "could not prepare response-rule in-place update");
+    sqlite3_bind_text(update,1,"favorite colors",-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(update,2,"mostly blue || dark blue",-1,SQLITE_TRANSIENT);
+    sqlite3_bind_text(update,3,"exact",-1,SQLITE_TRANSIENT);
+    sqlite3_bind_int(update,4,0);
+    sqlite3_bind_int64(update,5,ruleId);
+    sqlite3_bind_text(update,6,"Samantha",-1,SQLITE_TRANSIENT);
+    Require(sqlite3_step(update)==SQLITE_DONE,
+        "response-rule in-place update failed");
+    sqlite3_finalize(update);
+    Require(sqlite3_changes(db.Handle())==1,
+        "response-rule in-place update did not affect exactly one row");
+
+    Require(sqlite3_prepare_v2(db.Handle(),
+        "SELECT COUNT(*),match_type,trigger_text,response_text,response_mode,enabled,priority,terminal "
+        "FROM persona_response_rules WHERE id=? AND persona_name='Samantha'",
+        -1,&q,nullptr)==SQLITE_OK,
+        "could not prepare edited response-rule verification");
+    sqlite3_bind_int64(q,1,ruleId);
+    Require(sqlite3_step(q)==SQLITE_ROW,
+        "edited response-rule row missing");
+    const auto colText=[&](int index) {
+        const auto* value=(const char*)sqlite3_column_text(q,index);
+        return std::string(value?value:"");
+    };
+    Require(sqlite3_column_int(q,0)==1,
+        "editing response rule created a duplicate row");
+    Require(colText(1)=="contains",
+        "editing response rule changed preserved match type");
+    Require(colText(2)=="favorite colors",
+        "edited response-rule trigger did not persist");
+    Require(colText(3)=="mostly blue || dark blue",
+        "edited response-rule response did not persist");
+    Require(colText(4)=="exact",
+        "edited response-rule wording mode did not persist");
+    Require(sqlite3_column_int(q,5)==1,
+        "editing response rule changed preserved enabled state");
+    Require(sqlite3_column_int(q,6)==140,
+        "editing response rule changed preserved priority");
+    Require(sqlite3_column_int(q,7)==0,
+        "edited response-rule terminal/continue state did not persist");
+    sqlite3_finalize(q);
+
+    Require(log.CountForRule("Samantha",ruleId)==1,
+        "editing response rule lost historical hit count");
+
+    Require(sqlite3_prepare_v2(db.Handle(),
+        "UPDATE persona_response_rules SET trigger_text='wrong persona' "
+        "WHERE id=? AND persona_name='Nikki'",
+        -1,&update,nullptr)==SQLITE_OK,
+        "could not prepare cross-persona response-rule update check");
+    sqlite3_bind_int64(update,1,ruleId);
+    Require(sqlite3_step(update)==SQLITE_DONE,
+        "cross-persona response-rule update execution failed");
+    sqlite3_finalize(update);
+    Require(sqlite3_changes(db.Handle())==0,
+        "response-rule edit leaked across persona scope");
+
+    db.Close();
+    std::filesystem::remove_all(root);
+}
+
+
 void TestResponseRuleMatcher()
 {
     using sentinel::simulation::EvaluateResponseRuleMatch;
@@ -1923,6 +2030,9 @@ int main()
         std::cout << "[core] response-rule matcher..." << std::endl;
         TestResponseRuleMatcher();
         std::cout << "[core] response-rule matcher PASS" << std::endl;
+        std::cout << "[core] response-rule edit persistence..." << std::endl;
+        TestResponseRuleEditPersistence();
+        std::cout << "[core] response-rule edit persistence PASS" << std::endl;
         std::cout << "[core] ids/hashes..." << std::endl;
         TestIdsAndHashes();
         std::cout << "[core] ids/hashes PASS" << std::endl;
