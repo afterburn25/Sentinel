@@ -108,6 +108,12 @@ std::vector<std::byte> AuditMetadata(std::string_view text) {
 }
 
 std::filesystem::path AppDataRoot() {
+    wchar_t overrideRoot[4096]{};
+    const DWORD overrideLength=GetEnvironmentVariableW(
+        L"SARA_DATA_ROOT",overrideRoot,(DWORD)std::size(overrideRoot));
+    if(overrideLength>0 && overrideLength<std::size(overrideRoot))
+        return std::filesystem::path(overrideRoot);
+
     PWSTR p{};
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&p))) {
         const std::filesystem::path local(p);

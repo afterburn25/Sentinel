@@ -71,6 +71,12 @@ public static class SaraRecoveryUiNative {
 
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
+
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern bool SetWindowText(IntPtr hWnd, string text);
 }
 "@
 
@@ -240,9 +246,31 @@ function Click-SaraClient {
     Start-Sleep -Milliseconds 450
 }
 
+function Set-SaraControlText {
+    param(
+        [IntPtr]$Window,
+        [int]$ControlId,
+        [string]$Text
+    )
+
+    $control = [SaraRecoveryUiNative]::GetDlgItem($Window, $ControlId)
+    if ($control -eq [IntPtr]::Zero) {
+        throw "SARA control ID $ControlId was not found."
+    }
+    if (-not [SaraRecoveryUiNative]::SetWindowText($control, $Text)) {
+        throw "Unable to set SARA control ID $ControlId."
+    }
+    Start-Sleep -Milliseconds 120
+}
+
 $AppPath = (Resolve-Path $AppPath).Path
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 $OutputDir = (Resolve-Path $OutputDir).Path
+
+$previousSaraDataRoot = $env:SARA_DATA_ROOT
+$captureDataRoot = Join-Path ([IO.Path]::GetTempPath()) ("sara-recovery-ui-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $captureDataRoot | Out-Null
+$env:SARA_DATA_ROOT = $captureDataRoot
 
 $proc = Start-Process -FilePath $AppPath -WorkingDirectory (Split-Path $AppPath) -PassThru
 try {
@@ -304,8 +332,37 @@ try {
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[1]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "03-cases.png")
 
+    # Build one disposable case/subject through the real packaged UI so the
+    # internal Identity Research workspace can be captured without touching
+    # any real SARA user data.
+    Set-SaraControlText -Window $main -ControlId 1001 -Text "CI-RESEARCH-001"
+    Set-SaraControlText -Window $main -ControlId 1002 -Text "Identity Research UI Capture"
+    Click-SaraClient -Window $main -X 818 -Y 197
+
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[2]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04-subjects-identity.png")
+
+    [SaraRecoveryUiNative+RECT]$subjectClient = New-Object SaraRecoveryUiNative+RECT
+    if (-not [SaraRecoveryUiNative]::GetClientRect($main, [ref]$subjectClient)) {
+        throw "GetClientRect failed while calculating Subjects coordinates"
+    }
+    $subjectClientWidth = $subjectClient.Right - $subjectClient.Left
+    $subjectX = 248.0
+    $subjectContentW = $subjectClientWidth - $subjectX - 28.0
+    $subjectLeftW = [Math]::Min(286.0,[Math]::Max(248.0,$subjectContentW * 0.34))
+    $subjectBodyY = 78.0 + 94.0 + 78.0 + 12.0
+    $newSubjectX = [int]($subjectX + $subjectLeftW - 92.0 + 38.0)
+    Click-SaraClient -Window $main -X $newSubjectX -Y ([int]($subjectBodyY + 26.0))
+    Set-SaraControlText -Window $main -ControlId 1060 -Text "Research Capture Subject"
+
+    $subjectRightX = $subjectX + $subjectLeftW + 14.0
+    $subjectRightW = $subjectContentW - $subjectLeftW - 14.0
+    $saveSubjectX = [int]($subjectRightX + $subjectRightW - 190.0 + 29.0)
+    Click-SaraClient -Window $main -X $saveSubjectX -Y ([int]($subjectBodyY + 26.0))
+
+    $researchX = [int]($subjectRightX + $subjectRightW - 370.0 + 42.0)
+    Click-SaraClient -Window $main -X $researchX -Y ([int]($subjectBodyY + 26.0))
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04b-identity-research.png")
 
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[3]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "05-simulation-chat.png")
@@ -397,8 +454,8 @@ Captured: $([DateTime]::UtcNow.ToString("o"))
 The screenshots came from the compiled packaged SARA.exe.
 The main-window capture is also a startup-hang regression test.
 The capture sequence verifies the permanent investigative SARA shell:
-Dashboard, Cases, Subjects & Identity, Simulation Chat, Personas,
-including the Rules & Learning Persona sub-workflow, Channels & Messaging,
+Dashboard, Cases, Subjects & Identity, including the internal Identity Research workflow,
+Simulation Chat, Personas, including the Rules & Learning Persona sub-workflow, Channels & Messaging,
 Supervisor & Approvals, Evidence,
 Audit & Compliance, Model Lab, Agency Server, and Settings.
 Model Lab subpages are captured through internal top tabs while the SARA sidebar remains global.
@@ -408,4 +465,10 @@ finally {
     if (-not $proc.HasExited) {
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     }
+    if ($null -eq $previousSaraDataRoot) {
+        Remove-Item Env:SARA_DATA_ROOT -ErrorAction SilentlyContinue
+    } else {
+        $env:SARA_DATA_ROOT = $previousSaraDataRoot
+    }
+    Remove-Item -LiteralPath $captureDataRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

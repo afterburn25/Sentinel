@@ -73,7 +73,8 @@ $forbiddenTopLevel = @(
     'L"Foundation Forks"',
     'L"Jobs"',
     'L"Evaluation"',
-    'L"Deployment"'
+    'L"Deployment"',
+    'L"Identity Research"'
 )
 foreach ($token in $forbiddenTopLevel) {
     if ($navLabels.Contains($token)) {
@@ -183,6 +184,21 @@ foreach ($token in $memoryWorkflowStoreTokens) {
 }
 if (-not $fallbackModelSrc.Contains('GenerateSyntheticInitiative')) {
     throw "Protected fallback initiative generator is missing."
+}
+
+$identityResearchTokens = @(
+    'Page::IdentityResearch',
+    'L"Subjects & Identity / Research"',
+    'identity_research_open',
+    'research_promote',
+    'IdentityResearchQueued',
+    'PromoteResearchToLead(',
+    'L"NO AUTOMATIC IDENTITY CONCLUSIONS"'
+)
+foreach ($token in $identityResearchTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Identity Research workflow is missing: $token"
+    }
 }
 
 $personaWorkflowTokens = @(
