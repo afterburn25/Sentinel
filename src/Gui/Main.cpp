@@ -769,6 +769,22 @@ struct Runtime {
                     "packaged UI regression fixture; no external request is performed");
                 audit.Append({actor,sentinel::AuditAction::IdentityResearchQueued,"identity_research",research.id,
                     AuditMetadata("capture_fixture=identity-research-v1")});
+
+                // Disposable correction-review fixture for the packaged Model Lab
+                // screenshot. This exists only under SARA_CAPTURE_FIXTURE and
+                // never touches a normal SARA data root.
+                db.Execute(
+                    "INSERT OR IGNORE INTO training_review_items("
+                    "id,source_log_id,conversation_id,persona_name,model_name,input_text,output_text,"
+                    "persona_summary,recalled_memory,context_json,status,"
+                    "correction_instruction,target_output_text,correction_updated_utc"
+                    ") VALUES("
+                    "'capture-review-corrected','capture-source-corrected','capture-conversation',"
+                    "'Samantha','capture-model','how was your day?','fine',"
+                    "'Samantha, age 16, casual','','{}',0,"
+                    "'Make the reply warmer but concise.',"
+                    "'pretty good honestly, how about yours?',CURRENT_TIMESTAMP"
+                    ");");
                 tx.Commit();
             }
         }
@@ -9460,17 +9476,48 @@ private:
             500,sentinel::simulation::TrainingReviewStatus::Approved);
 
         size_t added=0;
+        bool changed=false;
         for(const auto& item:approved) {
             const auto target=sentinel::simulation::TrainingTargetText(item);
-            const bool exists=std::any_of(
-                trainingData_.Examples().begin(),trainingData_.Examples().end(),
-                [&](const auto& e){
-                    return e.persona==item.personaName &&
-                           e.sourceConversationId==item.conversationId &&
-                           e.input==item.inputText &&
-                           e.targetResponse==target;
-                });
-            if(exists) continue;
+            auto& examples=trainingData_.Examples();
+            int exactIndex=-1;
+
+            for(size_t i=0;i<examples.size();++i) {
+                auto& existing=examples[i];
+                const bool sameCapture=
+                    existing.persona==item.personaName &&
+                    existing.sourceConversationId==item.conversationId &&
+                    existing.input==item.inputText &&
+                    existing.originalResponse==item.outputText;
+                if(!sameCapture) continue;
+
+                if(existing.targetResponse==target) {
+                    exactIndex=(int)i;
+                } else if(existing.state==sentinel::simulation::TrainingExampleState::Approved) {
+                    // A newly approved correction supersedes an older target for
+                    // the same captured reply. Historical snapshots keep the old
+                    // example ID, but future snapshots must not train both targets.
+                    existing.state=sentinel::simulation::TrainingExampleState::Rejected;
+                    changed=true;
+                }
+            }
+
+            if(exactIndex>=0) {
+                auto& exact=examples[(size_t)exactIndex];
+                const auto category=item.correctionInstruction.empty()?"Reviewed":"Correction";
+                if(exact.correction!=item.correctionInstruction ||
+                   exact.reviewer!=item.reviewer ||
+                   exact.category!=category ||
+                   exact.state!=sentinel::simulation::TrainingExampleState::Approved)
+                {
+                    exact.correction=item.correctionInstruction;
+                    exact.reviewer=item.reviewer;
+                    exact.category=category;
+                    exact.state=sentinel::simulation::TrainingExampleState::Approved;
+                    changed=true;
+                }
+                continue;
+            }
 
             std::string foundationId;
             std::string adapterId;
@@ -9501,9 +9548,10 @@ private:
                 trainingData_.Examples().size()-1,
                 sentinel::simulation::TrainingExampleState::Approved);
             ++added;
+            changed=true;
         }
 
-        if(added>0) trainingData_.Save(runtime_->root/"training-data.tsv");
+        if(changed) trainingData_.Save(runtime_->root/"training-data.tsv");
         return added;
     }
 
