@@ -9,6 +9,7 @@
 namespace sentinel::simulation {
 
 struct EvaluationRun;
+struct RegisteredModel;
 
 enum class DeploymentStage { Staged, Active, RolledBack, Retired };
 
@@ -34,6 +35,7 @@ struct DeploymentPackage {
 class DeploymentRegistry {
 public:
     DeploymentPackage& Prepare(
+        const RegisteredModel& model,
         const EvaluationRun& evaluation,
         std::string personaName);
 
