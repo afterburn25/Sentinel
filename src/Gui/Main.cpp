@@ -7244,20 +7244,13 @@ private:
             return false;
         }
 
-        std::string chosen=simSettings_.model;
-        if(IsLocalModelEndpoint(simSettings_.endpoint)) {
-            const auto preferred=std::find(models.begin(),models.end(),"sentinel-chat");
-            if(preferred==models.end()) {
-                if(failure)
-                    *failure=L"Bundled backend is running, but the required sentinel-chat alias is not loaded.";
-                return false;
-            }
-            chosen="sentinel-chat";
-        } else if(chosen.empty() || std::find(models.begin(),models.end(),chosen)==models.end()) {
-            chosen=models.front();
-        }
-
+        std::string chosen;
         try {
+            chosen=sentinel::simulation::SelectPreferredOpenAICompatibleModel(
+                models,
+                simSettings_.model,
+                IsLocalModelEndpoint(simSettings_.endpoint));
+
             auto candidate=sentinel::simulation::CreateOpenAICompatibleModel(
                 simSettings_.endpoint,chosen,{},simSettings_.temperature,simSettings_.maxTokens);
             sentinel::simulation::ModelContext testContext;
