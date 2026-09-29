@@ -692,4 +692,28 @@ std::vector<std::string> DiscoverOpenAICompatibleModels(
     return models;
 }
 
+std::string SelectPreferredOpenAICompatibleModel(
+    const std::vector<std::string>& models,
+    std::string_view configuredModel,
+    bool requireSentinelChat)
+{
+    if(models.empty())
+        throw std::runtime_error("model server returned no selectable models");
+
+    const auto sentinel=std::find(models.begin(),models.end(),"sentinel-chat");
+    if(requireSentinelChat) {
+        if(sentinel==models.end())
+            throw std::runtime_error("required local model alias sentinel-chat is not loaded");
+        return *sentinel;
+    }
+
+    if(!configuredModel.empty()) {
+        const auto configured=std::find(models.begin(),models.end(),configuredModel);
+        if(configured!=models.end()) return *configured;
+    }
+
+    if(sentinel!=models.end()) return *sentinel;
+    return models.front();
+}
+
 }
