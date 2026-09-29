@@ -38,6 +38,15 @@
 
 namespace {
 
+sentinel::simulation::EvaluationRun MakePassingEvaluation(
+    std::string candidateId,
+    std::string candidateName,
+    std::string foundationId,
+    std::string foundationName,
+    std::string adapterId,
+    std::string adapterName);
+
+
 
 
 void TestResponseRuleMatchLog()
@@ -297,14 +306,54 @@ void TestPersonaLoraHistory()
     trainer.EnsureDefaultFoundation("SARA Foundation","base-model","runtime.gguf");
     const auto foundations=trainer.ListFoundations();
     Require(!foundations.empty(),"default foundation missing");
+    Require(foundations.front().status=="ACTIVE","default foundation should be active");
+    Require(!foundations.front().approvedEvaluationRunId.empty(),
+        "protected active foundation should carry approval proof");
 
     const auto first=trainer.BindPersonaLora(
         "Samantha",foundations.front().id,"Samantha v1","samantha-v1.gguf",1.0);
-    Require(first.active,"first persona LoRA should be active");
+    Require(!first.active,"new persona LoRA must start as an inactive candidate");
+    Require(first.approvedEvaluationRunId.empty(),
+        "new persona LoRA candidate should not have approval proof");
+
+    auto firstEval=MakePassingEvaluation(
+        "model-lora-1","LoRA Candidate Model",
+        foundations.front().id,foundations.front().name,
+        std::to_string(first.id),first.loraName);
+    Require(trainer.ApprovePersonaLora(first.id,firstEval),
+        "first persona LoRA approval failed");
+    auto firstApproved=trainer.GetPersonaLora(first.id);
+    Require(firstApproved.has_value() &&
+            firstApproved->approvedEvaluationRunId==firstEval.id,
+        "first persona LoRA evaluation proof did not persist");
+    Require(trainer.ActivatePersonaLora(first.id),
+        "first approved persona LoRA activation failed");
 
     const auto second=trainer.BindPersonaLora(
         "Samantha",foundations.front().id,"Samantha v2","samantha-v2.gguf",0.9);
-    Require(second.active,"second persona LoRA should be active");
+    Require(!second.active,"second persona LoRA must start inactive");
+    auto stillFirst=trainer.ResolvePersonaLora("Samantha");
+    Require(stillFirst.has_value() && stillFirst->id==first.id,
+        "registering a LoRA candidate changed the active runtime");
+
+    auto failedSecondEval=MakePassingEvaluation(
+        "model-lora-2","LoRA Candidate Model",
+        foundations.front().id,foundations.front().name,
+        std::to_string(second.id),second.loraName);
+    failedSecondEval.dimensions.front().passed=false;
+    Require(!trainer.ApprovePersonaLora(second.id,failedSecondEval),
+        "LoRA approval accepted a failed evaluation");
+    Require(!trainer.ActivatePersonaLora(second.id),
+        "unapproved LoRA candidate activated");
+
+    auto secondEval=MakePassingEvaluation(
+        "model-lora-2","LoRA Candidate Model",
+        foundations.front().id,foundations.front().name,
+        std::to_string(second.id),second.loraName);
+    Require(trainer.ApprovePersonaLora(second.id,secondEval),
+        "second persona LoRA approval failed");
+    Require(trainer.ActivatePersonaLora(second.id),
+        "second persona LoRA activation failed");
 
     const auto history=trainer.ListPersonaLoras("Samantha",10);
     Require(history.size()==2,"persona LoRA history count mismatch");
@@ -312,22 +361,26 @@ void TestPersonaLoraHistory()
     Require(history.front().active,"active persona LoRA history flag missing");
     Require(!history.back().active,"prior persona LoRA should have been deactivated");
 
-    const auto resolved=trainer.ResolvePersonaLora("Samantha");
-    Require(resolved.has_value(),"active persona LoRA did not resolve");
-    Require(resolved->loraName=="Samantha v2","resolved persona LoRA version mismatch");
-
     const auto previous=trainer.PreviousPersonaLora("Samantha");
     Require(previous.has_value() && previous->id==first.id,
         "persona LoRA activation history did not preserve the prior binding");
     Require(trainer.RollbackPersonaLora("Samantha"),
         "persona LoRA rollback failed");
     const auto rolledBack=trainer.ResolvePersonaLora("Samantha");
-    Require(rolledBack.has_value(),"rolled-back persona LoRA did not resolve");
-    Require(rolledBack->id==first.id,"exact persona LoRA version was not restored by rollback");
+    Require(rolledBack.has_value() && rolledBack->id==first.id,
+        "exact approved persona LoRA version was not restored by rollback");
 
     const auto nikki=trainer.BindPersonaLora(
         "Nikki",foundations.front().id,"Nikki v1","nikki-v1.gguf",1.0);
-    Require(nikki.active,"Nikki persona LoRA should be active");
+    auto nikkiEval=MakePassingEvaluation(
+        "model-lora-nikki","LoRA Candidate Model",
+        foundations.front().id,foundations.front().name,
+        std::to_string(nikki.id),nikki.loraName);
+    Require(trainer.ApprovePersonaLora(nikki.id,nikkiEval),
+        "Nikki persona LoRA approval failed");
+    Require(trainer.ActivatePersonaLora(nikki.id),
+        "Nikki persona LoRA activation failed");
+
     const auto samanthaStill=trainer.ResolvePersonaLora("Samantha");
     Require(samanthaStill.has_value() && samanthaStill->id==first.id,
         "persona LoRA activation leaked across personas");
@@ -337,8 +390,8 @@ void TestPersonaLoraHistory()
         "persona LoRA manifest schema missing");
     Require(manifest.find("Samantha v1")!=std::string::npos,
         "persona LoRA manifest name missing");
-    Require(manifest.find(foundations.front().id)!=std::string::npos,
-        "persona LoRA manifest foundation linkage missing");
+    Require(manifest.find(firstEval.id)!=std::string::npos,
+        "persona LoRA manifest omitted evaluation proof");
 
     db.Close();
     std::filesystem::remove_all(root);
@@ -373,7 +426,25 @@ void TestTrainerFoundationAndJobs()
     Require(fork.version==foundations.front().version+1,
         "foundation fork version should increment from its parent");
     Require(fork.status=="DRAFT","new foundation fork should be draft");
-    Require(trainer.ApproveFoundation(fork.id),"foundation approval failed");
+    Require(!trainer.ActivateFoundation(fork.id),
+        "unevaluated foundation fork activated");
+
+    auto failedFoundationEval=MakePassingEvaluation(
+        "model-foundation-2","Foundation Candidate Model",
+        fork.id,fork.name,"","");
+    failedFoundationEval.dimensions.front().passed=false;
+    Require(!trainer.ApproveFoundation(fork.id,failedFoundationEval),
+        "foundation approval accepted a failed evaluation");
+
+    auto foundationEval=MakePassingEvaluation(
+        "model-foundation-2","Foundation Candidate Model",
+        fork.id,fork.name,"","");
+    Require(trainer.ApproveFoundation(fork.id,foundationEval),
+        "foundation approval failed");
+    auto approvedFork=trainer.GetFoundation(fork.id);
+    Require(approvedFork.has_value() &&
+            approvedFork->approvedEvaluationRunId==foundationEval.id,
+        "foundation evaluation proof did not persist");
     Require(trainer.ActivateFoundation(fork.id),"approved foundation activation failed");
 
     const auto activeFork=trainer.GetFoundation(fork.id);
