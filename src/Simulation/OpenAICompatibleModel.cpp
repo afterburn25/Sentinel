@@ -525,6 +525,35 @@ public:
         return Complete(system,context,request);
     }
 
+    std::string GenerateCorrectionPreview(
+        std::string_view originalInput,
+        std::string_view originalResponse,
+        std::string_view trainerInstruction,
+        const ModelContext& context) override
+    {
+        std::string system =
+            "You are SARA's offline training-review assistant. "
+            "Produce exactly one proposed corrected persona reply for human review; do not modify live model weights or runtime state. "
+            "Follow the trainer's correction while preserving the configured persona identity and established factual context. "
+            "Return only the revised reply text, with no explanation, labels, analysis, or quotation marks around it. "
+            "Do not invent identifying details, addresses, school/workplace identities, contact information, meeting plans, criminal conduct, "
+            "sexual history, or sensitive facts that were not already established and permitted. "
+            "Do not add escalation that is absent from the original reply and trainer instruction. "
+            "Keep the result appropriate for later human approval as supervised training data. "
+            "Persona context: " + context.personaSummary;
+
+        ModelContext local=context;
+        local.history.clear();
+        local.recalledMemory.clear();
+
+        std::string request=
+            "ORIGINAL PARTICIPANT INPUT:\n"+std::string(originalInput)+
+            "\n\nORIGINAL PERSONA REPLY:\n"+std::string(originalResponse)+
+            "\n\nTRAINER CORRECTION:\n"+std::string(trainerInstruction)+
+            "\n\nWrite the corrected persona reply now.";
+        return Complete(system,local,request);
+    }
+
     std::string GenerateInvestigatorSuggestion(
         const ModelContext& context) override
     {
