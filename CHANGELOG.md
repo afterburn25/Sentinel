@@ -2,12 +2,16 @@
 
 ## 1.0.17 — Local AI self-recovery
 
-### In development
-- Automatically recover the local `sentinel-chat` runtime when an in-session model request fails.
-- Perform one bounded restart/reconnect attempt and retry the failed model operation once.
-- Never download or repair model files during automatic recovery.
-- Avoid background polling and infinite retry loops.
-- Keep manual Reconnect available as a diagnostic override.
+Validated by Windows Build #960.
+
+- Automatically recovers the bundled loopback `sentinel-chat` runtime when an in-session model request fails.
+- Performs one bounded restart/reconnect attempt and retries the failed model operation once.
+- Applies recovery consistently across Simulation, response-rule generation, proactive follow-ups, suggestions, Persona behavior generation, and Trainer previews.
+- Never downloads or repairs model files during automatic recovery.
+- Avoids background polling, recursive recovery, and infinite retry loops.
+- Does not hijack custom localhost or external model connections.
+- Exposes successful recovery count in Model Lab diagnostics.
+- Keeps manual Reconnect available as a diagnostic override.
 
 
 ## 1.0.16 — Current recovery feature release
