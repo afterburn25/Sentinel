@@ -5504,6 +5504,10 @@ private:
     }
 
     void PreviousPersonaResponseRulePage() {
+        const auto rules=PersonaResponseRules(0);
+        const auto page=sentinel::simulation::ComputeResponseRulePageWindow(
+            rules.size(),responseRulePage_,4);
+        responseRulePage_=page.pageIndex;
         if(responseRulePage_>0) {
             --responseRulePage_;
             statusText_=L"Previous response-rule page";
@@ -5512,9 +5516,10 @@ private:
 
     void NextPersonaResponseRulePage() {
         const auto rules=PersonaResponseRules(0);
-        constexpr size_t pageSize=4;
-        const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
-        if(responseRulePage_+1<pageCount) {
+        const auto page=sentinel::simulation::ComputeResponseRulePageWindow(
+            rules.size(),responseRulePage_,4);
+        responseRulePage_=page.pageIndex;
+        if(responseRulePage_+1<page.pageCount) {
             ++responseRulePage_;
             statusText_=L"Next response-rule page";
         }
@@ -5688,9 +5693,8 @@ private:
         if(selectedResponseRuleId_==id)
             StartNewPersonaResponseRule(false);
         const auto rules=PersonaResponseRules(0);
-        constexpr size_t pageSize=4;
-        const size_t pageCount=rules.empty()?1:(rules.size()+pageSize-1)/pageSize;
-        if(responseRulePage_>=pageCount) responseRulePage_=pageCount-1;
+        responseRulePage_=sentinel::simulation::ComputeResponseRulePageWindow(
+            rules.size(),responseRulePage_,4).pageIndex;
         statusText_=L"Response rule deleted";
     }
 
@@ -8336,10 +8340,10 @@ private:
             AddButton(L"rule_clear",L"Clear All",x+610,actionY,72,28,false);
 
             constexpr size_t rulePageSize=4;
-            const size_t rulePageCount=
-                rules.empty()?1:(rules.size()+rulePageSize-1)/rulePageSize;
-            if(responseRulePage_>=rulePageCount)
-                responseRulePage_=rulePageCount-1;
+            const auto rulePage=sentinel::simulation::ComputeResponseRulePageWindow(
+                rules.size(),responseRulePage_,rulePageSize);
+            responseRulePage_=rulePage.pageIndex;
+            const size_t rulePageCount=rulePage.pageCount;
 
             TextLine(
                 std::to_wstring(enabledRules)+L" enabled / "+
@@ -8398,8 +8402,8 @@ private:
                     L"Enter a trigger and approved response above, choose the wording mode, then add Smart, Contains, or Exact.",
                     x+34,listY+41,contentW-68,28,tinyFmt_.Get(),brush_.muted.Get());
             } else {
-                const size_t pageStart=responseRulePage_*rulePageSize;
-                const size_t pageEnd=std::min(rules.size(),pageStart+rulePageSize);
+                const size_t pageStart=rulePage.start;
+                const size_t pageEnd=rulePage.end;
                 const size_t visible=pageEnd-pageStart;
                 for(size_t row=0;row<visible;row++) {
                     const auto& rule=rules[pageStart+row];
