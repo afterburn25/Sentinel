@@ -1,9 +1,12 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace sentinel::simulation {
+
+struct EvaluationRun;
 
 enum class ModelStage { Candidate, Approved, Active, Retired };
 
@@ -27,7 +30,11 @@ struct TrainingJob {
 class ModelRegistry {
 public:
     RegisteredModel& Register(std::string endpoint,std::string modelName);
-    void Approve(size_t index);
+    bool Approve(
+        size_t index,
+        const EvaluationRun& evaluation,
+        std::string_view currentFoundationId,
+        std::string_view currentAdapterId);
     void Activate(size_t index);
     void Retire(size_t index);
     bool Rollback();
