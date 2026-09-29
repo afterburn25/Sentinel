@@ -148,6 +148,21 @@ void TestResponseRuleMatcher()
         "response-rule alternate selection was not deterministic");
     Require(selectedA=="one" || selectedA=="two" || selectedA=="three",
         "response-rule alternate selection returned an invalid variant");
+
+    const auto emptyPage=sentinel::simulation::ComputeResponseRulePageWindow(0,5,4);
+    Require(emptyPage.pageIndex==0 && emptyPage.pageCount==1 &&
+            emptyPage.start==0 && emptyPage.end==0,
+        "empty response-rule paging window was not clamped");
+
+    const auto firstPage=sentinel::simulation::ComputeResponseRulePageWindow(10,0,4);
+    Require(firstPage.pageIndex==0 && firstPage.pageCount==3 &&
+            firstPage.start==0 && firstPage.end==4,
+        "first response-rule page window incorrect");
+
+    const auto lastPage=sentinel::simulation::ComputeResponseRulePageWindow(10,99,4);
+    Require(lastPage.pageIndex==2 && lastPage.pageCount==3 &&
+            lastPage.start==8 && lastPage.end==10,
+        "response-rule page did not clamp after delete/end-of-list");
 }
 
 void TestModelStackAuditActionIds()
