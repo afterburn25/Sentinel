@@ -485,6 +485,8 @@ $modelStackAuditTokens = @(
     'AuditAction::PersonaLoraApproved',
     'AuditAction::PersonaLoraActivated',
     'AuditAction::PersonaLoraRolledBack',
+    'approved_eval="<<foundation.approvedEvaluationRunId',
+    'approved_eval="<<lora.approvedEvaluationRunId',
     'case 605: return L"Foundation evaluated"',
     'case 612: return L"Persona LoRA rolled back"'
 )
