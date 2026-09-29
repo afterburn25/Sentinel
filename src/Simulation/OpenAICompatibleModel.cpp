@@ -716,4 +716,21 @@ std::string SelectPreferredOpenAICompatibleModel(
     return models.front();
 }
 
+bool ShouldAttemptAutomaticLocalModelRecovery(
+    std::string_view endpoint,
+    std::string_view model,
+    bool bundledPrerequisitesPresent,
+    bool recoveryInProgress)
+{
+    if(recoveryInProgress || !bundledPrerequisitesPresent || model!="sentinel-chat")
+        return false;
+
+    try {
+        const auto parsed=ParseUrl(std::string(endpoint));
+        return IsLoopbackHost(parsed.host);
+    } catch(...) {
+        return false;
+    }
+}
+
 }
