@@ -196,6 +196,10 @@ $identityResearchTokens = @(
     'ListResearchProviders(false)',
     'SelectedIdentityResearchProvider()',
     'researchProviderCombo_',
+    'research_provider_manager',
+    'research_provider_save',
+    'researchProviderCredentialEdit_',
+    'L"credential alias / vault reference"',
     'L"NO AUTOMATIC IDENTITY CONCLUSIONS"'
 )
 foreach ($token in $identityResearchTokens) {

@@ -360,6 +360,18 @@ try {
     }
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04b-identity-research.png")
 
+    # Open the contained provider registry and require its native provider-ID
+    # editor to be visible before accepting the packaged screenshot.
+    $providerManagerX = [int]($subjectClientWidth - 80)
+    $providerManagerY = [int]($subjectBodyY + 25.0)
+    Click-SaraClient -Window $main -X $providerManagerX -Y $providerManagerY
+
+    $providerIdEdit = [SaraRecoveryUiNative]::GetDlgItem($main, 1079)
+    if ($providerIdEdit -eq [IntPtr]::Zero -or -not [SaraRecoveryUiNative]::IsWindowVisible($providerIdEdit)) {
+        throw "Identity Research Provider Registry did not open in the packaged SARA UI."
+    }
+    Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "04c-identity-research-providers.png")
+
     Click-SaraClient -Window $main -X 100 -Y $mainNavY[3]
     Capture-SaraWindow -Window $main -Path (Join-Path $OutputDir "05-simulation-chat.png")
 
