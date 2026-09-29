@@ -432,7 +432,7 @@ void TestTrainerFoundationAndJobs()
     std::filesystem::remove_all(root);
 }
 
-sentinel::simulation::sentinel::simulation::EvaluationRun MakePassingEvaluation(
+sentinel::simulation::EvaluationRun MakePassingEvaluation(
     std::string candidateId,
     std::string candidateName,
     std::string foundationId,
