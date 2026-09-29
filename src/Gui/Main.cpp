@@ -820,12 +820,12 @@ struct Runtime {
                     "INSERT INTO persona_response_rules("
                     "persona_name,match_type,trigger_text,response_text,response_mode,enabled,priority,terminal"
                     ") VALUES"
-                    "('Samantha','exact','favorite color','blue mostly || probably blue','persona_variation',1,130,1),"
-                    "('Samantha','contains','music','i like a bunch of stuff','persona_variation',1,120,1),"
-                    "('Samantha','smart','what do you do after school','usually just chill for a bit','persona_variation',1,110,0),"
-                    "('Samantha','exact','favorite food','pizza probably','exact',1,100,1),"
-                    "('Samantha','contains','pets','yeah i like dogs','persona_variation',0,90,1),"
-                    "('Samantha','smart','weekend plans','idk depends whats going on','persona_variation',1,80,0);");
+                    "('Alex','exact','favorite color','blue mostly || probably blue','persona_variation',1,130,1),"
+                    "('Alex','contains','music','i like a bunch of stuff','persona_variation',1,120,1),"
+                    "('Alex','smart','what do you do after school','usually just chill for a bit','persona_variation',1,110,0),"
+                    "('Alex','exact','favorite food','pizza probably','exact',1,100,1),"
+                    "('Alex','contains','pets','yeah i like dogs','persona_variation',0,90,1),"
+                    "('Alex','smart','weekend plans','idk depends whats going on','persona_variation',1,80,0);");
                 tx.Commit();
             }
         }
