@@ -367,7 +367,10 @@ foreach ($token in $evaluationGateModelTokens) {
 }
 
 $evaluationGateDeploymentTokens = @(
+    'const RegisteredModel& model',
     'const EvaluationRun& evaluation',
+    'model.stage!=ModelStage::Approved',
+    'evaluation.candidateId!=model.id',
     'EvaluationPassedApprovalGate(evaluation)',
     'deployment preparation requires a complete passing evaluation',
     'package.evaluationRunId=evaluation.id'
