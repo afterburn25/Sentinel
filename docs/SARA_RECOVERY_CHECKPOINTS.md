@@ -855,3 +855,56 @@ Artifact digests from run #865:
 
 This is the validated rollback point for the recovered SARA shell through exact Model Lab approval/deployment evaluation-proof enforcement.
 
+## Checkpoint 18 — Reviewed correction targets and shadow-learning integrity validated
+
+Validated commit:
+
+`9a0444d7c1c09c83b16f89bc89756efe55a5e971`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #880
+- Run ID: `36523940874`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- exact approved splash verification: PASS
+- Windows MSVC x64 Release build: PASS
+- core/platform/CLI tests: PASS
+- Trainer worker Python syntax validation: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- packaged UI regression capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Reviewed-correction / shadow-learning integrity proven by this checkpoint:
+
+- Correction mode no longer treats the original model reply as the corrected training target
+- the model-adapter contract has a dedicated offline correction-preview operation
+- connected local models can turn free-form trainer feedback into a proposed corrected reply without changing live weights
+- the deterministic fallback accepts explicit `TARGET:` / quoted replacements and otherwise refuses to invent a semantic rewrite
+- correction instructions, proposed target text and correction timestamps persist separately from the original reply
+- changing a correction target resets that review item to PENDING and clears prior reviewer / reviewed-time state
+- corrected targets pass the simulation-policy review gate before being stored
+- the Datasets workspace visibly separates Input, Original Reply and Training Target
+- approved JSONL writes the reviewed target as `output` while retaining `original_output`, correction instruction and correction timestamp provenance
+- the versioned TrainingData bridge carries correction text and corrected target instead of discarding them
+- a newer approved target supersedes older approved targets for the same captured reply in future snapshots
+- historical dataset snapshots remain immutable and keep their old example IDs
+- the packaged CI fixture visibly exercises the corrected-target Datasets inspector
+- Core and Platform regression tests prove correction persistence, forced re-review, persona-scoped export, corrected `output`, preserved original output and fallback exact-target behavior
+- no correction action mutates the active model, Foundation Fork, Persona LoRA or deployed runtime automatically
+
+Artifact digests from run #880:
+
+- Windows package: `sha256:a4fca7282a61c7e385a6ead38ff86055f94246e369b4c7da9b165db6cff544b1`
+- unsigned-development Setup artifact: `sha256:b75e6f6934ddbbc0f4a7917ee930928d326496cf8ea77a3d9e3a56a43872dde6`
+- UI screenshots: `sha256:0890f8f6aa6ef506175fcbb5aafca22620a7926dd09814f54de8b6bb77b2abc4`
+
+This is the validated rollback point for the recovered SARA shell through reviewed correction targets and offline shadow-learning data integrity.
+
