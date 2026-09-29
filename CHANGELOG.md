@@ -1,5 +1,15 @@
 # SARA Changelog
 
+## 1.0.19 — Response-rule search and filtering
+
+### In development
+- Search saved Persona Rules & Learning entries by trigger or response text.
+- Filter the rule list by match type and enabled/disabled state.
+- Keep paging clamped to the filtered result set.
+- Preserve loaded-rule edit state only while that rule remains in the visible filtered result set.
+- Add regression coverage for rule filtering and filter-aware paging.
+
+
 ## 1.0.18 — Response-rule management
 
 Validated by Windows Build #980.
