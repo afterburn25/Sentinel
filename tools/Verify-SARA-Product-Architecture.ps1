@@ -5,6 +5,8 @@ $repo = Split-Path -Parent $PSScriptRoot
 $mainPath = Join-Path $repo "src\Gui\Main.cpp"
 $memoryPath = Join-Path $repo "src\Simulation\ConversationMemory.cpp"
 $fallbackModelPath = Join-Path $repo "src\Simulation\RuleBasedTestModel.cpp"
+$modelRegistryPath = Join-Path $repo "src\Simulation\ModelRegistry.cpp"
+$deploymentRegistryPath = Join-Path $repo "src\Simulation\DeploymentRegistry.cpp"
 $contractPath = Join-Path $repo "docs\SARA_PRODUCT_ARCHITECTURE.md"
 
 if (-not (Test-Path $contractPath)) {
@@ -19,10 +21,18 @@ if (-not (Test-Path $memoryPath)) {
 if (-not (Test-Path $fallbackModelPath)) {
     throw "SARA fallback-model source is missing: $fallbackModelPath"
 }
+if (-not (Test-Path $modelRegistryPath)) {
+    throw "SARA model-registry source is missing: $modelRegistryPath"
+}
+if (-not (Test-Path $deploymentRegistryPath)) {
+    throw "SARA deployment-registry source is missing: $deploymentRegistryPath"
+}
 
 $src = Get-Content $mainPath -Raw
 $memorySrc = Get-Content $memoryPath -Raw
 $fallbackModelSrc = Get-Content $fallbackModelPath -Raw
+$modelRegistrySrc = Get-Content $modelRegistryPath -Raw
+$deploymentRegistrySrc = Get-Content $deploymentRegistryPath -Raw
 
 $begin = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_BEGIN")
 $end = $src.IndexOf("// SARA_PRODUCT_CONTRACT_MAIN_NAV_END")
@@ -330,3 +340,41 @@ Write-Host "SARA product architecture contract: PASS"
 Write-Host "Permanent main navigation: $($required -join ' | ')"
 Write-Host "Model Lab remains subordinate with internal tabs."
 Write-Host "Simulation Chat and investigative modules remain protected."
+
+$evaluationGateMainTokens = @(
+    'EvaluationPassedApprovalGate(run)',
+    'EvaluationMatchesCurrentRuntime(run)',
+    'modelRegistry_.Approve(',
+    'deploymentRegistry_.Prepare('
+)
+foreach ($token in $evaluationGateMainTokens) {
+    if (-not $src.Contains($token)) {
+        throw "Protected Model Lab evaluation-gate wiring is missing: $token"
+    }
+}
+
+$evaluationGateModelTokens = @(
+    'const EvaluationRun& evaluation',
+    'EvaluationPassedApprovalGate(evaluation)',
+    'evaluation.candidateId!=model.id',
+    'evaluation.foundationId!=currentFoundationId',
+    'evaluation.adapterId!=currentAdapterId'
+)
+foreach ($token in $evaluationGateModelTokens) {
+    if (-not $modelRegistrySrc.Contains($token)) {
+        throw "Core model-approval evaluation gate is missing: $token"
+    }
+}
+
+$evaluationGateDeploymentTokens = @(
+    'const EvaluationRun& evaluation',
+    'EvaluationPassedApprovalGate(evaluation)',
+    'deployment preparation requires a complete passing evaluation',
+    'package.evaluationRunId=evaluation.id'
+)
+foreach ($token in $evaluationGateDeploymentTokens) {
+    if (-not $deploymentRegistrySrc.Contains($token)) {
+        throw "Core deployment evaluation gate is missing: $token"
+    }
+}
+
