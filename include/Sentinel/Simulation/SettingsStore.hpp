@@ -7,7 +7,7 @@ namespace sentinel::simulation {
 
 struct SimulationSettings {
     std::string endpoint{"http://127.0.0.1:1234/v1/chat/completions"};
-    std::string model{"local-model"};
+    std::string model{"sentinel-chat"};
     double temperature{0.35};
     int maxTokens{512};
     int minDelayMs{3000};
