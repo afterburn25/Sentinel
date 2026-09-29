@@ -486,6 +486,12 @@ void TestModelRegistryLifecycle()
         "candidate approval stage missing");
     Require(registry.Models()[0].evaluationScore==firstEval.overallScore,
         "candidate approval did not bind evaluation score");
+    Require(registry.Models()[0].approvedEvaluationRunId==firstEval.id,
+        "candidate approval did not bind evaluation run id");
+    Require(registry.Models()[0].approvedFoundationId==firstEval.foundationId,
+        "candidate approval did not bind foundation id");
+    Require(registry.Models()[0].approvedAdapterId==firstEval.adapterId,
+        "candidate approval did not bind adapter id");
     registry.Activate(0);
     Require(registry.ActiveIndex()==0,"first model activation failed");
     Require(registry.Models()[0].stage==sentinel::simulation::ModelStage::Active,
@@ -817,6 +823,17 @@ void TestDeploymentRegistryLifecycle()
         "2","Samantha v2");
     Require(models.Approve(3,secondEval,"foundation-2","2"),
         "second deployment candidate could not be approved");
+
+    auto mismatchedApprovedEval=secondEval;
+    mismatchedApprovedEval.id="eval-not-used-for-approval";
+    bool mismatchedProofRejected=false;
+    try {
+        deployments.Prepare(secondModel,mismatchedApprovedEval,"Samantha");
+    } catch(const std::invalid_argument&) {
+        mismatchedProofRejected=true;
+    }
+    Require(mismatchedProofRejected,
+        "deployment registry accepted a passing evaluation that was not the exact model approval proof");
 
     auto& second=deployments.Prepare(secondModel,secondEval,"Samantha");
     Require(second.previousDeploymentId==firstDeploymentId,
