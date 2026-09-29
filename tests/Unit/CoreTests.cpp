@@ -421,7 +421,7 @@ void TestTrainerFoundationAndJobs()
 
     const auto fork=trainer.CreateFork(
         "SARA Foundation 2",foundations.front().id,
-        foundations.front().sourceModel,"trainable-source","");
+        foundations.front().sourceModel,"trainable-source","fork-runtime.gguf");
     Require(fork.parentId==foundations.front().id,"foundation fork parent mismatch");
     Require(fork.version==foundations.front().version+1,
         "foundation fork version should increment from its parent");
