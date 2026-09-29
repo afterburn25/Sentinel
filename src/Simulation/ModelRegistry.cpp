@@ -1,4 +1,5 @@
 #include "Sentinel/Simulation/ModelRegistry.hpp"
+#include "Sentinel/Simulation/EvaluationSuite.hpp"
 #include <algorithm>
 #include <fstream>
 
@@ -21,8 +22,23 @@ RegisteredModel& ModelRegistry::Register(std::string endpoint,std::string modelN
     models_.push_back(std::move(m));
     return models_.back();
 }
-void ModelRegistry::Approve(size_t i) {
-    if(i<models_.size() && models_[i].stage==ModelStage::Candidate) models_[i].stage=ModelStage::Approved;
+bool ModelRegistry::Approve(
+    size_t i,
+    const EvaluationRun& evaluation,
+    std::string_view currentFoundationId,
+    std::string_view currentAdapterId)
+{
+    if(i>=models_.size()) return false;
+
+    auto& model=models_[i];
+    if(model.stage==ModelStage::Retired) return false;
+    if(evaluation.id.empty() || evaluation.candidateId!=model.id) return false;
+    if(!EvaluationPassedApprovalGate(evaluation)) return false;
+    if(evaluation.foundationId!=currentFoundationId || evaluation.adapterId!=currentAdapterId) return false;
+
+    model.evaluationScore=std::clamp(evaluation.overallScore,0,100);
+    if(model.stage==ModelStage::Candidate) model.stage=ModelStage::Approved;
+    return model.stage==ModelStage::Approved || model.stage==ModelStage::Active;
 }
 void ModelRegistry::Activate(size_t i) {
     if(i>=models_.size()) return;
