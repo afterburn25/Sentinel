@@ -142,6 +142,7 @@ bool TrainerStore::ApproveFoundation(
     auto target=GetFoundation(id);
     if(!target) return false;
     if(target->status=="RETIRED" || target->status=="TRAINING") return false;
+    if(target->runtimeGgufPath.empty()) return false;
     if(evaluation.id.empty() || !EvaluationPassedApprovalGate(evaluation)) return false;
     if(evaluation.foundationId!=id || !evaluation.adapterId.empty()) return false;
 
@@ -164,6 +165,7 @@ bool TrainerStore::ActivateFoundation(std::string_view id) {
     if(id.empty()) return false;
     auto target=GetFoundation(id);
     if(!target || (target->status!="APPROVED" && target->status!="ACTIVE")) return false;
+    if(target->runtimeGgufPath.empty()) return false;
     if(target->approvedEvaluationRunId.empty()) return false;
     if(target->status=="ACTIVE") return true;
 
@@ -335,13 +337,13 @@ bool TrainerStore::ApprovePersonaLora(
     const EvaluationRun& evaluation)
 {
     auto target=GetPersonaLora(id);
-    if(!target) return false;
+    if(!target || target->loraPath.empty()) return false;
     if(evaluation.id.empty() || !EvaluationPassedApprovalGate(evaluation)) return false;
     if(evaluation.adapterId!=std::to_string(id)) return false;
     if(evaluation.foundationId!=target->foundationId) return false;
 
     auto foundation=GetFoundation(target->foundationId);
-    if(!foundation ||
+    if(!foundation || foundation->runtimeGgufPath.empty() ||
        (foundation->status!="APPROVED" && foundation->status!="ACTIVE") ||
        foundation->approvedEvaluationRunId.empty())
         return false;
@@ -363,7 +365,7 @@ bool TrainerStore::ApprovePersonaLora(
 
 bool TrainerStore::ActivatePersonaLora(long long id) {
     auto target=GetPersonaLora(id);
-    if(!target) return false;
+    if(!target || target->loraPath.empty()) return false;
     if(target->approvedEvaluationRunId.empty()) return false;
     auto foundation=GetFoundation(target->foundationId);
     if(!foundation ||
