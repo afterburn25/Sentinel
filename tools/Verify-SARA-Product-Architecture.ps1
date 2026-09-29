@@ -332,7 +332,9 @@ $personaWorkflowTokens = @(
     'rule_open:',
     'rule_toggle:',
     'rule_delete:',
-    'pageStart=responseRulePage_*rulePageSize',
+    'ComputeResponseRulePageWindow(',
+    'pageStart=rulePage.start',
+    'pageEnd=rulePage.end',
     'responseRulePage_=0'
 )
 foreach ($token in $personaWorkflowTokens) {
