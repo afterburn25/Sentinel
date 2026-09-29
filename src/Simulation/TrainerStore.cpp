@@ -148,7 +148,8 @@ bool TrainerStore::ApproveFoundation(
     auto* db=db_.Handle(); sqlite3_stmt* s{};
     Check(sqlite3_prepare_v2(db,
         "UPDATE model_foundations "
-        "SET status='APPROVED',approved_evaluation_run_id=?,updated_utc=CURRENT_TIMESTAMP "
+        "SET status=CASE WHEN status='ACTIVE' THEN 'ACTIVE' ELSE 'APPROVED' END,"
+        "approved_evaluation_run_id=?,updated_utc=CURRENT_TIMESTAMP "
         "WHERE id=? AND status IN ('DRAFT','CANDIDATE','APPROVED','ACTIVE')",
         -1,&s,nullptr),db,"prepare foundation approve");
     sqlite3_bind_text(s,1,evaluation.id.c_str(),-1,SQLITE_TRANSIENT);
