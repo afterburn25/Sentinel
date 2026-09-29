@@ -198,6 +198,9 @@ $identityResearchTokens = @(
     'researchProviderCombo_',
     'research_provider_manager',
     'research_provider_save',
+    'research_preserve',
+    'BuildResearchReport(',
+    'IdentityResearchPreserved',
     'researchProviderCredentialEdit_',
     'L"Credential alias / vault reference"',
     'L"NO AUTOMATIC IDENTITY CONCLUSIONS"'

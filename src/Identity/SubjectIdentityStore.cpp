@@ -1,6 +1,7 @@
 #include "Sentinel/Identity/SubjectIdentityStore.hpp"
 #include <algorithm>
 #include <sqlite3.h>
+#include <sstream>
 #include <stdexcept>
 
 namespace sentinel::identity {
@@ -677,6 +678,39 @@ IdentityLead SubjectIdentityStore::PromoteResearchToLead(
     sqlite3_finalize(s);
     tx.Commit();
     return lead;
+}
+
+std::string SubjectIdentityStore::BuildResearchReport(std::string_view id) const
+{
+    auto task=GetResearch(id);
+    if(!task) throw std::runtime_error("identity research task was not found");
+
+    auto subject=GetSubject(task->subjectId);
+    if(!subject) throw std::runtime_error("identity research subject was not found");
+
+    std::ostringstream out;
+    out<<"SARA IDENTITY RESEARCH REPORT\n";
+    out<<"Task ID: "<<task->id<<"\n";
+    out<<"Case ID: "<<subject->caseId.ToString()<<"\n";
+    out<<"Subject ID: "<<subject->id.ToString()<<"\n";
+    out<<"Subject display name: "<<subject->displayName<<"\n";
+    out<<"Research type: "<<ToString(task->type)<<"\n";
+    out<<"Provider/source: "<<task->provider<<"\n";
+    out<<"Query/reference: "<<task->queryText<<"\n";
+    out<<"Case purpose / legal basis: "<<task->purpose<<"\n";
+    out<<"Status: "<<ToString(task->status)<<"\n";
+    out<<"Result summary: "<<task->resultSummary<<"\n";
+    out<<"Result reference: "<<task->resultReference<<"\n";
+    out<<"Provenance: "<<task->provenance<<"\n";
+    out<<"Promoted lead ID: "<<task->promotedLeadId<<"\n";
+    out<<"Reviewed by: "<<task->reviewedBy<<"\n";
+    out<<"Review notes: "<<task->reviewNotes<<"\n";
+    out<<"Created UTC: "<<task->createdUtc<<"\n";
+    out<<"Updated UTC: "<<task->updatedUtc<<"\n";
+    out<<"Completed UTC: "<<task->completedUtc<<"\n\n";
+    out<<"NOTICE: Research findings remain investigative leads unless separately verified. "
+          "This report does not establish or automatically confirm a person's identity.\n";
+    return out.str();
 }
 
 SubjectIdentityCounts SubjectIdentityStore::CountsForCase(const CaseId& caseId) const {

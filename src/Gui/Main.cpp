@@ -652,6 +652,7 @@ std::wstring AuditActionName(int action) {
         case 715: return L"Identity research completed";
         case 716: return L"Identity research promoted";
         case 717: return L"Identity research rejected";
+        case 718: return L"Identity research preserved";
         case 720: return L"Investigator takeover activated";
         case 721: return L"Investigator takeover released";
         case 722: return L"Supervisor approval requested";
@@ -1526,6 +1527,7 @@ public:
             else if (b.id.rfind(L"research_task:",0)==0) SelectIdentityResearchTask(Narrow(b.id.substr(14)));
             else if (b.id==L"research_complete") CompleteSelectedIdentityResearch();
             else if (b.id==L"research_promote") PromoteSelectedIdentityResearch();
+            else if (b.id==L"research_preserve") PreserveSelectedIdentityResearchAsEvidence();
             else if (b.id==L"research_reject") RejectSelectedIdentityResearch();
             else if (b.id==L"sim_send") SendSimulationMessage();
             else if (b.id==L"sim_emoji") OpenEmojiPicker();
@@ -3842,6 +3844,82 @@ private:
         }
     }
 
+    void PreserveSelectedIdentityResearchAsEvidence() {
+        if(selectedResearchTaskId_.empty()) {
+            statusText_=L"Select a completed research task first";
+            return;
+        }
+
+        auto task=runtime_->subjectIdentity.GetResearch(selectedResearchTaskId_);
+        if(!task) {
+            statusText_=L"Identity research task could not be loaded";
+            return;
+        }
+        if(task->status==sentinel::identity::IdentityResearchStatus::Queued) {
+            statusText_=L"Record or reject the research task before preserving it";
+            return;
+        }
+
+        auto subject=runtime_->subjectIdentity.GetSubject(task->subjectId);
+        if(!subject) {
+            statusText_=L"Research subject no longer exists";
+            return;
+        }
+
+        const auto actor=sentinel::UserId::Random();
+        const auto tempDir=runtime_->root/"tmp"/"identity-research-preservation";
+        const auto tempPath=tempDir/("identity-research-"+task->id+".txt");
+        std::error_code cleanupError;
+
+        try {
+            std::filesystem::create_directories(tempDir);
+            {
+                std::ofstream out(tempPath,std::ios::trunc|std::ios::binary);
+                if(!out) throw std::runtime_error("unable to create temporary research report");
+                out<<runtime_->subjectIdentity.BuildResearchReport(task->id);
+            }
+
+            auto key=runtime_->keys.GetCaseKey(subject->caseId);
+            sentinel::EvidenceService svc(
+                runtime_->root/"evidence",
+                runtime_->db,
+                runtime_->random,
+                runtime_->hash,
+                runtime_->cipher,
+                runtime_->audit);
+            const auto imported=svc.Import(
+                {subject->caseId,tempPath,0,actor},
+                key.Span());
+
+            std::filesystem::remove(tempPath,cleanupError);
+
+            if(!cases_.empty() &&
+               selectedCase_<cases_.size() &&
+               cases_[selectedCase_].id==subject->caseId)
+            {
+                evidence_=runtime_->Evidence(subject->caseId);
+            }
+
+            runtime_->audit.Append({
+                actor,
+                sentinel::AuditAction::IdentityResearchPreserved,
+                "identity_research",
+                task->id,
+                AuditMetadata(
+                    "case="+subject->caseId.ToString()+
+                    " subject="+subject->id.ToString()+
+                    " evidence="+imported.id.ToString()+
+                    " provider="+task->provider+
+                    " status="+sentinel::identity::ToString(task->status))
+            });
+            statusText_=L"Research report preserved as encrypted case evidence";
+        } catch(const std::exception& e) {
+            std::filesystem::remove(tempPath,cleanupError);
+            statusText_=L"Research report could not be preserved";
+            MessageBoxW(hwnd_,Widen(e.what()).c_str(),L"Preserve Research Evidence",MB_OK|MB_ICONERROR);
+        }
+    }
+
     void RejectSelectedIdentityResearch() {
         if(selectedResearchTaskId_.empty()) {
             statusText_=L"Select a research task first";
@@ -4348,15 +4426,19 @@ private:
         } else if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Completed) {
             AddButton(L"research_promote",L"Promote to Lead",rightX+16,actionY,118,26,true);
             AddButton(L"research_reject",L"Reject",rightX+142,actionY,68,26,false);
+            AddButton(L"research_preserve",L"Preserve",rightX+rightW-92,actionY,76,26,false);
             TextLine(
-                L"Promotion creates an unverified lead. Lead verification and subject confirmation remain separate.",
-                rightX+220,actionY+3,rightW-236,20,tinyFmt_.Get(),brush_.muted.Get());
+                L"Promotion stays unverified.",
+                rightX+220,actionY+3,std::max(20.0f,rightW-328),20,tinyFmt_.Get(),brush_.muted.Get());
         } else if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::PromotedToLead) {
+            AddButton(L"research_preserve",L"Preserve",rightX+rightW-92,actionY,76,26,false);
             TextLine(
-                L"Promoted to lead "+Widen(selectedTask->promotedLeadId)+L"; verify it separately in Subjects & Identity.",
-                rightX+16,actionY+3,rightW-32,20,tinyFmt_.Get(),brush_.cyan.Get());
+                L"Promoted to unverified lead "+Widen(selectedTask->promotedLeadId),
+                rightX+16,actionY+3,rightW-116,20,tinyFmt_.Get(),brush_.cyan.Get());
         } else if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Rejected) {
-            TextLine(L"Rejected research task; it cannot be promoted.",rightX+16,actionY+3,rightW-32,20,tinyFmt_.Get(),brush_.red.Get());
+            AddButton(L"research_preserve",L"Preserve",rightX+rightW-92,actionY,76,26,false);
+            TextLine(L"Rejected research task; preservation records the decision and provenance.",
+                rightX+16,actionY+3,rightW-116,20,tinyFmt_.Get(),brush_.red.Get());
         }
 
         TextLine(

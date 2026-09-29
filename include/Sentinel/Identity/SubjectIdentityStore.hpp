@@ -183,6 +183,8 @@ public:
         std::string reviewer,
         std::string reviewNotes);
 
+    std::string BuildResearchReport(std::string_view id) const;
+
     SubjectIdentityCounts CountsForCase(const CaseId& caseId) const;
 
 private:

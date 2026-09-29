@@ -1040,6 +1040,14 @@ void TestSubjectIdentityStore()
     Require(completedResearch->promotedLeadId==promoted.id.ToString(),
         "identity research promoted lead id mismatch");
 
+    const auto researchReport=store.BuildResearchReport(research.id);
+    Require(researchReport.find("SARA IDENTITY RESEARCH REPORT")!=std::string::npos,
+        "identity research report header missing");
+    Require(researchReport.find("Possible public profile correlation")!=std::string::npos,
+        "identity research report omitted the finding");
+    Require(researchReport.find("does not establish or automatically confirm")!=std::string::npos,
+        "identity research report omitted the non-confirmation notice");
+
     Require(store.SetResearchProviderEnabled(configuredProvider.id,false),
         "configured identity research provider could not be disabled");
     bool disabledProviderRejected=false;
