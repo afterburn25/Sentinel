@@ -9390,7 +9390,7 @@ private:
     void DrawModelLab(float w,float h) {
         PageTitle(
             L"Model Lab - Executive Dashboard",
-            L"Current model, training, persona, review, and evaluation state from the recovered SARA 1.0.15 backend");
+            L"Current model, training, persona, review, and evaluation state from the protected recovered SARA backend");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -10050,7 +10050,7 @@ private:
 
         Rounded(x,bodyY,listW,bodyH,brush_.panel.Get(),brush_.border.Get(),10);
         TextLine(L"Review Queue",x+16,bodyY+12,230,28,h1Fmt_.Get(),brush_.text.Get());
-        TextLine(L"Newest captured examples from the 1.0.15 review store",
+        TextLine(L"Newest captured examples from the recovered training-review store",
             x+16,bodyY+40,listW-32,20,tinyFmt_.Get(),brush_.muted.Get());
 
         AddButton(L"training_stage",L"Stage Latest",x+listW-360,bodyY+12,102,28,true);
@@ -10316,7 +10316,7 @@ private:
     void DrawPersonasLoras(float w,float h) {
         PageTitle(
             L"Model Lab / Personas & LoRAs",
-            L"Manage the real saved SARA personas and their active LoRA bindings from the recovered 1.0.15 backend");
+            L"Manage saved SARA personas and their active LoRA bindings from the recovered backend");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -10861,7 +10861,7 @@ private:
     void DrawJobs(float w,float h) {
         PageTitle(
             L"Model Lab / Jobs",
-            L"Inspect and run the real training jobs queued by the recovered SARA 1.0.15 Trainer");
+            L"Inspect and run training jobs queued by the recovered SARA Trainer");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
@@ -11062,7 +11062,7 @@ private:
     void DrawEvaluation(float w,float h) {
         PageTitle(
             L"Model Lab / Evaluation",
-            L"Evaluate registered candidates against the recovered 1.0.15 persona and policy checks before approval");
+            L"Evaluate registered candidates against the recovered persona and policy checks before approval");
 
         const float x=kSidebar+28.0f;
         const float y=kHeader+94.0f;
