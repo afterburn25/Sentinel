@@ -9223,7 +9223,8 @@ private:
                <<" | parent="<<foundation.parentId
                <<" | source="<<foundation.sourceModel
                <<" | trainable="<<foundation.trainableSourcePath
-               <<" | runtime="<<foundation.runtimeGgufPath<<"\n";
+               <<" | runtime="<<foundation.runtimeGgufPath
+               <<" | approved_eval="<<foundation.approvedEvaluationRunId<<"\n";
         }
 
         out<<"\nPERSONA LORA VERSIONS\n";
@@ -9232,7 +9233,8 @@ private:
                <<" | foundation="<<lora.foundationId
                <<" | active="<<(lora.active?"yes":"no")
                <<" | weight="<<lora.weight
-               <<" | path="<<lora.loraPath<<"\n";
+               <<" | path="<<lora.loraPath
+               <<" | approved_eval="<<lora.approvedEvaluationRunId<<"\n";
         }
 
         out<<"\nRESPONSE RULES\n";
