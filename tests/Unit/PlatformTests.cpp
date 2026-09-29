@@ -1,5 +1,6 @@
 #include "Sentinel/Simulation/PersonaPolicy.hpp"
 #include "Sentinel/Simulation/SettingsStore.hpp"
+#include "Sentinel/Simulation/IModelAdapter.hpp"
 #include "Sentinel/Simulation/ResponseEvaluator.hpp"
 #include "Sentinel/Simulation/SessionStore.hpp"
 #include "Sentinel/Simulation/ModelRegistry.hpp"
@@ -29,6 +30,48 @@ int main() {
     simulation::SimulationSettings defaultSettings;
     Require(defaultSettings.model=="sentinel-chat",
         "default local model alias must be sentinel-chat");
+
+    {
+        const std::vector<std::string> localModels={
+            "legacy-persona-alias",
+            "sentinel-chat",
+            "other-model"
+        };
+        const auto chosenLocal=simulation::SelectPreferredOpenAICompatibleModel(
+            localModels,"legacy-persona-alias",true);
+        Require(chosenLocal=="sentinel-chat",
+            "local startup did not force the stable sentinel-chat alias");
+
+        const auto chosenExternal=simulation::SelectPreferredOpenAICompatibleModel(
+            localModels,"legacy-persona-alias",false);
+        Require(chosenExternal=="legacy-persona-alias",
+            "external model selection did not preserve a configured available model");
+
+        bool missingSentinelRejected=false;
+        try {
+            (void)simulation::SelectPreferredOpenAICompatibleModel(
+                {"legacy-persona-alias","other-model"},
+                "legacy-persona-alias",
+                true);
+        } catch(const std::exception&) {
+            missingSentinelRejected=true;
+        }
+        Require(missingSentinelRejected,
+            "local startup accepted a backend that did not expose sentinel-chat");
+
+        const auto fallbackChoice=simulation::SelectPreferredOpenAICompatibleModel(
+            {"model-b","sentinel-chat"},
+            "missing-model",
+            false);
+        Require(fallbackChoice=="sentinel-chat",
+            "model selection did not prefer sentinel-chat when configured model was unavailable");
+
+        auto selectedAdapter=simulation::CreateOpenAICompatibleModel(
+            "http://127.0.0.1:1234/v1/chat/completions",
+            chosenLocal);
+        Require(selectedAdapter->Name().find("sentinel-chat")!=std::string::npos,
+            "selected model adapter identity does not include sentinel-chat");
+    }
 
     simulation::SimulationSettings settings;
     settings.endpoint="http://127.0.0.1:1234/v1/chat/completions";
