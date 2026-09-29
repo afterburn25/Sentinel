@@ -933,6 +933,16 @@ void TestIdentityResearchPackages()
     }
     Require(malformedRejected,
         "research result without finding/provenance was not rejected");
+
+    Require(sentinel::identity::IsSafeResearchPortalUrl(
+        "https://provider.example/authorized"),
+        "valid HTTPS research portal was rejected");
+    Require(!sentinel::identity::IsSafeResearchPortalUrl(
+        "http://provider.example/authorized"),
+        "insecure HTTP research portal was accepted");
+    Require(!sentinel::identity::IsSafeResearchPortalUrl(
+        "https://user:password@provider.example/authorized"),
+        "research portal with embedded credentials was accepted");
 }
 
 void TestSubjectIdentityStore()

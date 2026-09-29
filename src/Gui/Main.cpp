@@ -660,6 +660,7 @@ std::wstring AuditActionName(int action) {
         case 722: return L"Supervisor approval requested";
         case 723: return L"Supervisor approval approved";
         case 724: return L"Supervisor approval rejected";
+        case 725: return L"Identity research portal opened";
         case 900: return L"Application shutdown";
         default: return L"System event";
     }
@@ -749,6 +750,24 @@ struct Runtime {
                     AuditMetadata("capture_fixture=identity-research-v1")});
                 auto subject=subjectIdentity.CreateSubject(rec.id,"Research Capture Subject");
                 audit.Append({actor,sentinel::AuditAction::SubjectCreated,"subject",subject.id.ToString(),
+                    AuditMetadata("capture_fixture=identity-research-v1")});
+
+                sentinel::identity::IdentityResearchProvider captureProvider;
+                captureProvider.id="capture-authorized-portal";
+                captureProvider.displayName="Capture Authorized Portal";
+                captureProvider.accessMode=sentinel::identity::IdentityResearchAccessMode::Portal;
+                captureProvider.supportedTypesMask=1u;
+                captureProvider.endpointHint="https://example.invalid/authorized-research";
+                captureProvider.enabled=true;
+                captureProvider.notes="Disposable packaged-UI fixture only.";
+                subjectIdentity.SaveResearchProvider(captureProvider);
+                auto research=subjectIdentity.QueueResearch(
+                    subject.id,
+                    sentinel::identity::IdentityResearchType::PublicRecords,
+                    captureProvider.id,
+                    "fixture public-record reference",
+                    "packaged UI regression fixture; no external request is performed");
+                audit.Append({actor,sentinel::AuditAction::IdentityResearchQueued,"identity_research",research.id,
                     AuditMetadata("capture_fixture=identity-research-v1")});
                 tx.Commit();
             }
@@ -1530,6 +1549,7 @@ public:
             else if (b.id==L"research_complete") CompleteSelectedIdentityResearch();
             else if (b.id==L"research_export_request") ExportSelectedIdentityResearchRequest();
             else if (b.id==L"research_import_result") ImportSelectedIdentityResearchResult();
+            else if (b.id==L"research_open_portal") OpenSelectedIdentityResearchPortal();
             else if (b.id==L"research_promote") PromoteSelectedIdentityResearch();
             else if (b.id==L"research_preserve") PreserveSelectedIdentityResearchAsEvidence();
             else if (b.id==L"research_reject") RejectSelectedIdentityResearch();
@@ -3782,6 +3802,48 @@ private:
         }
     }
 
+    void OpenSelectedIdentityResearchPortal() {
+        if(selectedResearchTaskId_.empty()) {
+            statusText_=L"Select a research task first";
+            return;
+        }
+        auto task=runtime_->subjectIdentity.GetResearch(selectedResearchTaskId_);
+        if(!task) {
+            statusText_=L"Research task could not be loaded";
+            return;
+        }
+        auto provider=runtime_->subjectIdentity.GetResearchProvider(task->provider);
+        if(!provider || !provider->enabled ||
+           provider->accessMode!=sentinel::identity::IdentityResearchAccessMode::Portal)
+        {
+            statusText_=L"Selected research task is not assigned to an enabled portal provider";
+            return;
+        }
+        if(!sentinel::identity::IsSafeResearchPortalUrl(provider->endpointHint)) {
+            statusText_=L"Provider portal must be an HTTPS URL with no embedded credentials";
+            return;
+        }
+
+        const auto url=Widen(provider->endpointHint);
+        const auto rc=(INT_PTR)ShellExecuteW(
+            hwnd_,L"open",url.c_str(),nullptr,nullptr,SW_SHOWNORMAL);
+        if(rc<=32) {
+            statusText_=L"Provider portal could not be opened";
+            return;
+        }
+
+        runtime_->audit.Append({
+            sentinel::UserId::Random(),
+            sentinel::AuditAction::IdentityResearchPortalOpened,
+            "identity_research",
+            task->id,
+            AuditMetadata(
+                "provider="+task->provider+
+                " query_injected=false credentials_injected=false")
+        });
+        statusText_=L"Authorized provider portal opened without sending case/query data";
+    }
+
     void ExportSelectedIdentityResearchRequest() {
         if(selectedResearchTaskId_.empty()) {
             statusText_=L"Select a queued research task first";
@@ -3888,12 +3950,37 @@ private:
             if(package.providerId!=task->provider)
                 throw std::runtime_error("result provider_id does not match the queued provider");
 
+            auto subject=runtime_->subjectIdentity.GetSubject(task->subjectId);
+            if(!subject)
+                throw std::runtime_error("research subject no longer exists");
+
+            const auto actor=sentinel::UserId::Random();
+            auto key=runtime_->keys.GetCaseKey(subject->caseId);
+            sentinel::EvidenceService evidenceService(
+                runtime_->root/"evidence",
+                runtime_->db,
+                runtime_->random,
+                runtime_->hash,
+                runtime_->cipher,
+                runtime_->audit);
+            const auto imported=evidenceService.Import(
+                {subject->caseId,std::filesystem::path(file),0,actor},
+                key.Span());
+
+            const std::string provenance=
+                package.provenance+
+                " | imported_result_evidence="+imported.id.ToString();
+
             if(!runtime_->subjectIdentity.CompleteResearch(
                     task->id,
                     package.resultSummary,
                     package.resultReference,
-                    package.provenance))
+                    provenance))
                 throw std::runtime_error("research task is no longer queued");
+
+            if(!cases_.empty() && selectedCase_<cases_.size() &&
+               cases_[selectedCase_].id==subject->caseId)
+                evidence_=runtime_->Evidence(subject->caseId);
 
             SetWindowTextW(researchResultEdit_,Widen(package.resultSummary).c_str());
             SetWindowTextW(researchReferenceEdit_,Widen(package.resultReference).c_str());
@@ -3904,7 +3991,9 @@ private:
                 sentinel::AuditAction::IdentityResearchCompleted,
                 "identity_research",
                 task->id,
-                AuditMetadata("result package imported; human review required")
+                AuditMetadata(
+                    "result package imported; evidence="+imported.id.ToString()+
+                    "; human review required")
             });
             statusText_=L"Provider result imported; it remains an unverified research finding";
         } catch(const std::exception& e) {
@@ -4560,6 +4649,14 @@ private:
             AddButton(L"research_reject",L"Reject",rightX+110,actionY,62,26,false);
             AddButton(L"research_export_request",L"Export Req",rightX+180,actionY,82,26,false);
             AddButton(L"research_import_result",L"Import Result",rightX+270,actionY,94,26,false);
+            auto queuedProvider=runtime_->subjectIdentity.GetResearchProvider(selectedTask->provider);
+            if(queuedProvider &&
+               queuedProvider->enabled &&
+               queuedProvider->accessMode==sentinel::identity::IdentityResearchAccessMode::Portal &&
+               sentinel::identity::IsSafeResearchPortalUrl(queuedProvider->endpointHint))
+            {
+                AddButton(L"research_open_portal",L"Open Portal",rightX+372,actionY,88,26,false);
+            }
         } else if(selectedTask && selectedTask->status==sentinel::identity::IdentityResearchStatus::Completed) {
             AddButton(L"research_promote",L"Promote to Lead",rightX+16,actionY,118,26,true);
             AddButton(L"research_reject",L"Reject",rightX+142,actionY,68,26,false);

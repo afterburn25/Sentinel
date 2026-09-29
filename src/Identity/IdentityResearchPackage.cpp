@@ -214,4 +214,28 @@ IdentityResearchResultPackage LoadResearchResultPackage(
     return ParseResearchResultPackage(LoadText(path));
 }
 
+bool IsSafeResearchPortalUrl(std::string_view url) noexcept
+{
+    if(url.size()<9 || url.size()>2048) return false;
+
+    std::string lower(url);
+    for(char& ch:lower) {
+        const unsigned char value=(unsigned char)ch;
+        if(value<=0x20 || value==0x7f) return false;
+        if(ch>='A' && ch<='Z') ch=(char)(ch-'A'+'a');
+    }
+
+    if(lower.rfind("https://",0)!=0) return false;
+    const auto authorityStart=std::string_view("https://").size();
+    const auto authorityEnd=lower.find('/',authorityStart);
+    const auto authority=lower.substr(
+        authorityStart,
+        authorityEnd==std::string::npos
+            ? std::string::npos
+            : authorityEnd-authorityStart);
+    if(authority.empty() || authority.find('@')!=std::string::npos)
+        return false;
+    return true;
+}
+
 }

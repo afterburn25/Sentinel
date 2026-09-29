@@ -51,4 +51,6 @@ void SaveResearchResultPackage(
 IdentityResearchResultPackage LoadResearchResultPackage(
     const std::filesystem::path& path);
 
+bool IsSafeResearchPortalUrl(std::string_view url) noexcept;
+
 }
