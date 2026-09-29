@@ -225,9 +225,12 @@ def convert_persona_lora(db, job, base, adapter_dir, output):
         cmd.extend(["--base-model-id",base])
     print("Converting persona LoRA to GGUF...")
     subprocess.run(cmd,check=True,cwd=str(tools))
-    db.execute("UPDATE persona_lora_bindings SET active=0,updated_utc=CURRENT_TIMESTAMP WHERE persona_name=?",(job["persona_name"],))
+
+    # Training completion must never mutate the live persona runtime. Register
+    # the artifact as an inactive candidate; the investigator must explicitly
+    # review/evaluate and activate a version from Model Lab.
     db.execute(
-        "INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,1.0,1)",
+        "INSERT INTO persona_lora_bindings(persona_name,foundation_id,lora_name,lora_path,weight,active) VALUES(?,?,?,?,1.0,0)",
         (job["persona_name"],job["foundation_id"],job["target_name"],str(gguf))
     )
     db.commit()
@@ -238,7 +241,8 @@ def complete_persona_lora(db, job, foundation):
     update_job(db,job["id"],progress=80)
     gguf=convert_persona_lora(db,job,base,adapter_dir,output)
     update_job(db,job["id"],state="COMPLETED",progress=100,error="")
-    print(f"Persona LoRA complete: {gguf}")
+    print(f"Persona LoRA candidate complete: {gguf}")
+    print("Candidate remains inactive until explicitly reviewed/evaluated and activated in SARA Model Lab.")
 
 def find_llama_quantizer(app_root: Path):
     for root in (app_root/"ai"/"runtime", app_root/"ai"/"runtime_cpu"):
