@@ -343,6 +343,8 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] correction instructions generate separate reviewable training targets instead of relabeling original replies
 - [x] corrected targets reset to PENDING when edited and only approved targets export as supervised JSONL output
 - [x] versioned datasets preserve correction provenance and supersede stale approved targets for future snapshots
+- [x] completed Persona LoRA training registers an inactive candidate and cannot replace the active adapter automatically
+- [x] CI executes a Persona LoRA candidate-isolation self-test against SQLite worker behavior
 - [x] newly trained Persona LoRAs are registered inactive and cannot silently replace the live adapter
 - [x] CI worker self-test proves the existing active LoRA survives candidate registration unchanged
 - [x] rule hit ledger, alternate response pools and terminal/continue behavior
