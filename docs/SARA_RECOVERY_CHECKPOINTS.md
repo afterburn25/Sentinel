@@ -750,3 +750,55 @@ Artifact digests from run #838:
 - UI screenshots: `sha256:db62627f179322ec8ba09469a0b57a9b7c1bf76bcca45196e4ff62fae6dede84`
 
 This is the validated rollback point through encrypted preservation of authorized Identity Research results.
+
+## Checkpoint 16 — Identity Research provider exchange and portal-assist workflow validated
+
+Validated commit:
+
+`3d6aad7fd79fea446df71a676618eacf15eeda7d`
+
+GitHub Actions:
+
+- Workflow: Windows Build
+- Run: #844
+- Run ID: `36517557714`
+- Result: **SUCCESS**
+
+Validated gates:
+
+- exact trusted 1.0.15 recovery-baseline guard: PASS
+- SARA product-architecture guard: PASS
+- Identity Research/package architecture guard: PASS
+- Windows MSVC x64 Release build: PASS
+- research request/result package unit tests: PASS
+- HTTPS portal safety tests: PASS
+- core/platform/CLI tests: PASS
+- packaged install: PASS
+- packaged SARA launch and responsiveness: PASS
+- deterministic queued Identity Research UI capture: PASS
+- packaged launcher layout: PASS
+- SARA Setup.exe build: PASS
+
+Identity Research exchange workflow proven by this checkpoint:
+
+- queued research tasks can export a credential-free `.sara-research-request` package
+- request packages contain case/subject/task/provider/type/query/legal-basis context but no credential-reference field, API key, password, bearer token, cookie, or session secret
+- export also produces a blank provider result template
+- result imports require exact task ID and provider ID matches plus a non-empty finding and provenance
+- malformed or mismatched result packages are rejected
+- the original imported provider-result file is preserved as encrypted case evidence before the research task is completed
+- imported result provenance records the resulting evidence ID
+- portal assist appears only for an enabled Portal provider with a safe HTTPS endpoint
+- HTTP endpoints and HTTPS URLs with embedded user-info credentials are rejected
+- portal launch does not inject the subject/query, credential alias, or secret into the URL
+- portal launch receives its own audit event stating query/credentials were not injected
+- the disposable packaged-UI fixture includes a queued Portal-provider task so CI captures Export Request / Import Result / Open Portal controls
+- research findings remain unverified until the separate lead-review and subject-confirmation workflows
+
+Artifact digests from run #844:
+
+- Windows package: `sha256:fd0f2fc51c89aef67af3a6b27409df535d05926b97813025f8a430f27b5d50af`
+- unsigned-development Setup artifact: `sha256:c3fdd05dcbcd0c400fe52ef3f437f4adbc65945b25a040902bb7c5c2575f7bef`
+- UI screenshots: `sha256:410887117f78219810673c52857d6ba7b70326417239ecef8fde1399165fbf96`
+
+This is the validated rollback point through credential-free provider exchange, encrypted result preservation, and no-data-injection portal assist.

@@ -272,6 +272,7 @@ Every future feature restoration must follow this exact sequence:
 - Authorized Identity Research workspace / provenance-first task queue: RESTORED / VALIDATED (Windows Build #823)
 - Identity Research provider registry / adapter boundary: RESTORED / VALIDATED (Windows Build #836)
 - Identity Research encrypted report preservation: RESTORED / VALIDATED (Windows Build #838)
+- Identity Research provider request/result exchange / portal assist: RESTORED / VALIDATED (Windows Build #844)
 - Wholesale post-1.0.15 branch merges: NONE
 
 
@@ -345,6 +346,9 @@ Therefore those baseline implementations must be preserved and improved in place
 - [x] provider metadata / credential-reference registry with disabled-by-default API/portal templates
 - [x] separate provider-adapter execution contract; metadata alone cannot enable automatic research
 - [x] research reports can be preserved as encrypted case evidence with provenance and non-confirmation notice
+- [x] credential-free provider request/result packages with strict task/provider/provenance matching
+- [x] imported provider result packages preserved as encrypted evidence before task completion
+- [x] HTTPS-only provider portal assist with no case/query/credential injection
 
 ### Still genuinely later-only / not yet restored
 
@@ -431,3 +435,4 @@ No later application shell, startup implementation, splash implementation, or in
 - Identity Research checkpoint: PASS — run #823 / commit `8f810dfb9aecb28115e6c95a040bf75bc34d1e11`
 - Identity Research provider registry checkpoint: PASS — run #836 / commit `6bdfa8aabe8ebc5445f661d4917e6c070fa78122`
 - Identity Research evidence-preservation checkpoint: PASS — run #838 / commit `28a53999bc1356eb253404749b1950631118ab6e`
+- Identity Research exchange checkpoint: PASS — run #844 / commit `3d6aad7fd79fea446df71a676618eacf15eeda7d`
